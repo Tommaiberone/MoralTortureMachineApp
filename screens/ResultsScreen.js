@@ -2,14 +2,14 @@ import React from 'react';
 import { View, Text, StyleSheet, Dimensions, ScrollView, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, Poppins_400Regular, Poppins_600SemiBold } from '@expo-google-fonts/poppins';
-import { LineChart } from 'react-native-chart-kit';
+import { RadarChart } from 'react-native-gifted-charts';
 
 const { width } = Dimensions.get("window");
 
 const ResultsScreen = ({ route }) => {
   const { answers } = route.params;
 
-  let [fontsLoaded] = useFonts({
+  const [fontsLoaded] = useFonts({
     Poppins_400Regular,
     Poppins_600SemiBold,
   });
@@ -35,38 +35,8 @@ const ResultsScreen = ({ route }) => {
 
   const maxValue = Math.max(...data) * 1.2; // Add some padding
 
-  // Prepare data for LineChart
-  const chartData = {
-    labels: labels,
-    datasets: [
-      {
-        data: data,
-        strokeWidth: 2,
-        color: (opacity = 1) => `rgba(108, 113, 255, ${opacity})`, // Line color
-        fill: false,
-      },
-    ],
-  };
-
-  const chartConfig = {
-    backgroundGradientFrom: "#2C2C3E",
-    backgroundGradientTo: "#1E1E2E",
-    decimalPlaces: 2, // optional, defaults to 2dp
-    color: (opacity = 1) => `rgba(224, 224, 224, ${opacity})`,
-    labelColor: (opacity = 1) => `rgba(224, 224, 224, ${opacity})`,
-    style: {
-      borderRadius: 16,
-    },
-    propsForDots: {
-      r: "4",
-      strokeWidth: "2",
-      stroke: "#6C71FF",
-    },
-    propsForBackgroundLines: {
-      stroke: "#6C71FF",
-      strokeDasharray: "", // solid lines
-    },
-  };
+  // Prepare data for RadarChart (array of numbers)
+  const radarData = data; // Directly use the array of numbers
 
   return (
     <LinearGradient
@@ -75,18 +45,24 @@ const ResultsScreen = ({ route }) => {
     >
       <ScrollView contentContainerStyle={styles.contentContainer}>
         <Text style={[styles.title, { color: "#E0E0E0" }]}>Your Results</Text>
-        <LineChart
-          data={chartData}
-          width={width * 0.9}
-          height={300}
-          chartConfig={chartConfig}
-          bezier
-          style={styles.chartStyle}
-          fromZero
-          yAxisSuffix=""
-          yAxisInterval={1} // optional, defaults to 1
-          verticalLabelRotation={-45}
-          segments={5}
+        <RadarChart
+          data={radarData}
+          maxValue={maxValue}
+          size={width * 0.8} // Adjust the size as needed
+          gradientColor={[
+            { offset: '0%', color: 'rgba(108, 113, 255, 0.3)' },
+            { offset: '100%', color: 'rgba(108, 113, 255, 0.1)' },
+          ]}
+          strokeColor="#6C71FF"
+          strokeWidth={2}
+          labelColor="#E0E0E0"
+          labelSize={12}
+          labelFontFamily="Poppins_600SemiBold"
+          dataFillColor="rgba(108, 113, 255, 0.3)"
+          dataFillOpacity={0.8}
+          dataStrokeColor="#6C71FF"
+          dataStrokeWidth={2}
+          isCircle
         />
         <View style={styles.summary}>
           {labels.map((label, index) => (
@@ -116,9 +92,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     fontFamily: "Poppins_600SemiBold",
     marginBottom: 20,
-  },
-  chartStyle: {
-    borderRadius: 16,
   },
   summary: {
     marginTop: 20,
