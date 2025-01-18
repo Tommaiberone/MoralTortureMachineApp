@@ -1,5 +1,5 @@
-// screens/GetDilemmaScreen.js
-import React, { useState } from "react";
+// screens/EvaluationDilemmasScreen.js
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,37 +9,41 @@ import {
   StyleSheet,
   Switch,
   Dimensions,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import 'react-native-url-polyfill/auto';
 import { useFonts, Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold } from '@expo-google-fonts/poppins';
+import { useNavigation } from '@react-navigation/native';
 
 const { width } = Dimensions.get("window");
 
+const MAX_DILEMMAS = 1;
+
 const EvaluationDilemmasScreen = () => {
-  // Similar state variables as GenerateDilemmaScreen
   const [loading, setLoading] = useState(false);
-  const [generatedText, setGeneratedText] = useState("");
+  const [dilemma, setDilemma] = useState(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [dilemmaGenerated, setDilemmaGenerated] = useState(false);
-  const [answers, setAnswers] = useState({
-    firstAnswer: "Yes",
-    secondAnswer: "No",
-  });
-  const [teases, setTeases] = useState({
-    teaseOption1: "",
-    teaseOption2: "",
-  });
-  const [selectedTease, setSelectedTease] = useState("");
   const [choiceMade, setChoiceMade] = useState(false);
+  const [selectedTease, setSelectedTease] = useState("");
   const [distribution, setDistribution] = useState([0, 0]);
+  const [currentDilemmaCount, setCurrentDilemmaCount] = useState(0);
+  const [selectedAnswers, setSelectedAnswers] = useState([]);
+
+  const navigation = useNavigation();
 
   let [fontsLoaded] = useFonts({
     Poppins_400Regular,
     Poppins_600SemiBold,
     Poppins_700Bold,
   });
+
+  useEffect(() => {
+    if (currentDilemmaCount >= MAX_DILEMMAS) {
+      navigation.navigate('Results', { answers: selectedAnswers });
+    }
+  }, [currentDilemmaCount]);
 
   if (!fontsLoaded) {
     return (
@@ -49,7 +53,7 @@ const EvaluationDilemmasScreen = () => {
     );
   }
 
-  const backendUrl = "https://tommaiberone.pythonanywhere.com/get-dilemma"; // Changed API endpoint
+  const backendUrl = "https://tommaiberone.pythonanywhere.com/get-dilemma";
 
   const fetchDilemmaData = async () => {
     let response;
@@ -57,7 +61,7 @@ const EvaluationDilemmasScreen = () => {
     while (retries > 0) {
       try {
         response = await fetch(backendUrl, {
-          method: "POST",
+          method: "GET",
           headers: { "Content-Type": "application/json" },
         });
 
@@ -66,8 +70,9 @@ const EvaluationDilemmasScreen = () => {
         }
 
         const result = await response.json();
-        const content = JSON.parse(result.choices[0].message.content);
-        return content;
+        console.log("Fetched data:", result);
+        // Directly return the result as it's already a JSON object
+        return result;
       } catch (error) {
         console.error("Error during fetch or parsing:", error);
         retries -= 1;
@@ -81,36 +86,29 @@ const EvaluationDilemmasScreen = () => {
 
   const fetchDilemma = async () => {
     setLoading(true);
-    setDilemmaGenerated(false);
-    setGeneratedText("");
-    setSelectedTease("");
     setChoiceMade(false);
+    setSelectedTease("");
     setDistribution([0, 0]);
 
     try {
-      const content = await fetchDilemmaData();
-      setGeneratedText(content.dilemma.trim());
-      setAnswers({
-        firstAnswer: content.firstAnswer,
-        secondAnswer: content.secondAnswer,
-      });
-      setTeases({
-        teaseOption1: content.teaseOption1,
-        teaseOption2: content.teaseOption2,
-      });
-      setDilemmaGenerated(true);
+      const fetchedDilemma = await fetchDilemmaData();
+      console.log("Fetched dilemma:", fetchedDilemma);
+      setDilemma(fetchedDilemma);
     } catch (error) {
       console.error("Error during backend call:", error);
-      setGeneratedText("Failed to fetch the generated text. Try again.");
+      Alert.alert("Error", "Failed to fetch the dilemma. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleChoice = (choice) => {
-    setSelectedTease(
-      choice === "first" ? teases.teaseOption1 : teases.teaseOption2
-    );
+    if (!dilemma) return;
+
+    const selected = choice === "first" ? dilemma.firstAnswer : dilemma.secondAnswer;
+    const tease = choice === "first" ? dilemma.teaseOption1 : dilemma.teaseOption2;
+
+    setSelectedTease(tease);
 
     const firstRandom = Math.floor(Math.random() * 100);
     const secondRandom = 100 - firstRandom;
@@ -121,6 +119,25 @@ const EvaluationDilemmasScreen = () => {
         : [Math.max(firstRandom - 1, 0), Math.min(secondRandom + 1, 100)]
     );
 
+    // Save selected answer's values directly without parsing
+    const answerValues = choice === "first" ? {
+      Empathy: dilemma.firstAnswerEmpathy,
+      Integrity: dilemma.firstAnswerIntegrity,
+      Responsibility: dilemma.firstAnswerResponsibility,
+      Justice: dilemma.firstAnswerJustice,
+      Altruism: dilemma.firstAnswerAltruism,
+      Honesty: dilemma.firstAnswerHonesty,
+    } : {
+      Empathy: dilemma.secondAnswerEmpathy,
+      Integrity: dilemma.secondAnswerIntegrity,
+      Responsibility: dilemma.secondAnswerResponsibility,
+      Justice: dilemma.secondAnswerJustice,
+      Altruism: dilemma.secondAnswerAltruism,
+      Honesty: dilemma.secondAnswerHonesty,
+    };
+
+    setSelectedAnswers([...selectedAnswers, answerValues]);
+    setCurrentDilemmaCount(currentDilemmaCount + 1);
     setChoiceMade(true);
   };
 
@@ -128,7 +145,6 @@ const EvaluationDilemmasScreen = () => {
     setIsDarkMode(!isDarkMode);
   };
 
-  // Define color variables based on mode (same as GenerateDilemmaScreen)
   const colors = {
     background: isDarkMode ? "#1E1E2E" : "#F0F4FF",
     gradientBackground: isDarkMode
@@ -147,8 +163,8 @@ const EvaluationDilemmasScreen = () => {
     progressBarBackground: isDarkMode ? "#3A3A5A" : "#A29BFF",
     firstSegment: "#6C71FF",
     secondSegment: "#FFB86C",
-    yesButtonBackground: isDarkMode ? "#6C71FF" : "#6C71FF",
-    noButtonBackground: isDarkMode ? "#FFB86C" : "#FFB86C",
+    yesButtonBackground: "#6C71FF",
+    noButtonBackground: "#FFB86C",
     toggleText: isDarkMode ? "#E0E0E0" : "#333333",
     toggleSwitchBackground: isDarkMode ? "#3A3A5A" : "#A29BFF",
     toggleSwitchCircle: isDarkMode ? "#6C71FF" : "#FFFFFF",
@@ -187,7 +203,10 @@ const EvaluationDilemmasScreen = () => {
 
           {/* Title */}
           <Text style={[styles.title, { color: colors.title }]}>
-            Get Dilemma
+            Ethical Dilemmas
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.title }]}>
+            {currentDilemmaCount} / {MAX_DILEMMAS}
           </Text>
         </View>
 
@@ -201,7 +220,7 @@ const EvaluationDilemmasScreen = () => {
             },
           ]}
         >
-          {!dilemmaGenerated ? (
+          {!dilemma ? (
             <View style={styles.buttonContainer}>
               <TouchableOpacity
                 onPress={fetchDilemma}
@@ -242,7 +261,7 @@ const EvaluationDilemmasScreen = () => {
                   },
                 ]}
               >
-                {generatedText}
+                {dilemma.dilemma}
               </Text>
 
               {!choiceMade ? (
@@ -254,7 +273,7 @@ const EvaluationDilemmasScreen = () => {
                     ]}
                     onPress={() => handleChoice("first")}
                   >
-                    <Text style={styles.buttonText}>{answers.firstAnswer}</Text>
+                    <Text style={styles.buttonText}>{dilemma.firstAnswer}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[
@@ -263,7 +282,7 @@ const EvaluationDilemmasScreen = () => {
                     ]}
                     onPress={() => handleChoice("second")}
                   >
-                    <Text style={styles.buttonText}>{answers.secondAnswer}</Text>
+                    <Text style={styles.buttonText}>{dilemma.secondAnswer}</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -286,7 +305,7 @@ const EvaluationDilemmasScreen = () => {
                         { color: colors.distributionOptionColor },
                       ]}
                     >
-                      {answers.firstAnswer} - {distribution[0]}%
+                      {dilemma.firstAnswer} - {distribution[0]}%
                     </Text>
                     <Text
                       style={[
@@ -294,7 +313,7 @@ const EvaluationDilemmasScreen = () => {
                         { color: colors.distributionOptionColor },
                       ]}
                     >
-                      {answers.secondAnswer} - {distribution[1]}%
+                      {dilemma.secondAnswer} - {distribution[1]}%
                     </Text>
                     <View
                       style={[
@@ -316,23 +335,25 @@ const EvaluationDilemmasScreen = () => {
                       />
                     </View>
                   </View>
-                  <TouchableOpacity
-                    onPress={fetchDilemma}
-                    disabled={loading}
-                    style={[
-                      styles.button,
-                      styles.generateNewButton,
-                      {
-                        backgroundColor: loading
-                          ? "#CCCCCC"
-                          : colors.generateNewButtonBackground,
-                      },
-                    ]}
-                  >
-                    <Text style={styles.buttonText}>
-                      {loading ? "🔄 Loading..." : "🔁 Get New Dilemma"}
-                    </Text>
-                  </TouchableOpacity>
+                  {currentDilemmaCount < MAX_DILEMMAS && (
+                    <TouchableOpacity
+                      onPress={() => setDilemma(null)}
+                      disabled={loading}
+                      style={[
+                        styles.button,
+                        styles.generateNewButton,
+                        {
+                          backgroundColor: loading
+                            ? "#CCCCCC"
+                            : colors.generateNewButtonBackground,
+                        },
+                      ]}
+                    >
+                      <Text style={styles.buttonText}>
+                        {loading ? "🔄 Loading..." : "🔁 Get New Dilemma"}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
             </View>
@@ -344,8 +365,6 @@ const EvaluationDilemmasScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  // [Same styles as GenerateDilemmaScreen with possible minor adjustments]
-
   gradientBackground: {
     flex: 1,
   },
@@ -370,6 +389,12 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     fontFamily: "Poppins_700Bold",
     marginTop: 10,
+  },
+  subtitle: {
+    fontSize: 16,
+    fontWeight: "400",
+    fontFamily: "Poppins_400Regular",
+    marginTop: 5,
   },
   toggleContainer: {
     flexDirection: "row",

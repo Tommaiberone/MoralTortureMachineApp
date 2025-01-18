@@ -7,6 +7,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import HomeScreen from './screens/HomeScreen';
 import InfiniteDilemmasScreen from './screens/InfiniteDilemmasScreen';
 import EvaluationDilemmasScreen from './screens/EvaluationDilemmasScreen';
+import ResultsScreen from './screens/ResultsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -32,6 +33,13 @@ const App = () => {
           component={EvaluationDilemmasScreen} 
           options={{ headerShown: false }} 
         />
+        {/* Results Screen */}
+        <Stack.Screen
+          name="Results"
+          component={ResultsScreen}
+          options={{ headerShown: false }}
+        />
+      
       </Stack.Navigator>
     </NavigationContainer>
   );
