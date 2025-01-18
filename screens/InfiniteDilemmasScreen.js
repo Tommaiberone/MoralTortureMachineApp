@@ -1,3 +1,4 @@
+// DilemmaScreen.js
 import React, { useState } from "react";
 import {
   View,
@@ -15,12 +16,10 @@ import 'react-native-url-polyfill/auto';
 
 // Import the useFonts hook and the Poppins font
 import { useFonts, Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold } from '@expo-google-fonts/poppins';
-// Remove AppLoading as it's deprecated
-// import AppLoading from 'expo-app-loading'; // Deprecated
 
 const { width } = Dimensions.get("window");
 
-const App = () => {
+const DilemmaScreen = ({ navigation }) => { // Renamed from App to DilemmaScreen
   // Existing Hooks
   const [loading, setLoading] = useState(false);
   const [generatedText, setGeneratedText] = useState("");
@@ -168,6 +167,16 @@ const App = () => {
         style={[styles.container, { backgroundColor: colors.background }]}
         contentContainerStyle={styles.contentContainer}
       >
+        {/* Go Back Button */}
+        <TouchableOpacity
+          style={styles.goBackButton}
+          onPress={() => navigation.goBack()}
+          accessibilityLabel="Go back to the previous screen"
+        >
+          <Ionicons name="arrow-back" size={24} color="#E0E0E0" />
+          <Text style={styles.goBackText}>Go Back</Text>
+        </TouchableOpacity>
+
         {/* Header with Toggle (Slider) above the Title */}
         <View style={styles.header}>
           {/* Toggle Container */}
@@ -363,6 +372,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 40,
     paddingHorizontal: 20,
+    position: 'relative', // To ensure absolute positioning of the button works correctly
+  },
+
+  /**********************************************
+   * Go Back Button Styles
+   **********************************************/
+  goBackButton: {
+    position: 'absolute', // Position the button at the top-left corner
+    top: 40, // Adjust based on your layout (e.g., status bar height)
+    left: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(108, 113, 255, 0.2)', // Semi-transparent background
+    padding: 10,
+    borderRadius: 8,
+    zIndex: 1, // Ensure the button appears above other elements
+  },
+  goBackText: {
+    color: "#E0E0E0",
+    fontSize: 16,
+    fontFamily: "Poppins_600SemiBold",
+    marginLeft: 5, // Space between icon and text
   },
 
   /**********************************************
@@ -557,6 +588,27 @@ const styles = StyleSheet.create({
   },
 
   /**********************************************
+   * Go Back Button (Additional Styles)
+   **********************************************/
+  goBackButton: {
+    position: 'absolute', // Position the button at the top-left corner
+    top: 40, // Adjust based on your layout (e.g., status bar height)
+    left: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(108, 113, 255, 0.2)', // Semi-transparent background
+    padding: 10,
+    borderRadius: 8,
+    zIndex: 1, // Ensure the button appears above other elements
+  },
+  goBackText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontFamily: "Poppins_600SemiBold",
+    marginLeft: 5, // Space between icon and text
+  },
+
+  /**********************************************
    * Responsive Adjustments (Optional)
    **********************************************/
   responsiveContainer: {
@@ -571,4 +623,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default App;
+export default DilemmaScreen;

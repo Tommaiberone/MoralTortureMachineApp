@@ -13,13 +13,18 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import 'react-native-url-polyfill/auto';
-import { useFonts, Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold } from '@expo-google-fonts/poppins';
-import { useNavigation } from '@react-navigation/native';
+import "react-native-url-polyfill/auto";
+import {
+  useFonts,
+  Poppins_400Regular,
+  Poppins_600SemiBold,
+  Poppins_700Bold,
+} from "@expo-google-fonts/poppins";
+import { useNavigation } from "@react-navigation/native";
 
 const { width } = Dimensions.get("window");
 
-const MAX_DILEMMAS = 1;
+const MAX_DILEMMAS = 5;
 
 const EvaluationDilemmasScreen = () => {
   const [loading, setLoading] = useState(false);
@@ -41,7 +46,7 @@ const EvaluationDilemmasScreen = () => {
 
   useEffect(() => {
     if (currentDilemmaCount >= MAX_DILEMMAS) {
-      navigation.navigate('Results', { answers: selectedAnswers });
+      navigation.navigate("Results", { answers: selectedAnswers });
     }
   }, [currentDilemmaCount]);
 
@@ -105,8 +110,10 @@ const EvaluationDilemmasScreen = () => {
   const handleChoice = (choice) => {
     if (!dilemma) return;
 
-    const selected = choice === "first" ? dilemma.firstAnswer : dilemma.secondAnswer;
-    const tease = choice === "first" ? dilemma.teaseOption1 : dilemma.teaseOption2;
+    const selected =
+      choice === "first" ? dilemma.firstAnswer : dilemma.secondAnswer;
+    const tease =
+      choice === "first" ? dilemma.teaseOption1 : dilemma.teaseOption2;
 
     setSelectedTease(tease);
 
@@ -120,21 +127,24 @@ const EvaluationDilemmasScreen = () => {
     );
 
     // Save selected answer's values directly without parsing
-    const answerValues = choice === "first" ? {
-      Empathy: dilemma.firstAnswerEmpathy,
-      Integrity: dilemma.firstAnswerIntegrity,
-      Responsibility: dilemma.firstAnswerResponsibility,
-      Justice: dilemma.firstAnswerJustice,
-      Altruism: dilemma.firstAnswerAltruism,
-      Honesty: dilemma.firstAnswerHonesty,
-    } : {
-      Empathy: dilemma.secondAnswerEmpathy,
-      Integrity: dilemma.secondAnswerIntegrity,
-      Responsibility: dilemma.secondAnswerResponsibility,
-      Justice: dilemma.secondAnswerJustice,
-      Altruism: dilemma.secondAnswerAltruism,
-      Honesty: dilemma.secondAnswerHonesty,
-    };
+    const answerValues =
+      choice === "first"
+        ? {
+            Empathy: dilemma.firstAnswerEmpathy,
+            Integrity: dilemma.firstAnswerIntegrity,
+            Responsibility: dilemma.firstAnswerResponsibility,
+            Justice: dilemma.firstAnswerJustice,
+            Altruism: dilemma.firstAnswerAltruism,
+            Honesty: dilemma.firstAnswerHonesty,
+          }
+        : {
+            Empathy: dilemma.secondAnswerEmpathy,
+            Integrity: dilemma.secondAnswerIntegrity,
+            Responsibility: dilemma.secondAnswerResponsibility,
+            Justice: dilemma.secondAnswerJustice,
+            Altruism: dilemma.secondAnswerAltruism,
+            Honesty: dilemma.secondAnswerHonesty,
+          };
 
     setSelectedAnswers([...selectedAnswers, answerValues]);
     setCurrentDilemmaCount(currentDilemmaCount + 1);
@@ -179,6 +189,15 @@ const EvaluationDilemmasScreen = () => {
         style={[styles.container, { backgroundColor: colors.background }]}
         contentContainerStyle={styles.contentContainer}
       >
+        {/* Go Back Button */}
+        <TouchableOpacity
+          style={styles.goBackButton}
+          onPress={() => navigation.goBack()}
+          accessibilityLabel="Go back to the previous screen"
+        >
+          <Ionicons name="arrow-back" size={24} color="#E0E0E0" />
+          <Text style={styles.goBackText}>Go Back</Text>
+        </TouchableOpacity>
         {/* Header with Toggle (Slider) above the Title */}
         <View style={styles.header}>
           {/* Toggle Container */}
@@ -227,7 +246,11 @@ const EvaluationDilemmasScreen = () => {
                 disabled={loading}
                 style={[
                   styles.button,
-                  { backgroundColor: loading ? "#CCCCCC" : colors.buttonBackground },
+                  {
+                    backgroundColor: loading
+                      ? "#CCCCCC"
+                      : colors.buttonBackground,
+                  },
                 ]}
               >
                 <Text style={styles.buttonText}>
@@ -282,7 +305,9 @@ const EvaluationDilemmasScreen = () => {
                     ]}
                     onPress={() => handleChoice("second")}
                   >
-                    <Text style={styles.buttonText}>{dilemma.secondAnswer}</Text>
+                    <Text style={styles.buttonText}>
+                      {dilemma.secondAnswer}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -535,8 +560,8 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   responsiveContainer: {
     paddingHorizontal: 15,
@@ -547,6 +572,27 @@ const styles = StyleSheet.create({
   },
   responsiveText: {
     fontSize: 16,
+  },
+
+  /**********************************************
+   * Go Back Button (Additional Styles)
+   **********************************************/
+  goBackButton: {
+    position: "absolute", // Position the button at the top-left corner
+    top: 40, // Adjust based on your layout (e.g., status bar height)
+    left: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(108, 113, 255, 0.2)", // Semi-transparent background
+    padding: 10,
+    borderRadius: 8,
+    zIndex: 1, // Ensure the button appears above other elements
+  },
+  goBackText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontFamily: "Poppins_600SemiBold",
+    marginLeft: 5, // Space between icon and text
   },
 });
 
