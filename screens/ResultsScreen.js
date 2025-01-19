@@ -41,8 +41,6 @@ const ResultsScreen = ({ route, navigation }) => {
   // Prepare data for RadarChart as an array of numbers
   const radarData = data;
 
-  console.log("data.keys", labels);
-
   return (
     <LinearGradient
       colors={["#2C2C3E", "#1E1E2E"]}
@@ -51,7 +49,7 @@ const ResultsScreen = ({ route, navigation }) => {
       <ScrollView contentContainerStyle={styles.contentContainer}>
         
         {/* Go Back Button */}
-        <TouchableOpacity style={styles.goBackButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={{ ...styles.goBackButton, backgroundColor: "#6C71FF" }} onPress={() => navigation.goBack()}>
           {/* Optional: Add an icon */}
           <Ionicons name="arrow-back" size={24} color="#E0E0E0" />
           <Text style={styles.goBackText}>Go Back</Text>
@@ -154,7 +152,6 @@ const styles = StyleSheet.create({
     left: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(108, 113, 255, 0.2)', // Semi-transparent background
     padding: 10,
     borderRadius: 8,
   },

@@ -21,6 +21,7 @@ import {
   Poppins_700Bold,
 } from "@expo-google-fonts/poppins";
 import { useNavigation } from "@react-navigation/native";
+import { PieChart } from "react-native-gifted-charts"; // Import PieChart
 
 const { width } = Dimensions.get("window");
 
@@ -32,23 +33,30 @@ const EvaluationDilemmasScreen = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [choiceMade, setChoiceMade] = useState(false);
   const [selectedTease, setSelectedTease] = useState("");
-  const [distribution, setDistribution] = useState([0, 0]);
   const [currentDilemmaCount, setCurrentDilemmaCount] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState([]);
 
+  // State to track choices
+  const [currentChoice, setChoiceCounts] = useState({ first: 0, second: 0 });
+
+  // New state to manage voting process
+  const [voting, setVoting] = useState(false);
+
   const navigation = useNavigation();
+
+  const [evaluationComplete, setEvaluationComplete] = useState(false);
+
+  useEffect(() => {
+    if (currentDilemmaCount >= MAX_DILEMMAS) {
+      setEvaluationComplete(true);
+    }
+  }, [currentDilemmaCount]);
 
   let [fontsLoaded] = useFonts({
     Poppins_400Regular,
     Poppins_600SemiBold,
     Poppins_700Bold,
   });
-
-  useEffect(() => {
-    if (currentDilemmaCount >= MAX_DILEMMAS) {
-      navigation.navigate("Results", { answers: selectedAnswers });
-    }
-  }, [currentDilemmaCount]);
 
   if (!fontsLoaded) {
     return (
@@ -59,6 +67,7 @@ const EvaluationDilemmasScreen = () => {
   }
 
   const backendUrl = "https://tommaiberone.pythonanywhere.com/get-dilemma";
+  const voteUrl = "https://tommaiberone.pythonanywhere.com/vote"; // Added voteUrl
 
   const fetchDilemmaData = async () => {
     let response;
@@ -69,6 +78,8 @@ const EvaluationDilemmasScreen = () => {
           method: "GET",
           headers: { "Content-Type": "application/json" },
         });
+
+        console.log("Response", response);
 
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
@@ -91,13 +102,17 @@ const EvaluationDilemmasScreen = () => {
 
   const fetchDilemma = async () => {
     setLoading(true);
+    setDilemma(null);
     setChoiceMade(false);
     setSelectedTease("");
-    setDistribution([0, 0]);
+    // Reset choice counts when fetching a new dilemma
+    setChoiceCounts({ first: 0, second: 0 });
 
     try {
       const fetchedDilemma = await fetchDilemmaData();
+
       console.log("Fetched dilemma:", fetchedDilemma);
+
       setDilemma(fetchedDilemma);
     } catch (error) {
       console.error("Error during backend call:", error);
@@ -107,8 +122,10 @@ const EvaluationDilemmasScreen = () => {
     }
   };
 
-  const handleChoice = (choice) => {
-    if (!dilemma) return;
+  const handleChoice = async (choice) => {
+    if (!dilemma || voting) return;
+
+    setVoting(true); // Start voting process
 
     const selected =
       choice === "first" ? dilemma.firstAnswer : dilemma.secondAnswer;
@@ -117,14 +134,55 @@ const EvaluationDilemmasScreen = () => {
 
     setSelectedTease(tease);
 
-    const firstRandom = Math.floor(Math.random() * 100);
-    const secondRandom = 100 - firstRandom;
+    // Determine the vote type based on the choice
+    const voteType = choice === "first" ? "yes" : "no";
 
-    setDistribution(
-      choice === "first"
-        ? [Math.min(firstRandom + 1, 100), Math.max(secondRandom - 1, 0)]
-        : [Math.max(firstRandom - 1, 0), Math.min(secondRandom + 1, 100)]
-    );
+    // Prepare the vote payload
+    const votePayload = {
+      _id: dilemma._id,
+      vote: voteType,
+    };
+
+    try {
+      // Send the vote to the backend
+      const response = await fetch(voteUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(votePayload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Vote failed with status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log("Vote response:", result);
+
+      // Optionally, you can update the dilemma's yesCount or noCount based on the vote
+      setDilemma((prevDilemma) => ({
+        ...prevDilemma,
+        yesCount:
+          voteType === "yes" ? prevDilemma.yesCount + 1 : prevDilemma.yesCount,
+        noCount:
+          voteType === "no" ? prevDilemma.noCount + 1 : prevDilemma.noCount,
+      }));
+    } catch (error) {
+      console.error("Error during voting:", error);
+      Alert.alert(
+        "Voting Error",
+        "Failed to record your vote. Please try again."
+      );
+      setVoting(false); // End voting process
+      return; // Exit the function to prevent further state updates
+    }
+
+    // Increment the choice count locally
+    setChoiceCounts((prevCounts) => ({
+      ...prevCounts,
+      [choice]: prevCounts[choice] + 1,
+    }));
 
     // Save selected answer's values directly without parsing
     const answerValues =
@@ -149,6 +207,8 @@ const EvaluationDilemmasScreen = () => {
     setSelectedAnswers([...selectedAnswers, answerValues]);
     setCurrentDilemmaCount(currentDilemmaCount + 1);
     setChoiceMade(true);
+
+    setVoting(false); // End voting process
   };
 
   const toggleDarkMode = () => {
@@ -180,6 +240,56 @@ const EvaluationDilemmasScreen = () => {
     toggleSwitchCircle: isDarkMode ? "#6C71FF" : "#FFFFFF",
   };
 
+  // Prepare data for the PieChart
+  const pieChartData = [
+    {
+      currentChoice: currentChoice.first,
+      label: dilemma ? dilemma.firstAnswer : "Option 1",
+      color: "#6C71FF",
+      previousChoices: dilemma ? dilemma.yesCount : 0,
+      // Optional: Add a custom label or other properties
+    },
+    {
+      currentChoice: currentChoice.second,
+      label: dilemma ? dilemma.secondAnswer : "Option 2",
+      color: "#FFB86C",
+      previousChoices: dilemma ? dilemma.noCount : 0,
+      // Optional: Add a custom label or other properties
+    },
+  ];
+
+  // Calculate total choices to handle percentage display
+  const totalChoices =
+    (pieChartData[0].previousChoices || 0) +
+    (pieChartData[1].previousChoices || 0) +
+    currentChoice.first +
+    currentChoice.second;
+
+    console.log("totalChoices", totalChoices);
+
+  // log everything
+  // console.log("pieChartData", pieChartData);
+  // console.log("selectedAnswers", selectedAnswers);
+  // console.log("selectedTease", selectedTease);
+
+  // console.log("totalChoices", totalChoices);
+
+  // Add percentage to each slice
+  const pieChartDataWithPercent = pieChartData.map((item) => (
+    {
+    ...item,
+    percentage:
+      totalChoices > 0
+        ? (
+            ((item.currentChoice + item.previousChoices) / totalChoices) *
+            100
+          ).toFixed(1)
+        : "0.0",
+    value: item.currentChoice + item.previousChoices,
+  }));
+
+  console.log("pieChartDataWithPercent", pieChartDataWithPercent);
+
   return (
     <LinearGradient
       colors={colors.gradientBackground}
@@ -191,13 +301,17 @@ const EvaluationDilemmasScreen = () => {
       >
         {/* Go Back Button */}
         <TouchableOpacity
-          style={styles.goBackButton}
+          style={{
+            ...styles.goBackButton,
+            backgroundColor: colors.teaseTextBackground,
+          }}
           onPress={() => navigation.goBack()}
           accessibilityLabel="Go back to the previous screen"
         >
           <Ionicons name="arrow-back" size={24} color="#E0E0E0" />
           <Text style={styles.goBackText}>Go Back</Text>
         </TouchableOpacity>
+
         {/* Header with Toggle (Slider) above the Title */}
         <View style={styles.header}>
           {/* Toggle Container */}
@@ -216,7 +330,7 @@ const EvaluationDilemmasScreen = () => {
               ios_backgroundColor="#3e3e3e"
               onValueChange={toggleDarkMode}
               value={isDarkMode}
-              style={{ marginTop: 10, marginLeft: 10 }}
+              style={{ marginTop: 0, marginLeft: 10 }}
             />
           </View>
 
@@ -241,8 +355,9 @@ const EvaluationDilemmasScreen = () => {
         >
           {!dilemma ? (
             <View style={styles.buttonContainer}>
+              {/* Initial "Get Dilemma" Button */}
               <TouchableOpacity
-                onPress={fetchDilemma}
+                onPress={fetchDilemma} // Directly fetch a new dilemma
                 disabled={loading}
                 style={[
                   styles.button,
@@ -286,7 +401,6 @@ const EvaluationDilemmasScreen = () => {
               >
                 {dilemma.dilemma}
               </Text>
-
               {!choiceMade ? (
                 <View style={styles.responseButtons}>
                   <TouchableOpacity
@@ -295,6 +409,7 @@ const EvaluationDilemmasScreen = () => {
                       { backgroundColor: colors.yesButtonBackground },
                     ]}
                     onPress={() => handleChoice("first")}
+                    disabled={voting} // Disable during voting
                   >
                     <Text style={styles.buttonText}>{dilemma.firstAnswer}</Text>
                   </TouchableOpacity>
@@ -304,14 +419,23 @@ const EvaluationDilemmasScreen = () => {
                       { backgroundColor: colors.noButtonBackground },
                     ]}
                     onPress={() => handleChoice("second")}
+                    disabled={voting} // Disable during voting
                   >
                     <Text style={styles.buttonText}>
                       {dilemma.secondAnswer}
                     </Text>
                   </TouchableOpacity>
+                  {voting && (
+                    <ActivityIndicator
+                      size="small"
+                      color="#FFFFFF"
+                      style={{ marginTop: 10 }}
+                    />
+                  )}
                 </View>
               ) : (
                 <View>
+                  {/* Existing code for displaying the tease text and PieChart */}
                   <Text
                     style={[
                       styles.teaseText,
@@ -323,46 +447,67 @@ const EvaluationDilemmasScreen = () => {
                   >
                     {selectedTease}
                   </Text>
-                  <View style={styles.distributionBarWrapper}>
-                    <Text
-                      style={[
-                        styles.distributionOption,
-                        { color: colors.distributionOptionColor },
-                      ]}
-                    >
-                      {dilemma.firstAnswer} - {distribution[0]}%
-                    </Text>
-                    <Text
-                      style={[
-                        styles.distributionOption,
-                        { color: colors.distributionOptionColor },
-                      ]}
-                    >
-                      {dilemma.secondAnswer} - {distribution[1]}%
-                    </Text>
-                    <View
-                      style={[
-                        styles.progressBarContainer,
-                        { backgroundColor: colors.progressBarBackground },
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.firstSegment,
-                          { flex: distribution[0] / 100 },
-                        ]}
-                      />
-                      <View
-                        style={[
-                          styles.secondSegment,
-                          { flex: distribution[1] / 100 },
-                        ]}
-                      />
+                  <View style={styles.chartContainer}>
+                    <PieChart
+                      data={pieChartDataWithPercent}
+                      donut={true}
+                      donutWidth={40}
+                      radius={width * 0.25}
+                      innerRadius={50}
+                      showText
+                      textSize={14}
+                      textColor={colors.title}
+                      centerLabelComponent={() => (
+                        <Text
+                          style={{
+                            fontSize: 16,
+                            color: colors.title,
+                            fontFamily: "Poppins_600SemiBold",
+                          }}
+                        >
+                          Choices
+                        </Text>
+                      )}
+                    />
+                    <View style={styles.pieChartLegend}>
+                      {pieChartDataWithPercent.map((item, index) => (
+                        <View key={index} style={styles.legendItem}>
+                          <View
+                            style={[
+                              styles.legendColor,
+                              { backgroundColor: item.color },
+                            ]}
+                          />
+                          <Text
+                            style={[
+                              styles.legendLabel,
+                              { color: colors.title },
+                            ]}
+                          >
+                            {item.label}: {item.value} ({item.percentage}%)
+                          </Text>
+                        </View>
+                      ))}
                     </View>
                   </View>
-                  {currentDilemmaCount < MAX_DILEMMAS && (
+                  {evaluationComplete ? (
                     <TouchableOpacity
-                      onPress={() => setDilemma(null)}
+                      onPress={() =>
+                        navigation.navigate("Results", {
+                          answers: selectedAnswers,
+                        })
+                      }
+                      style={[
+                        styles.button,
+                        styles.generateNewButton,
+                        { backgroundColor: colors.generateNewButtonBackground },
+                      ]}
+                    >
+                      <Text style={styles.buttonText}>View Results</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={fetchDilemma}
                       disabled={loading}
                       style={[
                         styles.button,
@@ -399,6 +544,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     alignItems: "center",
+    verticalAlign: "center",
     paddingVertical: 40,
     paddingHorizontal: 20,
   },
@@ -406,6 +552,7 @@ const styles = StyleSheet.create({
     width: "100%",
     flexDirection: "column",
     alignItems: "center",
+    verticalAlign: "center",
     marginBottom: 20,
   },
   title: {
@@ -422,8 +569,10 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   toggleContainer: {
+    marginTop:10,
     flexDirection: "row",
     alignItems: "center",
+    verticalAlign: "center",
     justifyContent: "center",
   },
   card: {
@@ -438,6 +587,7 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     alignItems: "center",
+    verticalAlign: "center",
     marginVertical: 20,
   },
   button: {
@@ -450,6 +600,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     alignItems: "center",
+    verticalAlign: "center",
     justifyContent: "center",
   },
   buttonText: {
@@ -496,6 +647,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 6,
     alignItems: "center",
+    verticalAlign: "center",
   },
   noButton: {
     flex: 0.48,
@@ -507,6 +659,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 6,
     alignItems: "center",
+    verticalAlign: "center",
   },
   teaseText: {
     marginTop: 25,
@@ -526,6 +679,7 @@ const styles = StyleSheet.create({
   distributionBarWrapper: {
     marginTop: 25,
     alignItems: "center",
+    verticalAlign: "center",
   },
   distributionOption: {
     marginVertical: 8,
@@ -562,6 +716,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    verticalAlign: "center",
   },
   responsiveContainer: {
     paddingHorizontal: 15,
@@ -579,11 +734,11 @@ const styles = StyleSheet.create({
    **********************************************/
   goBackButton: {
     position: "absolute", // Position the button at the top-left corner
-    top: 40, // Adjust based on your layout (e.g., status bar height)
+    top: 50, // Adjust based on your layout (e.g., status bar height)
     left: 20,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(108, 113, 255, 0.2)", // Semi-transparent background
+    verticalAlign: "center",
     padding: 10,
     borderRadius: 8,
     zIndex: 1, // Ensure the button appears above other elements
@@ -593,6 +748,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "Poppins_600SemiBold",
     marginLeft: 5, // Space between icon and text
+  },
+  chartContainer: {
+    marginTop: 25,
+    alignItems: "center",
+    verticalAlign: "center",
+  },
+  pieChartLegend: {
+    marginTop: 20,
+    width: width * 0.6,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  legendColor: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    marginRight: 10,
+  },
+  legendLabel: {
+    fontSize: 14,
+    fontFamily: "Poppins_400Regular",
   },
 });
 

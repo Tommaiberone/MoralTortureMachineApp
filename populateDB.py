@@ -5,9 +5,9 @@ import os
 # It's best to use environment variables for sensitive information
 # You can set these in your PythonAnywhere dashboard under the "Web" tab or "Environment Variables"
 DB_HOST = os.getenv("DB_HOST", "tommaiberone.mysql.pythonanywhere-services.com")
-DB_NAME = os.getenv("DB_NAME", "tommaiberone$MoralTortureMachine")  # Replace with your database name
+DB_NAME = os.getenv("DB_NAME", "tommaiberone$MoralTortureMachine")
 DB_USER = os.getenv("DB_USER", "tommaiberone")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "Tobianca1!")  # Consider using environment variables
+DB_PASSWORD = os.getenv("DB_PASSWORD", "Tobianca1!")
 
 # JSON data (example dictionary)
 data = [
@@ -29,7 +29,9 @@ data = [
         "secondAnswerResponsibility": 0.3,
         "secondAnswerJustice": 0.2,
         "secondAnswerAltruism": 0.7,
-        "secondAnswerHonesty": 0.2
+        "secondAnswerHonesty": 0.2,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a13a",
@@ -49,7 +51,9 @@ data = [
         "secondAnswerResponsibility": 0.6,
         "secondAnswerJustice": 0.5,
         "secondAnswerAltruism": 0.3,
-        "secondAnswerHonesty": 0.6
+        "secondAnswerHonesty": 0.6,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a13b",
@@ -69,7 +73,9 @@ data = [
         "secondAnswerResponsibility": 0.7,
         "secondAnswerJustice": 0.6,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.7
+        "secondAnswerHonesty": 0.7,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a13c",
@@ -89,7 +95,9 @@ data = [
         "secondAnswerResponsibility": 0.7,
         "secondAnswerJustice": 1,
         "secondAnswerAltruism": 0.4,
-        "secondAnswerHonesty": 0.9
+        "secondAnswerHonesty": 0.9,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a13d",
@@ -109,7 +117,9 @@ data = [
         "secondAnswerResponsibility": 0.7,
         "secondAnswerJustice": 0.7,
         "secondAnswerAltruism": 0.4,
-        "secondAnswerHonesty": 0.9
+        "secondAnswerHonesty": 0.9,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a13e",
@@ -129,7 +139,9 @@ data = [
         "secondAnswerResponsibility": 0.7,
         "secondAnswerJustice": 0.9,
         "secondAnswerAltruism": 0.85,
-        "secondAnswerHonesty": 0.7
+        "secondAnswerHonesty": 0.7,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a13f",
@@ -149,7 +161,9 @@ data = [
         "secondAnswerResponsibility": 0.6,
         "secondAnswerJustice": 0.5,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.5
+        "secondAnswerHonesty": 0.5,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a140",
@@ -169,7 +183,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.7,
         "secondAnswerAltruism": 1,
-        "secondAnswerHonesty": 0.3
+        "secondAnswerHonesty": 0.3,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a141",
@@ -189,7 +205,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.7,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.7
+        "secondAnswerHonesty": 0.7,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a142",
@@ -209,7 +227,9 @@ data = [
         "secondAnswerResponsibility": 0.7,
         "secondAnswerJustice": 0.6,
         "secondAnswerAltruism": 0.7,
-        "secondAnswerHonesty": 0.7
+        "secondAnswerHonesty": 0.7,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a143",
@@ -229,7 +249,9 @@ data = [
         "secondAnswerResponsibility": 0.6,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.9,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a144",
@@ -249,7 +271,9 @@ data = [
         "secondAnswerResponsibility": 0.9,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.9,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a145",
@@ -269,7 +293,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.7,
         "secondAnswerAltruism": 0.5,
-        "secondAnswerHonesty": 1
+        "secondAnswerHonesty": 1,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a146",
@@ -289,7 +315,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.9,
-        "secondAnswerHonesty": 0.7
+        "secondAnswerHonesty": 0.7,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a147",
@@ -309,7 +337,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.6,
         "secondAnswerAltruism": 0.5,
-        "secondAnswerHonesty": 0.7
+        "secondAnswerHonesty": 0.7,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a148",
@@ -329,7 +359,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a149",
@@ -349,7 +381,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.9,
-        "secondAnswerHonesty": 0.7
+        "secondAnswerHonesty": 0.7,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a14a",
@@ -369,7 +403,9 @@ data = [
         "secondAnswerResponsibility": 0.6,
         "secondAnswerJustice": 0.6,
         "secondAnswerAltruism": 0.7,
-        "secondAnswerHonesty": 0.6
+        "secondAnswerHonesty": 0.6,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a14b",
@@ -389,7 +425,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.9,
         "secondAnswerAltruism": 0.7,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a14c",
@@ -409,7 +447,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.7,
         "secondAnswerAltruism": 0.5,
-        "secondAnswerHonesty": 0.6
+        "secondAnswerHonesty": 0.6,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a14d",
@@ -429,7 +469,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.7,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a14e",
@@ -449,7 +491,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.7,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.7
+        "secondAnswerHonesty": 0.7,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a14f",
@@ -469,7 +513,9 @@ data = [
         "secondAnswerResponsibility": 0.7,
         "secondAnswerJustice": 0.6,
         "secondAnswerAltruism": 0.5,
-        "secondAnswerHonesty": 0.7
+        "secondAnswerHonesty": 0.7,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a150",
@@ -489,7 +535,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.7,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a151",
@@ -509,7 +557,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.7,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.7
+        "secondAnswerHonesty": 0.7,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a152",
@@ -529,7 +579,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a153",
@@ -549,7 +601,9 @@ data = [
         "secondAnswerResponsibility": 0.9,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.7
+        "secondAnswerHonesty": 0.7,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a154",
@@ -569,7 +623,9 @@ data = [
         "secondAnswerResponsibility": 0.7,
         "secondAnswerJustice": 0.6,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.7
+        "secondAnswerHonesty": 0.7,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a155",
@@ -589,7 +645,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.9,
         "secondAnswerAltruism": 0.85,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a156",
@@ -609,7 +667,9 @@ data = [
         "secondAnswerResponsibility": 0.9,
         "secondAnswerJustice": 0.9,
         "secondAnswerAltruism": 0.9,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a157",
@@ -629,7 +689,9 @@ data = [
         "secondAnswerResponsibility": 0.7,
         "secondAnswerJustice": 0.7,
         "secondAnswerAltruism": 0.4,
-        "secondAnswerHonesty": 0.9
+        "secondAnswerHonesty": 0.9,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a158",
@@ -649,7 +711,9 @@ data = [
         "secondAnswerResponsibility": 0.7,
         "secondAnswerJustice": 0.6,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.7
+        "secondAnswerHonesty": 0.7,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a159",
@@ -669,7 +733,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.9,
         "secondAnswerAltruism": 0.85,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a15a",
@@ -689,7 +755,9 @@ data = [
         "secondAnswerResponsibility": 0.9,
         "secondAnswerJustice": 0.9,
         "secondAnswerAltruism": 0.9,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a15b",
@@ -709,7 +777,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.7,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a15c",
@@ -729,7 +799,9 @@ data = [
         "secondAnswerResponsibility": 0.9,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a15d",
@@ -749,7 +821,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a15e",
@@ -769,7 +843,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.7,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.7
+        "secondAnswerHonesty": 0.7,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a15f",
@@ -789,7 +865,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a160",
@@ -809,7 +887,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.7,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a161",
@@ -829,7 +909,9 @@ data = [
         "secondAnswerResponsibility": 0.6,
         "secondAnswerJustice": 0.6,
         "secondAnswerAltruism": 0.5,
-        "secondAnswerHonesty": 0.7
+        "secondAnswerHonesty": 0.7,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a162",
@@ -849,7 +931,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a163",
@@ -869,7 +953,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.7,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a164",
@@ -889,7 +975,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a165",
@@ -909,7 +997,9 @@ data = [
         "secondAnswerResponsibility": 0.7,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.5,
-        "secondAnswerHonesty": 0.7
+        "secondAnswerHonesty": 0.7,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a166",
@@ -929,7 +1019,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.7,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a167",
@@ -949,7 +1041,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.9,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a168",
@@ -969,7 +1063,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.7,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a169",
@@ -989,7 +1085,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a16a",
@@ -1009,7 +1107,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.9,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a16b",
@@ -1029,7 +1129,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.7,
         "secondAnswerAltruism": 0.7,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a16c",
@@ -1049,7 +1151,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.9
+        "secondAnswerHonesty": 0.9,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a16d",
@@ -1069,7 +1173,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.7,
         "secondAnswerAltruism": 0.3,
-        "secondAnswerHonesty": 0.6
+        "secondAnswerHonesty": 0.6,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a16e",
@@ -1089,7 +1195,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.5,
-        "secondAnswerHonesty": 0.9
+        "secondAnswerHonesty": 0.9,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a16f",
@@ -1109,7 +1217,9 @@ data = [
         "secondAnswerResponsibility": 0.9,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.9,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a170",
@@ -1129,7 +1239,9 @@ data = [
         "secondAnswerResponsibility": 0.5,
         "secondAnswerJustice": 0.5,
         "secondAnswerAltruism": 0.4,
-        "secondAnswerHonesty": 0.6
+        "secondAnswerHonesty": 0.6,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a171",
@@ -1149,7 +1261,9 @@ data = [
         "secondAnswerResponsibility": 0.5,
         "secondAnswerJustice": 0.5,
         "secondAnswerAltruism": 0.2,
-        "secondAnswerHonesty": 0.6
+        "secondAnswerHonesty": 0.6,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a172",
@@ -1169,7 +1283,9 @@ data = [
         "secondAnswerResponsibility": 0.5,
         "secondAnswerJustice": 0.5,
         "secondAnswerAltruism": 0.3,
-        "secondAnswerHonesty": 0.6
+        "secondAnswerHonesty": 0.6,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a173",
@@ -1189,7 +1305,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.6,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a174",
@@ -1209,7 +1327,9 @@ data = [
         "secondAnswerResponsibility": 0.9,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.9,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a175",
@@ -1229,7 +1349,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a176",
@@ -1249,7 +1371,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.7,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a177",
@@ -1269,7 +1393,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a178",
@@ -1289,7 +1415,9 @@ data = [
         "secondAnswerResponsibility": 0.5,
         "secondAnswerJustice": 0.5,
         "secondAnswerAltruism": 0.3,
-        "secondAnswerHonesty": 0.5
+        "secondAnswerHonesty": 0.5,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a179",
@@ -1309,7 +1437,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a17a",
@@ -1329,7 +1459,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a17b",
@@ -1349,7 +1481,9 @@ data = [
         "secondAnswerResponsibility": 0.5,
         "secondAnswerJustice": 0.5,
         "secondAnswerAltruism": 0.3,
-        "secondAnswerHonesty": 0.6
+        "secondAnswerHonesty": 0.6,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a17c",
@@ -1369,7 +1503,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.9,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a17d",
@@ -1389,7 +1525,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a17e",
@@ -1409,7 +1547,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a17f",
@@ -1429,7 +1569,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a180",
@@ -1449,7 +1591,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.7,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a181",
@@ -1469,7 +1613,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.9,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a182",
@@ -1489,7 +1635,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.7,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.7
+        "secondAnswerHonesty": 0.7,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a183",
@@ -1509,7 +1657,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.7,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a184",
@@ -1529,7 +1679,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.7,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a185",
@@ -1549,7 +1701,9 @@ data = [
         "secondAnswerResponsibility": 0.5,
         "secondAnswerJustice": 0.5,
         "secondAnswerAltruism": 0.3,
-        "secondAnswerHonesty": 0.6
+        "secondAnswerHonesty": 0.6,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a186",
@@ -1569,7 +1723,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.7,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a187",
@@ -1589,7 +1745,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a188",
@@ -1609,7 +1767,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.9,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a189",
@@ -1629,7 +1789,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a18a",
@@ -1649,7 +1811,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a18b",
@@ -1669,7 +1833,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a18c",
@@ -1689,7 +1855,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.7,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a18d",
@@ -1709,7 +1877,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a18e",
@@ -1729,7 +1899,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a18f",
@@ -1749,7 +1921,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.8,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a190",
@@ -1769,7 +1943,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a191",
@@ -1789,7 +1965,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.7,
         "secondAnswerAltruism": 0.7,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a192",
@@ -1809,7 +1987,9 @@ data = [
         "secondAnswerResponsibility": 0.8,
         "secondAnswerJustice": 0.8,
         "secondAnswerAltruism": 0.6,
-        "secondAnswerHonesty": 0.8
+        "secondAnswerHonesty": 0.8,
+        "yesCount": 0,
+        "noCount": 0
     },
     {
         "_id": "678b7ce7e930b5451978a193",
@@ -1841,27 +2021,97 @@ def main():
             user=DB_USER,
             passwd=DB_PASSWORD,
             db=DB_NAME,
-            charset='utf8mb4'  # Ensure proper encoding for JSON and emojis
+            charset='utf8mb4'  # Ensure proper encoding for emojis
         )
         cur = conn.cursor()
 
         # Drop table if exists (for testing purposes)
         drop_table_query = "DROP TABLE IF EXISTS dilemmas;"
+        cur.execute(drop_table_query)
 
-        # Create table if not exists
+        # Create table with separate columns for each field
         create_table_query = """
         CREATE TABLE IF NOT EXISTS dilemmas (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            data JSON
+            _id VARCHAR(24) NOT NULL UNIQUE,
+            dilemma TEXT NOT NULL,
+            firstAnswer VARCHAR(255) NOT NULL,
+            secondAnswer VARCHAR(255) NOT NULL,
+            teaseOption1 VARCHAR(255),
+            teaseOption2 VARCHAR(255),
+            firstAnswerEmpathy FLOAT,
+            firstAnswerIntegrity FLOAT,
+            firstAnswerResponsibility FLOAT,
+            firstAnswerJustice FLOAT,
+            firstAnswerAltruism FLOAT,
+            firstAnswerHonesty FLOAT,
+            secondAnswerEmpathy FLOAT,
+            secondAnswerIntegrity FLOAT,
+            secondAnswerResponsibility FLOAT,
+            secondAnswerJustice FLOAT,
+            secondAnswerAltruism FLOAT,
+            secondAnswerHonesty FLOAT,
+            yesCount INT DEFAULT 0,
+            noCount INT DEFAULT 0
         ) CHARACTER SET utf8mb4;
         """
         cur.execute(create_table_query)
 
-        # Insert data into the table
-        insert_query = "INSERT INTO dilemmas (data) VALUES (%s);"
+        # Prepare the INSERT statement with placeholders
+        insert_query = """
+        INSERT INTO dilemmas (
+            _id, dilemma, firstAnswer, secondAnswer, teaseOption1, teaseOption2,
+            firstAnswerEmpathy, firstAnswerIntegrity, firstAnswerResponsibility,
+            firstAnswerJustice, firstAnswerAltruism, firstAnswerHonesty,
+            secondAnswerEmpathy, secondAnswerIntegrity, secondAnswerResponsibility,
+            secondAnswerJustice, secondAnswerAltruism, secondAnswerHonesty,
+            yesCount, noCount
+        ) VALUES (
+            %(_id)s, %(_dilemma)s, %(firstAnswer)s, %(secondAnswer)s,
+            %(teaseOption1)s, %(teaseOption2)s, %(firstAnswerEmpathy)s,
+            %(firstAnswerIntegrity)s, %(firstAnswerResponsibility)s,
+            %(firstAnswerJustice)s, %(firstAnswerAltruism)s,
+            %(firstAnswerHonesty)s, %(secondAnswerEmpathy)s,
+            %(secondAnswerIntegrity)s, %(secondAnswerResponsibility)s,
+            %(secondAnswerJustice)s, %(secondAnswerAltruism)s,
+            %(secondAnswerHonesty)s, %(yesCount)s, %(noCount)s
+        );
+        """
+
+        # Iterate over each record and insert into the table
         for record in data:
-            json_data = json.dumps(record)
-            cur.execute(insert_query, [json_data])
+            # Rename '_id' to '_id' in the insert_query
+            # Ensure all keys match the insert_query placeholders
+            record_for_insert = {
+                '_id': record.get('_id'),
+                '_dilemma': record.get('dilemma'),  # Renamed to avoid conflict with SQL keyword
+                'firstAnswer': record.get('firstAnswer'),
+                'secondAnswer': record.get('secondAnswer'),
+                'teaseOption1': record.get('teaseOption1'),
+                'teaseOption2': record.get('teaseOption2'),
+                'firstAnswerEmpathy': record.get('firstAnswerEmpathy'),
+                'firstAnswerIntegrity': record.get('firstAnswerIntegrity'),
+                'firstAnswerResponsibility': record.get('firstAnswerResponsibility'),
+                'firstAnswerJustice': record.get('firstAnswerJustice'),
+                'firstAnswerAltruism': record.get('firstAnswerAltruism'),
+                'firstAnswerHonesty': record.get('firstAnswerHonesty'),
+                'secondAnswerEmpathy': record.get('secondAnswerEmpathy'),
+                'secondAnswerIntegrity': record.get('secondAnswerIntegrity'),
+                'secondAnswerResponsibility': record.get('secondAnswerResponsibility'),
+                'secondAnswerJustice': record.get('secondAnswerJustice'),
+                'secondAnswerAltruism': record.get('secondAnswerAltruism'),
+                'secondAnswerHonesty': record.get('secondAnswerHonesty'),
+                'yesCount': record.get('yesCount', 0),
+                'noCount': record.get('noCount', 0)
+            }
+            try:
+                cur.execute(insert_query, record_for_insert)
+            except MySQLdb.IntegrityError as ie:
+                print(f"Integrity error for record _id {record.get('_id')}: {ie}")
+            except MySQLdb.Error as e:
+                print(f"MySQL error for record _id {record.get('_id')}: {e}")
+            except Exception as ex:
+                print(f"Unexpected error for record _id {record.get('_id')}: {ex}")
 
         # Commit changes
         conn.commit()

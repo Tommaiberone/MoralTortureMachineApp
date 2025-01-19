@@ -169,7 +169,7 @@ const DilemmaScreen = ({ navigation }) => { // Renamed from App to DilemmaScreen
       >
         {/* Go Back Button */}
         <TouchableOpacity
-          style={styles.goBackButton}
+          style={{ ...styles.goBackButton, backgroundColor: colors.teaseTextBackground }}
           onPress={() => navigation.goBack()}
           accessibilityLabel="Go back to the previous screen"
         >
@@ -195,7 +195,7 @@ const DilemmaScreen = ({ navigation }) => { // Renamed from App to DilemmaScreen
               ios_backgroundColor="#3e3e3e"
               onValueChange={toggleDarkMode}
               value={isDarkMode}
-              style={{ marginTop: 10, marginLeft: 10 }} // Adjusted margin for spacing
+              style={{ marginTop: 0, marginLeft: 10 }} // Adjusted margin for spacing
             />
           </View>
 
@@ -293,43 +293,6 @@ const DilemmaScreen = ({ navigation }) => { // Renamed from App to DilemmaScreen
                   >
                     {selectedTease}
                   </Text>
-                  <View style={styles.distributionBarWrapper}>
-                    <Text
-                      style={[
-                        styles.distributionOption,
-                        { color: colors.distributionOptionColor },
-                      ]}
-                    >
-                      {answers.firstAnswer} - {distribution[0]}%
-                    </Text>
-                    <Text
-                      style={[
-                        styles.distributionOption,
-                        { color: colors.distributionOptionColor },
-                      ]}
-                    >
-                      {answers.secondAnswer} - {distribution[1]}%
-                    </Text>
-                    <View
-                      style={[
-                        styles.progressBarContainer,
-                        { backgroundColor: colors.progressBarBackground },
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.firstSegment,
-                          { flex: distribution[0] / 100 },
-                        ]}
-                      />
-                      <View
-                        style={[
-                          styles.secondSegment,
-                          { flex: distribution[1] / 100 },
-                        ]}
-                      />
-                    </View>
-                  </View>
                   <TouchableOpacity
                     onPress={fetchDilemma}
                     disabled={loading}
@@ -380,11 +343,10 @@ const styles = StyleSheet.create({
    **********************************************/
   goBackButton: {
     position: 'absolute', // Position the button at the top-left corner
-    top: 40, // Adjust based on your layout (e.g., status bar height)
+    top: 150, // Adjust based on your layout (e.g., status bar height)
     left: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(108, 113, 255, 0.2)', // Semi-transparent background
     padding: 10,
     borderRadius: 8,
     zIndex: 1, // Ensure the button appears above other elements
@@ -413,6 +375,7 @@ const styles = StyleSheet.create({
     marginTop: 10, // Added margin for spacing
   },
   toggleContainer: {
+    marginTop:10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
