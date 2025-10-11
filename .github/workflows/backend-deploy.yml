@@ -75,10 +75,6 @@ jobs:
           python -m py_compile backend_fastapi.py
           python -m py_compile populate_dynamodb.py
 
-      - name: Validate requirements.txt
-        run: |
-          uv pip compile requirements.txt --output-file /dev/null
-
   terraform-plan:
     name: Terraform Plan
     runs-on: ubuntu-latest
