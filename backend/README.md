@@ -66,13 +66,28 @@ Using uv (recommended):
 # Install uv if you haven't already
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install dependencies with uv
+# Install dependencies with uv (system-wide in current Python)
+uv pip install --system -r requirements.txt
+
+# Run the development server
+export DYNAMODB_TABLE=moral-torture-machine-dilemmas
+export AWS_REGION=us-east-1
+uvicorn backend_fastapi:app --reload --port 8000
+```
+
+Or with a virtual environment:
+```bash
+# Create and use a virtual environment
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
 uv pip install -r requirements.txt
 
 # Run the development server
 export DYNAMODB_TABLE=moral-torture-machine-dilemmas
 export AWS_REGION=us-east-1
-uv run uvicorn backend_fastapi:app --reload --port 8000
+uvicorn backend_fastapi:app --reload --port 8000
 ```
 
 Or using pip:

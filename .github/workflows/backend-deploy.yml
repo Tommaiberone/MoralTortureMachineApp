@@ -41,27 +41,34 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: "latest"
-          enable-cache: true
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: false
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('backend/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+
       - name: Install dependencies with uv
         run: |
-          uv venv
-          uv pip install -r requirements.txt
+          uv pip install --system -r requirements.txt
 
       - name: Lint with ruff (if configured)
         continue-on-error: true
         run: |
-          uv pip install ruff
-          uv run ruff check backend_fastapi.py populate_dynamodb.py || true
+          uv pip install --system ruff
+          ruff check backend_fastapi.py populate_dynamodb.py || true
 
       - name: Check Python syntax
         run: |
@@ -172,16 +179,24 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: "latest"
-          enable-cache: true
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: false
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('backend/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -231,8 +246,8 @@ jobs:
 
       - name: Populate DynamoDB
         run: |
-          uv pip install boto3
-          uv run python populate_dynamodb.py \
+          uv pip install --system boto3
+          python populate_dynamodb.py \
             moral-torture-machine-dilemmas \
             dilemmas.json
 
