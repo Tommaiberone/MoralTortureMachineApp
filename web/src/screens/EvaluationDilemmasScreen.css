@@ -1,0 +1,199 @@
+.evaluation-gradient-background {
+  min-height: 100vh;
+  width: 100%;
+}
+
+.evaluation-scroll-container {
+  min-height: 100vh;
+  width: 100%;
+  padding: 40px 20px;
+  position: relative;
+}
+
+.evaluation-go-back-button {
+  position: absolute;
+  top: 50px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 10px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+  font-size: 16px;
+  color: #FFFFFF;
+  z-index: 10;
+  transition: opacity 0.2s;
+}
+
+.evaluation-go-back-button:hover {
+  opacity: 0.9;
+}
+
+.evaluation-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.evaluation-toggle-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 10px;
+  gap: 10px;
+}
+
+.evaluation-title {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  font-family: 'Poppins', sans-serif;
+  margin-top: 10px;
+}
+
+.evaluation-subtitle {
+  font-size: 16px;
+  font-weight: 400;
+  font-family: 'Poppins', sans-serif;
+  margin-top: 5px;
+}
+
+.evaluation-card {
+  padding: 25px;
+  border-radius: 20px;
+  width: 90%;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.evaluation-button-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 20px 0;
+}
+
+.evaluation-button {
+  width: 100%;
+  padding: 16px;
+  border-radius: 30px;
+  border: none;
+  cursor: pointer;
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+  font-size: 18px;
+  color: #FFFFFF;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s;
+}
+
+.evaluation-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.evaluation-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.evaluation-generate-new-button {
+  margin-top: 25px;
+}
+
+.evaluation-generated-text-label {
+  font-size: 20px;
+  font-weight: 500;
+  margin-bottom: 10px;
+  font-family: 'Poppins', sans-serif;
+}
+
+.evaluation-generated-text {
+  margin-top: 10px;
+  padding: 20px;
+  border-radius: 15px;
+  font-size: 18px;
+  line-height: 24px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  font-family: 'Poppins', sans-serif;
+  font-weight: 400;
+}
+
+.evaluation-response-buttons {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 25px;
+  gap: 10px;
+}
+
+.evaluation-yes-button,
+.evaluation-no-button {
+  flex: 1;
+  padding: 14px;
+  border-radius: 30px;
+  border: none;
+  cursor: pointer;
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+  font-size: 18px;
+  color: #FFFFFF;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s;
+}
+
+.evaluation-yes-button:hover:not(:disabled),
+.evaluation-no-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.evaluation-yes-button:disabled,
+.evaluation-no-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.evaluation-tease-text {
+  margin-top: 25px;
+  padding: 18px 25px;
+  border-radius: 15px;
+  font-size: 18px;
+  font-weight: 600;
+  text-align: center;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  font-family: 'Poppins', sans-serif;
+}
+
+.evaluation-chart-container {
+  margin-top: 25px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .evaluation-scroll-container {
+    padding: 20px 10px;
+  }
+
+  .evaluation-title {
+    font-size: 24px;
+  }
+
+  .evaluation-card {
+    width: 95%;
+    padding: 20px;
+  }
+
+  .evaluation-response-buttons {
+    flex-direction: column;
+  }
+
+  .evaluation-yes-button,
+  .evaluation-no-button {
+    width: 100%;
+  }
+}

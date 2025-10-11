@@ -1,0 +1,29 @@
+# Example Terraform variables file
+# Copy this file to terraform.tfvars and update with your values
+
+# AWS Configuration
+aws_region = "us-east-1"
+environment = "production"
+
+# Stack Configuration
+stack_name = "moral-torture-machine"
+table_name = "moral-torture-machine-dilemmas"
+
+# API Configuration
+groq_api_key = "YOUR_GROQ_API_KEY_HERE"
+
+# CORS Configuration
+cors_allowed_origins = [
+  "https://tommaiberone.github.io",
+  "http://localhost:3000",
+  "http://localhost:5173"
+]
+
+# Logging Configuration
+log_retention_days = 7
+
+# Database Configuration
+populate_db = true
+
+# Build Configuration
+force_rebuild = false

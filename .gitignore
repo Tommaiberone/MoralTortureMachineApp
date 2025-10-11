@@ -2,12 +2,19 @@
 
 # dependencies
 node_modules/
+mobile/node_modules/
+web/node_modules/
 
-# Expo
+# Expo (mobile)
 .expo/
+mobile/.expo/
 dist/
 web-build/
 expo-env.d.ts
+
+# Vite (web)
+web/dist/
+web/.vite/
 
 # Native
 *.orig.*
@@ -24,6 +31,7 @@ expo-env.d.ts
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+*.log
 
 # macOS
 .DS_Store
@@ -31,6 +39,42 @@ yarn-error.*
 
 # local env files
 .env*.local
+.env
 
 # typescript
 *.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build outputs
+build/
+*.tgz
+
+# Package locks (optional - uncomment if using workspaces)
+# package-lock.json
+# mobile/package-lock.json
+# web/package-lock.json
+
+# AWS Lambda deployment artifacts
+shared/lambda_deployment/
+shared/lambda_function.zip
+shared/.aws-sam/
+shared/samconfig.toml.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+.pytest_cache/
+
+# AWS & Docker
+*.pem
+.dockerignore

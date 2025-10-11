@@ -1,0 +1,296 @@
+name: Backend Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-deploy.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  AWS_REGION: us-east-1
+  TERRAFORM_VERSION: 1.9.0
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  lint-and-test:
+    name: Lint and Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies with uv
+        run: |
+          uv venv
+          uv pip install -r requirements.txt
+
+      - name: Lint with ruff (if configured)
+        continue-on-error: true
+        run: |
+          uv pip install ruff
+          uv run ruff check backend_fastapi.py populate_dynamodb.py || true
+
+      - name: Check Python syntax
+        run: |
+          python -m py_compile backend_fastapi.py
+          python -m py_compile populate_dynamodb.py
+
+      - name: Validate requirements.txt
+        run: |
+          uv pip compile requirements.txt --output-file /dev/null
+
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    if: github.event_name == 'pull_request'
+    defaults:
+      run:
+        working-directory: ./backend/terraform
+
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        continue-on-error: true
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan -no-color -var="groq_api_key=${{ secrets.GROQ_API_KEY }}" -out=tfplan
+          terraform show -no-color tfplan > plan.txt
+        continue-on-error: true
+
+      - name: Comment PR with Plan
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        env:
+          PLAN: ${{ steps.plan.outputs.stdout }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('backend/terraform/plan.txt', 'utf8');
+            const output = `#### Terraform Plan
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`terraform
+            ${plan.substring(0, 65000)}
+            \`\`\`
+
+            </details>
+
+            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+  deploy:
+    name: Deploy to AWS
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    defaults:
+      run:
+        working-directory: ./backend
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Build Lambda deployment package with uv
+        run: |
+          rm -rf lambda_deployment lambda_function.zip
+          mkdir -p lambda_deployment
+          cp backend_fastapi.py lambda_deployment/
+
+          # Install dependencies using uv with proper platform targeting
+          cd lambda_deployment
+          uv pip install --python ${{ env.PYTHON_VERSION }} \
+            --target . \
+            --platform manylinux2014_x86_64 \
+            --only-binary=:all: \
+            -r ../requirements.txt
+
+          # Create zip file
+          zip -q -r ../lambda_function.zip .
+          cd ..
+
+          echo "Lambda package size:"
+          du -h lambda_function.zip
+
+      - name: Terraform Init
+        working-directory: ./backend/terraform
+        run: terraform init
+
+      - name: Terraform Apply
+        working-directory: ./backend/terraform
+        run: |
+          terraform apply -auto-approve \
+            -var="groq_api_key=${{ secrets.GROQ_API_KEY }}" \
+            -var="force_rebuild=false"
+
+      - name: Get API Endpoint
+        id: api-endpoint
+        working-directory: ./backend/terraform
+        run: |
+          API_URL=$(terraform output -raw api_endpoint)
+          echo "api_url=$API_URL" >> $GITHUB_OUTPUT
+          echo "API Endpoint: $API_URL"
+
+      - name: Populate DynamoDB
+        run: |
+          uv pip install boto3
+          uv run python populate_dynamodb.py \
+            moral-torture-machine-dilemmas \
+            dilemmas.json
+
+      - name: Test API Health
+        run: |
+          API_URL="${{ steps.api-endpoint.outputs.api_url }}"
+          echo "Testing API at: $API_URL"
+
+          # Health check
+          curl -f "$API_URL/" || exit 1
+
+          # Test get-dilemma endpoint
+          curl -f "$API_URL/get-dilemma" || exit 1
+
+          echo "API health check passed!"
+
+      - name: Create deployment summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          ## Deployment Successful
+
+          **Environment:** ${ENVIRONMENT:-production}
+          **API Endpoint:** ${{ steps.api-endpoint.outputs.api_url }}
+          **Region:** ${{ env.AWS_REGION }}
+          **Commit:** ${{ github.sha }}
+
+          ### Test the API
+          \`\`\`bash
+          # Health check
+          curl ${{ steps.api-endpoint.outputs.api_url }}/
+
+          # Get a dilemma
+          curl ${{ steps.api-endpoint.outputs.api_url }}/get-dilemma
+
+          # View API docs
+          open ${{ steps.api-endpoint.outputs.api_url }}/docs
+          \`\`\`
+
+          ### Next Steps
+          - Update frontend API URL to: \`${{ steps.api-endpoint.outputs.api_url }}\`
+          - Monitor logs: \`aws logs tail /aws/lambda/moral-torture-machine-api --follow\`
+          EOF
+
+  notify:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: [lint-and-test, deploy]
+    if: failure() && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Create failure summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          ## Deployment Failed
+
+          **Branch:** ${{ github.ref_name }}
+          **Commit:** ${{ github.sha }}
+          **Author:** ${{ github.actor }}
+
+          Please check the workflow logs for details.
+          EOF
