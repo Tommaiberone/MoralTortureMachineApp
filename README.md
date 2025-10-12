@@ -66,9 +66,10 @@ MoralTortureMachineApp/
 
 ## Prerequisites
 
-- Node.js (v18 or higher)
-- npm or yarn
-- For mobile: Expo CLI (`npm install -g expo-cli`)
+- **Node.js** (v18 or v20 LTS recommended)
+  - **Important:** Node.js v23+ has compatibility issues with Expo SDK 52. Use Node.js v20 LTS for mobile development.
+- **pnpm** (package manager)
+- For mobile: Expo CLI (`pnpm add -g expo-cli`)
 - For iOS: Xcode (Mac only)
 - For Android: Android Studio
 
@@ -79,7 +80,7 @@ MoralTortureMachineApp/
 From the root directory:
 
 ```bash
-npm run install:all
+pnpm install:all
 ```
 
 Or install separately:
@@ -87,12 +88,14 @@ Or install separately:
 ```bash
 # Install mobile dependencies
 cd mobile
-npm install
+pnpm install
 
 # Install web dependencies
 cd ../web
-npm install
+pnpm install
 ```
+
+**Note:** This project uses pnpm with a hoisted node_modules structure (configured in `.npmrc`) for compatibility with React Native/Expo. The mobile and web directories maintain separate dependency installations.
 
 ## Running the Applications
 
@@ -102,22 +105,22 @@ From the root directory:
 
 ```bash
 # Start Expo development server
-npm run mobile
+pnpm mobile
 
 # Run on Android
-npm run mobile:android
+pnpm mobile:android
 
 # Run on iOS (Mac only)
-npm run mobile:ios
+pnpm mobile:ios
 ```
 
 Or from the mobile directory:
 
 ```bash
 cd mobile
-npm start          # Start Expo
-npm run android    # Run on Android
-npm run ios        # Run on iOS
+pnpm start         # Start Expo
+pnpm android       # Run on Android
+pnpm ios           # Run on iOS
 ```
 
 ### Web Version
@@ -126,22 +129,22 @@ From the root directory:
 
 ```bash
 # Start development server
-npm run web
+pnpm web
 
 # Build for production
-npm run web:build
+pnpm web:build
 
 # Preview production build
-npm run web:preview
+pnpm web:preview
 ```
 
 Or from the web directory:
 
 ```bash
 cd web
-npm run dev        # Start development server
-npm run build      # Build for production
-npm run preview    # Preview production build
+pnpm dev           # Start development server
+pnpm build         # Build for production
+pnpm preview       # Preview production build
 ```
 
 The web app will be available at `http://localhost:5173`
@@ -243,7 +246,7 @@ expo build:ios
 
 ```bash
 cd web
-npm run build
+pnpm build
 ```
 
 The built files will be in `web/dist/` and can be deployed to any static hosting service (Netlify, Vercel, GitHub Pages, etc.)
@@ -296,6 +299,25 @@ This project is licensed under the 0BSD License - see the LICENSE file for detai
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Troubleshooting
+
+### Mobile Development Issues
+
+**"Package subpath not exported" errors with Expo:**
+- This is caused by Node.js v23+ incompatibility with Expo SDK 52
+- **Solution:** Use Node.js v20 LTS
+- Switch versions using nvm: `nvm install 20 && nvm use 20`
+
+**Web application works but mobile doesn't:**
+- Verify you're using Node.js v20 or lower
+- Clear node_modules and reinstall: `cd mobile && rm -rf node_modules pnpm-lock.yaml && pnpm install`
+
+### pnpm Issues
+
+**"workspaces not supported" warning:**
+- This is expected. The project doesn't use pnpm workspaces.
+- Each directory (mobile, web) has its own dependencies.
 
 ## Support
 

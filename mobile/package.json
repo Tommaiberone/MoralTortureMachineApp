@@ -27,5 +27,11 @@
   "devDependencies": {
     "@babel/core": "^7.21.0"
   },
+  "pnpm": {
+    "overrides": {
+      "metro": "^0.82.0",
+      "metro-resolver": "^0.82.0"
+    }
+  },
   "private": true
 }

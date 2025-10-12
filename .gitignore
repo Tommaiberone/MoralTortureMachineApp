@@ -54,10 +54,14 @@ yarn-error.*
 build/
 *.tgz
 
-# Package locks (optional - uncomment if using workspaces)
-# package-lock.json
-# mobile/package-lock.json
-# web/package-lock.json
+# Package managers
+# Ignore npm lock files (using pnpm)
+package-lock.json
+mobile/package-lock.json
+web/package-lock.json
+
+# pnpm
+pnpm-debug.log
 
 # AWS Lambda deployment artifacts
 shared/lambda_deployment/

@@ -3,17 +3,13 @@
   "license": "0BSD",
   "version": "1.0.0",
   "private": true,
-  "workspaces": [
-    "mobile",
-    "web"
-  ],
   "scripts": {
-    "mobile": "cd mobile && npm start",
-    "mobile:android": "cd mobile && npm run android",
-    "mobile:ios": "cd mobile && npm run ios",
-    "web": "cd web && npm run dev",
-    "web:build": "cd web && npm run build",
-    "web:preview": "cd web && npm run preview",
-    "install:all": "npm install && cd mobile && npm install && cd ../web && npm install"
+    "mobile": "cd mobile && pnpm start",
+    "mobile:android": "cd mobile && pnpm android",
+    "mobile:ios": "cd mobile && pnpm ios",
+    "web": "cd web && pnpm dev",
+    "web:build": "cd web && pnpm build",
+    "web:preview": "cd web && pnpm preview",
+    "install:all": "cd mobile && pnpm install && cd ../web && pnpm install"
   }
 }

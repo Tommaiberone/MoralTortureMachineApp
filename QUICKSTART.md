@@ -1,5 +1,10 @@
 # Quick Start Guide
 
+## Prerequisites
+
+- **Node.js v18 or v20 LTS** (v23+ not compatible with mobile)
+- **pnpm** package manager
+
 ## 🚀 Getting Started in 3 Steps
 
 ### 1. Install Dependencies
@@ -7,7 +12,7 @@
 From the root directory, run:
 
 ```bash
-npm run install:all
+pnpm install:all
 ```
 
 This will install dependencies for both mobile and web versions.
@@ -17,7 +22,7 @@ This will install dependencies for both mobile and web versions.
 #### 🌐 Web Version (Recommended for Testing)
 
 ```bash
-npm run web
+pnpm web
 ```
 
 Open [http://localhost:5173](http://localhost:5173) in your browser.
@@ -25,7 +30,7 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 #### 📱 Mobile Version
 
 ```bash
-npm run mobile
+pnpm mobile
 ```
 
 Then:
@@ -48,30 +53,30 @@ Then:
 
 ```bash
 # From root
-npm run mobile              # Start Expo dev server
-npm run mobile:android      # Run on Android
-npm run mobile:ios          # Run on iOS
+pnpm mobile              # Start Expo dev server
+pnpm mobile:android      # Run on Android
+pnpm mobile:ios          # Run on iOS
 
 # Or from mobile directory
 cd mobile
-npm start
-npm run android
-npm run ios
+pnpm start
+pnpm android
+pnpm ios
 ```
 
 ### Web Commands
 
 ```bash
 # From root
-npm run web                 # Start development server
-npm run web:build          # Build for production
-npm run web:preview        # Preview production build
+pnpm web                 # Start development server
+pnpm web:build          # Build for production
+pnpm web:preview        # Preview production build
 
 # Or from web directory
 cd web
-npm run dev
-npm run build
-npm run preview
+pnpm dev
+pnpm build
+pnpm preview
 ```
 
 ---
@@ -83,28 +88,28 @@ npm run preview
 **"Metro bundler not starting"**
 ```bash
 cd mobile
-rm -rf node_modules package-lock.json
-npm install
-npm start -- --clear
+rm -rf node_modules package-lock.json pnpm-lock.yaml
+pnpm install
+pnpm start -- --clear
 ```
 
 **"Expo Go not connecting"**
 - Make sure phone and computer are on same WiFi
-- Try tunnel connection: `npm start -- --tunnel`
+- Try tunnel connection: `pnpm start -- --tunnel`
 
 ### Web Issues
 
 **"Dependencies not found"**
 ```bash
 cd web
-rm -rf node_modules package-lock.json
-npm install
+rm -rf node_modules package-lock.json pnpm-lock.yaml
+pnpm install
 ```
 
 **"Port 5173 already in use"**
 ```bash
 # Kill the process or use a different port
-npm run dev -- --port 3000
+pnpm dev -- --port 3000
 ```
 
 ---
@@ -113,13 +118,13 @@ npm run dev -- --port 3000
 
 ### iOS (Expo Go)
 1. Install Expo Go from App Store
-2. Run `npm run mobile` from root
+2. Run `pnpm mobile` from root
 3. Scan QR code with Camera app
 4. App opens in Expo Go
 
 ### Android (Expo Go)
 1. Install Expo Go from Play Store
-2. Run `npm run mobile` from root
+2. Run `pnpm mobile` from root
 3. Scan QR code with Expo Go app
 4. App opens automatically
 
