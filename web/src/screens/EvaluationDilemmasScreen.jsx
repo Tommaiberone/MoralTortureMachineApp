@@ -78,8 +78,6 @@ const EvaluationDilemmasScreen = () => {
 
     setVoting(true);
 
-    const selected =
-      choice === "first" ? dilemma.firstAnswer : dilemma.secondAnswer;
     const tease =
       choice === "first" ? dilemma.teaseOption1 : dilemma.teaseOption2;
 
@@ -105,7 +103,7 @@ const EvaluationDilemmasScreen = () => {
         throw new Error(`Vote failed with status: ${response.status}`);
       }
 
-      const result = await response.json();
+      await response.json();
 
       setDilemma((prevDilemma) => ({
         ...prevDilemma,
@@ -186,8 +184,6 @@ const EvaluationDilemmasScreen = () => {
       color: "#FFB86C",
     },
   ];
-
-  const totalChoices = pieChartData[0].value + pieChartData[1].value;
 
   return (
     <div
