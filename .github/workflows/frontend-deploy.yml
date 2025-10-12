@@ -78,7 +78,7 @@ jobs:
           terraform init
 
           # Get outputs
-          BUCKET_NAME=$(terraform output -raw s3_bucket_name)
+          BUCKET_NAME="moral-torture-machine-frontend"
           DISTRIBUTION_ID=$(terraform output -raw cloudfront_distribution_id)
 
           echo "bucket_name=${BUCKET_NAME}" >> $GITHUB_OUTPUT
