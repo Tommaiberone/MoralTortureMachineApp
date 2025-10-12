@@ -35,6 +35,7 @@ variable "cors_allowed_origins" {
   default = [
     "https://tommaiberone.github.io",
     "http://localhost:3000",
+    "https://d1vklv6uo7wyz2.cloudfront.net",
     "http://localhost:5173"
   ]
 }
