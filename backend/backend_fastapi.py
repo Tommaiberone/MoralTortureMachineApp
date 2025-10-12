@@ -42,11 +42,15 @@ table = dynamodb.Table(DYNAMODB_TABLE)
 
 # Pydantic models
 class VoteRequest(BaseModel):
-    _id: str = Field(..., description="Dilemma ID")
+    id: str = Field(..., alias="_id", description="Dilemma ID")
     vote: str = Field(..., description="Vote type: 'yes' or 'no'")
 
+    model_config = {
+        "populate_by_name": True
+    }
+
 class DilemmaResponse(BaseModel):
-    _id: str
+    id: str = Field(..., alias="_id")
     dilemma: str
     firstAnswer: str
     secondAnswer: str
@@ -66,6 +70,11 @@ class DilemmaResponse(BaseModel):
     secondAnswerHonesty: float
     yesCount: int = 0
     noCount: int = 0
+
+    model_config = {
+        "populate_by_name": True,
+        "by_alias": True
+    }
 
 # Helper function to convert Decimal to native types
 def decimal_to_native(obj):
@@ -104,7 +113,7 @@ async def vote(vote_request: VoteRequest):
     - **vote**: Either 'yes' or 'no'
     """
     try:
-        dilemma_id = vote_request._id
+        dilemma_id = vote_request.id
         vote_type = vote_request.vote.lower()
 
         # Validate vote type
@@ -139,7 +148,7 @@ async def vote(vote_request: VoteRequest):
         logger.error(f"Error in /vote: {str(e)}")
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
-@app.get("/get-dilemma", response_model=DilemmaResponse)
+@app.get("/get-dilemma", response_model=DilemmaResponse, response_model_by_alias=True)
 async def get_dilemma():
     """
     Get a random dilemma from the database
