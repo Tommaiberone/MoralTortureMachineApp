@@ -253,20 +253,21 @@ The built files will be in `web/dist/` and can be deployed to any static hosting
 ### Backend (Automated)
 The backend automatically deploys via GitHub Actions on push to main.
 
-**Setup:**
-1. Add secrets to GitHub repository:
-   - `AWS_ACCESS_KEY_ID`
-   - `AWS_SECRET_ACCESS_KEY`
-   - `GROQ_API_KEY`
-
-2. Push to main branch:
+**Quick Setup:**
+1. **Get AWS credentials** (if not already configured)
+2. **Add GitHub secrets:**
+   - Go to: Repository → **Settings** → **Secrets and variables** → **Actions**
+   - Add these secrets:
+     - `AWS_ACCESS_KEY_ID` (required)
+     - `AWS_SECRET_ACCESS_KEY` (required)
+     - `GROQ_API_KEY` (optional)
+3. **Push to trigger deployment:**
    ```bash
    git push origin main
    ```
+4. **Monitor** in the Actions tab
 
-3. Monitor deployment in Actions tab
-
-See [backend/README.md](backend/README.md) for details.
+See [backend/README.md](backend/README.md) for detailed instructions.
 
 ### Mobile
 - Use Expo EAS Build for cloud builds

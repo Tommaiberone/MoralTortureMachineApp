@@ -9,12 +9,32 @@ High-performance serverless backend for Moral Torture Machine.
 The backend automatically deploys via GitHub Actions when you push to the main branch.
 
 **Setup:**
-1. Add required secrets to your GitHub repository:
-   - `AWS_ACCESS_KEY_ID`
-   - `AWS_SECRET_ACCESS_KEY`
-   - `GROQ_API_KEY` (optional, for AI dilemma generation)
 
-2. Push changes to trigger deployment:
+1. **Get your AWS credentials:**
+   ```bash
+   # If you have AWS CLI configured, get your credentials:
+   cat ~/.aws/credentials
+
+   # Or create new credentials in AWS Console:
+   # Go to AWS Console → IAM → Users → Your User → Security Credentials → Create Access Key
+   ```
+
+2. **Add secrets to GitHub repository:**
+   - Go to your GitHub repository
+   - Click **Settings** → **Secrets and variables** → **Actions**
+   - Click **New repository secret** for each:
+
+     | Secret Name | Value | Required |
+     |-------------|-------|----------|
+     | `AWS_ACCESS_KEY_ID` | Your AWS access key ID (e.g., `AKIAIOSFODNN7EXAMPLE`) | ✅ Yes |
+     | `AWS_SECRET_ACCESS_KEY` | Your AWS secret access key (e.g., `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`) | ✅ Yes |
+     | `GROQ_API_KEY` | Your Groq API key from https://console.groq.com | ⚠️ Optional |
+
+3. **Verify secrets are added:**
+   - You should see the secrets listed (values will be hidden)
+   - Secret names must match exactly (case-sensitive)
+
+4. Push changes to trigger deployment:
    ```bash
    git add .
    git commit -m "Deploy backend"
@@ -184,13 +204,45 @@ aws logs tail /aws/lambda/moral-torture-machine-api --follow
 
 ## Troubleshooting
 
+### GitHub Actions Deployment Issues
+
+**Error: "Credentials could not be loaded"**
+This means AWS credentials are missing or incorrect.
+
+Fix:
+1. Verify secrets exist in GitHub:
+   - Go to Settings → Secrets and variables → Actions
+   - Check that `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` exist
+2. Verify secret names match exactly (case-sensitive)
+3. Get your AWS credentials:
+   ```bash
+   # Check if AWS CLI is configured
+   aws configure list
+
+   # View your credentials (be careful not to share these!)
+   cat ~/.aws/credentials
+   ```
+4. If you don't have credentials, create them:
+   - AWS Console → IAM → Users → [Your User] → Security credentials
+   - Click "Create access key" → Select "Command Line Interface (CLI)"
+   - Copy both the Access Key ID and Secret Access Key
+
+**Error: "No file matched to [**/uv.lock]"**
+Already fixed in the workflow - this shouldn't occur anymore.
+
+**Terraform plan/apply fails**
+- Ensure your AWS credentials have sufficient permissions (Lambda, API Gateway, DynamoDB, IAM, CloudWatch)
+- Check the Actions logs for specific error messages
+
+### Runtime Issues
+
 **"No dilemmas found"**
 ```bash
-python populate_dynamodb.py
+python populate_dynamodb.py moral-torture-machine-dilemmas dilemmas.json
 ```
 
 **CORS errors**
-Edit `backend_fastapi.py` line 28-32 and add your frontend URL.
+Edit `backend_fastapi.py` lines 24-28 and add your frontend URL to `allow_origins`.
 
 **Update Lambda environment variables**
 ```bash

@@ -1,3 +1,23 @@
+# Backend Deployment Workflow
+#
+# This workflow automatically deploys the FastAPI backend to AWS Lambda
+# using Terraform and uv for Python package management.
+#
+# REQUIRED SECRETS (add in GitHub Settings → Secrets and variables → Actions):
+#   - AWS_ACCESS_KEY_ID: Your AWS access key ID
+#   - AWS_SECRET_ACCESS_KEY: Your AWS secret access key
+#   - GROQ_API_KEY: (optional) API key for AI dilemma generation
+#
+# How to add secrets:
+#   1. Go to your GitHub repository
+#   2. Click Settings → Secrets and variables → Actions
+#   3. Click "New repository secret"
+#   4. Add each secret with the exact name shown above
+#
+# Troubleshooting:
+#   - "Credentials could not be loaded": Check that AWS secrets are added correctly
+#   - See backend/README.md for detailed troubleshooting steps
+
 name: Backend Deploy
 
 on:
