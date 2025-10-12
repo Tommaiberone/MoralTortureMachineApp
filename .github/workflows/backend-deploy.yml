@@ -230,8 +230,6 @@ jobs:
           cd lambda_deployment
           uv pip install --python ${{ env.PYTHON_VERSION }} \
             --target . \
-            --platform manylinux2014_x86_64 \
-            --only-binary=:all: \
             -r ../requirements.txt
 
           # Create zip file
