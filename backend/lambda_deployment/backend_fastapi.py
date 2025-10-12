@@ -23,6 +23,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://tommaiberone.github.io",
+        "https://d1vklv6uo7wyz2.cloudfront.net",
         "http://localhost:3000",
         "http://localhost:5173"
     ],
