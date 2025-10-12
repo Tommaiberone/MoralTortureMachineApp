@@ -220,16 +220,20 @@ jobs:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
           terraform_wrapper: false
 
-      - name: Build Lambda deployment package with uv
+      - name: Build Lambda deployment package with pip
         run: |
           rm -rf lambda_deployment lambda_function.zip
           mkdir -p lambda_deployment
           cp backend_fastapi.py lambda_deployment/
 
-          # Install dependencies using uv with proper platform targeting
+          # Install dependencies using pip with Lambda-compatible platform targeting
           cd lambda_deployment
-          uv pip install --python ${{ env.PYTHON_VERSION }} \
+          pip install \
             --target . \
+            --platform manylinux2014_x86_64 \
+            --implementation cp \
+            --python-version ${{ env.PYTHON_VERSION }} \
+            --only-binary=:all: \
             -r ../requirements.txt
 
           # Create zip file
