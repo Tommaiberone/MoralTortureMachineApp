@@ -46,9 +46,9 @@ variable "log_retention_days" {
 }
 
 variable "populate_db" {
-  description = "Whether to populate the database with initial dilemmas"
+  description = "Whether to populate the database with initial dilemmas via Terraform (not recommended - use GitHub Actions step instead)"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "force_rebuild" {

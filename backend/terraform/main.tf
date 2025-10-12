@@ -260,6 +260,7 @@ resource "null_resource" "populate_dynamodb" {
   provisioner "local-exec" {
     command = <<-EOT
       cd ${path.module}/..
+      python3 -m pip install -q boto3
       python3 populate_dynamodb.py ${aws_dynamodb_table.dilemmas.name} dilemmas.json
     EOT
   }
