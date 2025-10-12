@@ -53,7 +53,7 @@ const DilemmaScreen = ({ navigation }) => { // Renamed from App to DilemmaScreen
     );
   }
 
-  const backendUrl = "https://tommaiberone.pythonanywhere.com/generate-dilemma";
+  const backendUrl = "https://wxe53u88o8.execute-api.eu-west-1.amazonaws.com/generate-dilemma";
 
   const fetchDilemmaData = async () => {
     let response;

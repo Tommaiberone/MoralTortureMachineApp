@@ -25,8 +25,8 @@ const EvaluationDilemmasScreen = () => {
     }
   }, [currentDilemmaCount]);
 
-  const backendUrl = "https://tommaiberone.pythonanywhere.com/get-dilemma";
-  const voteUrl = "https://tommaiberone.pythonanywhere.com/vote";
+  const backendUrl = "https://wxe53u88o8.execute-api.eu-west-1.amazonaws.com/get-dilemma";
+  const voteUrl = "https://wxe53u88o8.execute-api.eu-west-1.amazonaws.com/vote";
 
   const fetchDilemmaData = async () => {
     let response;

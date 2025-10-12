@@ -66,8 +66,8 @@ const EvaluationDilemmasScreen = () => {
     );
   }
 
-  const backendUrl = "https://tommaiberone.pythonanywhere.com/get-dilemma";
-  const voteUrl = "https://tommaiberone.pythonanywhere.com/vote"; // Added voteUrl
+  const backendUrl = "https://wxe53u88o8.execute-api.eu-west-1.amazonaws.com/get-dilemma";
+  const voteUrl = "https://wxe53u88o8.execute-api.eu-west-1.amazonaws.com/vote"; // Added voteUrl
 
   const fetchDilemmaData = async () => {
     let response;
