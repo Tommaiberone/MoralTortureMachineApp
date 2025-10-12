@@ -34,7 +34,7 @@ app.add_middleware(
 # Environment variables
 API_KEY = os.getenv("API_KEY", "")
 DYNAMODB_TABLE = os.getenv("DYNAMODB_TABLE", "moral-torture-machine-dilemmas")
-AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
 
 # Initialize DynamoDB
 dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)

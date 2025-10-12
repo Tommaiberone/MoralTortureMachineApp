@@ -23,7 +23,7 @@ def populate_dynamodb(table_name='moral-torture-machine-dilemmas', json_file='di
         json_file: Path to the JSON file containing dilemmas
     """
     # Initialize DynamoDB
-    dynamodb = boto3.resource('dynamodb', region_name=os.getenv('AWS_REGION', 'us-east-1'))
+    dynamodb = boto3.resource('dynamodb', region_name=os.getenv('AWS_REGION', 'eu-west-1'))
     table = dynamodb.Table(table_name)
 
     # Load dilemmas from JSON file

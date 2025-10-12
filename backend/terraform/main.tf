@@ -136,7 +136,6 @@ resource "aws_lambda_function" "api" {
   environment {
     variables = {
       DYNAMODB_TABLE = aws_dynamodb_table.dilemmas.name
-      AWS_REGION     = var.aws_region
       API_KEY        = var.groq_api_key
     }
   }
