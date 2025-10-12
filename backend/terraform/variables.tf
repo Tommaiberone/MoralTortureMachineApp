@@ -39,6 +39,12 @@ variable "cors_allowed_origins" {
   ]
 }
 
+variable "cloudfront_domain" {
+  description = "CloudFront domain name for the frontend (leave empty if not yet created)"
+  type        = string
+  default     = ""
+}
+
 variable "log_retention_days" {
   description = "Number of days to retain CloudWatch logs"
   type        = number

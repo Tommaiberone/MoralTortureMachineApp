@@ -1,0 +1,158 @@
+name: Deploy Frontend to S3
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'web/**'
+      - '.github/workflows/frontend-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      invalidate_cache:
+        description: 'Invalidate CloudFront cache'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  AWS_REGION: eu-west-1
+  NODE_VERSION: '20'
+
+jobs:
+  deploy:
+    name: Build and Deploy Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+
+    permissions:
+      contents: read
+      id-token: write  # Required for AWS OIDC
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint code
+        run: pnpm lint
+        continue-on-error: true
+
+      - name: Build frontend
+        run: pnpm build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get Terraform outputs
+        id: terraform-outputs
+        working-directory: web/terraform
+        run: |
+          # Initialize Terraform
+          terraform init
+
+          # Get outputs
+          BUCKET_NAME=$(terraform output -raw s3_bucket_name)
+          DISTRIBUTION_ID=$(terraform output -raw cloudfront_distribution_id)
+
+          echo "bucket_name=${BUCKET_NAME}" >> $GITHUB_OUTPUT
+          echo "distribution_id=${DISTRIBUTION_ID}" >> $GITHUB_OUTPUT
+
+      - name: Upload to S3
+        run: |
+          # Upload all files except index.html with long cache
+          aws s3 sync dist/ s3://${{ steps.terraform-outputs.outputs.bucket_name }}/ \
+            --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+
+          # Upload index.html with short cache
+          aws s3 cp dist/index.html s3://${{ steps.terraform-outputs.outputs.bucket_name }}/index.html \
+            --cache-control "public, max-age=0, must-revalidate"
+
+      - name: Invalidate CloudFront cache
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.invalidate_cache == 'true') }}
+        run: |
+          INVALIDATION_ID=$(aws cloudfront create-invalidation \
+            --distribution-id ${{ steps.terraform-outputs.outputs.distribution_id }} \
+            --paths "/*" \
+            --query 'Invalidation.Id' \
+            --output text)
+
+          echo "CloudFront invalidation created: ${INVALIDATION_ID}"
+
+          # Wait for invalidation to complete (optional, can be commented out for faster deploys)
+          echo "Waiting for invalidation to complete..."
+          aws cloudfront wait invalidation-completed \
+            --distribution-id ${{ steps.terraform-outputs.outputs.distribution_id }} \
+            --id ${INVALIDATION_ID}
+
+          echo "Invalidation completed!"
+
+      - name: Get CloudFront URL
+        id: cloudfront-url
+        run: |
+          CLOUDFRONT_URL=$(aws cloudfront get-distribution \
+            --id ${{ steps.terraform-outputs.outputs.distribution_id }} \
+            --query 'Distribution.DomainName' \
+            --output text)
+
+          echo "url=https://${CLOUDFRONT_URL}" >> $GITHUB_OUTPUT
+
+      - name: Deployment summary
+        run: |
+          echo "### ✅ Frontend Deployment Successful! 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Frontend URL:** ${{ steps.cloudfront-url.outputs.url }}" >> $GITHUB_STEP_SUMMARY
+          echo "**S3 Bucket:** ${{ steps.terraform-outputs.outputs.bucket_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**CloudFront Distribution:** ${{ steps.terraform-outputs.outputs.distribution_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Comment on PR (if applicable)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `### ✅ Frontend deployed successfully!\n\n**Preview URL:** ${{ steps.cloudfront-url.outputs.url }}\n\n_Note: It may take a few minutes for CloudFront to update._`
+            })
+
+  # Job separato per notificare eventuali errori
+  notify-failure:
+    name: Notify Deployment Failure
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: failure()
+    steps:
+      - name: Failure summary
+        run: |
+          echo "### ❌ Frontend Deployment Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Please check the logs above for details." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY

@@ -171,7 +171,10 @@ resource "aws_apigatewayv2_api" "api" {
   protocol_type = "HTTP"
 
   cors_configuration {
-    allow_origins     = var.cors_allowed_origins
+    allow_origins = concat(
+      var.cors_allowed_origins,
+      var.cloudfront_domain != "" ? ["https://${var.cloudfront_domain}"] : []
+    )
     allow_methods     = ["*"]
     allow_headers     = ["*"]
     allow_credentials = true
