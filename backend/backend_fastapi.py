@@ -201,7 +201,7 @@ async def generate_dilemma():
             )
 
         payload = {
-            "model": "llama3-70b-8192",
+            "model": "llama-3.3-70b-versatile",
             "messages": [
                 {
                     "role": "user",
