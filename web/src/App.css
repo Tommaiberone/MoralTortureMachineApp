@@ -10,17 +10,22 @@ body {
   font-family: 'Poppins', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Prevent horizontal scroll on mobile */
+  overflow-x: hidden;
 }
 
 #root {
   width: 100%;
   min-height: 100vh;
+  /* Prevent horizontal scroll on mobile */
+  overflow-x: hidden;
 }
 
 /* Common gradient background styles */
 .gradient-background {
   background: linear-gradient(135deg, #6C71FF, #A29BFF);
   min-height: 100vh;
+  width: 100%;
 }
 
 /* Loading container */
@@ -43,5 +48,23 @@ body {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* Mobile-specific optimizations */
+@media (max-width: 768px) {
+  body,
+  #root {
+    /* Ensure no horizontal scrolling */
+    max-width: 100vw;
+  }
+}
+
+/* Prevent iOS zoom on input focus */
+@media (max-width: 768px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
   }
 }

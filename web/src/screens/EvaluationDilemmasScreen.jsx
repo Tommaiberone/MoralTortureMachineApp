@@ -306,9 +306,9 @@ const EvaluationDilemmasScreen = () => {
                           cy="50%"
                           labelLine={false}
                           label={({ name, percent }) =>
-                            `${name}: ${(percent * 100).toFixed(1)}%`
+                            `${(percent * 100).toFixed(0)}%`
                           }
-                          outerRadius={80}
+                          outerRadius={window.innerWidth < 480 ? 60 : 80}
                           fill="#8884d8"
                           dataKey="value"
                         >
@@ -316,7 +316,7 @@ const EvaluationDilemmasScreen = () => {
                             <Cell key={`cell-${index}`} fill={entry.color} />
                           ))}
                         </Pie>
-                        <Legend />
+                        <Legend wrapperStyle={{ fontSize: window.innerWidth < 480 ? '12px' : '14px' }} />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>

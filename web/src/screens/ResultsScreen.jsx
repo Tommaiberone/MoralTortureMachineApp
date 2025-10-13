@@ -54,17 +54,17 @@ const ResultsScreen = () => {
         <h1 className="results-title">Your Results</h1>
 
         <div className="results-chart-container">
-          <ResponsiveContainer width="100%" height={400}>
+          <ResponsiveContainer width="100%" height="100%">
             <RadarChart data={data}>
               <PolarGrid stroke="#6C71FF" />
               <PolarAngleAxis
                 dataKey="subject"
-                tick={{ fill: '#E0E0E0', fontFamily: 'Poppins', fontSize: 14 }}
+                tick={{ fill: '#E0E0E0', fontFamily: 'Poppins', fontSize: 12 }}
               />
               <PolarRadiusAxis
                 angle={90}
                 domain={[0, 'auto']}
-                tick={{ fill: '#E0E0E0', fontFamily: 'Poppins' }}
+                tick={{ fill: '#E0E0E0', fontFamily: 'Poppins', fontSize: 10 }}
               />
               <Radar
                 name="Your Moral Profile"
@@ -73,7 +73,7 @@ const ResultsScreen = () => {
                 fill="rgba(108, 113, 255, 0.3)"
                 fillOpacity={0.8}
               />
-              <Legend />
+              <Legend wrapperStyle={{ fontSize: '12px' }} />
             </RadarChart>
           </ResponsiveContainer>
         </div>
