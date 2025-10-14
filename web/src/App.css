@@ -21,14 +21,6 @@ body {
   overflow-x: hidden;
 }
 
-/* Common horror gradient background styles */
-.gradient-background {
-  background: linear-gradient(135deg, var(--horror-dark-blood), var(--horror-dark-purple), var(--horror-void-black));
-  min-height: 100vh;
-  width: 100%;
-  animation: horror-background-pulse 4s infinite;
-}
-
 /* Loading container */
 .loading-container {
   display: flex;
@@ -61,23 +53,5 @@ body {
 @keyframes spin {
   to {
     transform: rotate(360deg);
-  }
-}
-
-/* Mobile-specific optimizations */
-@media (max-width: 768px) {
-  body,
-  #root {
-    /* Ensure no horizontal scrolling */
-    max-width: 100vw;
-  }
-}
-
-/* Prevent iOS zoom on input focus */
-@media (max-width: 768px) {
-  input,
-  select,
-  textarea {
-    font-size: 16px !important;
   }
 }

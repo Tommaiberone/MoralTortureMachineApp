@@ -85,8 +85,7 @@ const TutorialScreen = () => {
   const currentTutorial = tutorialSteps[currentStep];
 
   return (
-    <div className="tutorial-gradient-background">
-      <div className="tutorial-container">
+    <div className="tutorial-container">
         <div className="tutorial-card">
           <div className="tutorial-icon">{currentTutorial.icon}</div>
           <h1 className="tutorial-title">{currentTutorial.title}</h1>
@@ -121,7 +120,6 @@ const TutorialScreen = () => {
             ← Back to Home
           </button>
         </div>
-      </div>
     </div>
   );
 };

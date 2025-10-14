@@ -1,30 +1,11 @@
-// screens/InfiniteDilemmasScreen.jsx
-import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { getCreepyMessage } from "../styles/horrorTheme";
 import "./InfiniteDilemmasScreen.css";
-
-const creepyMessages = [
-  "Extracting moral fibers...",
-  "Torturing your conscience...",
-  "Summoning ethical dilemmas...",
-  "Analyzing your soul...",
-  "Preparing psychological torment...",
-  "Loading existential dread...",
-  "Calculating moral decay...",
-  "Harvesting ethical nightmares...",
-  "Initializing guilt processor...",
-  "Awakening dormant demons...",
-];
-
-const getCreepyMessage = () => {
-  return creepyMessages[Math.floor(Math.random() * creepyMessages.length)];
-};
 
 const InfiniteDilemmasScreen = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [generatedText, setGeneratedText] = useState("");
-  const [isDarkMode, setIsDarkMode] = useState(true);
   const [dilemmaGenerated, setDilemmaGenerated] = useState(false);
   const [answers, setAnswers] = useState({
     firstAnswer: "Yes",
@@ -108,8 +89,7 @@ const InfiniteDilemmasScreen = () => {
   };
 
   return (
-    <div className="infinite-gradient-background gradient-background">
-      <div className="infinite-scroll-container">
+    <div className="infinite-scroll-container">
         <button
           className="infinite-go-back-button"
           onClick={() => navigate(-1)}
@@ -185,7 +165,6 @@ const InfiniteDilemmasScreen = () => {
             </div>
           )}
         </div>
-      </div>
     </div>
   );
 };

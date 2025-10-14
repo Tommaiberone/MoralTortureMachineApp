@@ -41,8 +41,7 @@ const ResultsScreen = () => {
   }));
 
   return (
-    <div className="results-gradient-background">
-      <div className="results-scroll-container">
+    <div className="results-scroll-container">
         <button
           className="results-go-back-button"
           onClick={() => navigate(-1)}
@@ -56,24 +55,22 @@ const ResultsScreen = () => {
         <div className="results-chart-container">
           <ResponsiveContainer width="100%" height="100%">
             <RadarChart data={data}>
-              <PolarGrid stroke="#6C71FF" />
+              <PolarGrid />
               <PolarAngleAxis
                 dataKey="subject"
-                tick={{ fill: '#E0E0E0', fontFamily: 'Poppins', fontSize: 12 }}
               />
               <PolarRadiusAxis
                 angle={90}
                 domain={[0, 'auto']}
-                tick={{ fill: '#E0E0E0', fontFamily: 'Poppins', fontSize: 10 }}
               />
               <Radar
                 name="Your Moral Profile"
                 dataKey="value"
-                stroke="#6C71FF"
-                fill="rgba(108, 113, 255, 0.3)"
+                stroke="var(--horror-crimson)"
+                fill="var(--horror-blood-red)"
                 fillOpacity={0.8}
               />
-              <Legend wrapperStyle={{ fontSize: '12px' }} />
+              <Legend />
             </RadarChart>
           </ResponsiveContainer>
         </div>
@@ -88,7 +85,6 @@ const ResultsScreen = () => {
             </div>
           ))}
         </div>
-      </div>
     </div>
   );
 };

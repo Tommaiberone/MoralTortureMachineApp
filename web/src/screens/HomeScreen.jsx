@@ -20,11 +20,10 @@ const HomeScreen = () => {
   };
 
   return (
-    <div className="gradient-background">
-      <div className="home-container">
-        <h1 className="home-title">
-          MORAL<br />TORTURE<br />MACHINE
-        </h1>
+    <div className="home-container">
+      <h1 className="home-title">
+        MORAL<br />TORTURE<br />MACHINE
+      </h1>
 
         <p className="home-subtitle">Enter if you dare...</p>
 
@@ -57,7 +56,6 @@ const HomeScreen = () => {
           ⚠ This machine will expose your darkest moral boundaries ⚠
         </p>
       </div>
-    </div>
   );
 };
 
