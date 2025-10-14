@@ -22,7 +22,11 @@ const HomeScreen = () => {
   return (
     <div className="gradient-background">
       <div className="home-container">
-        <h1 className="home-title">Moral Torture Machine</h1>
+        <h1 className="home-title">
+          MORAL<br />TORTURE<br />MACHINE
+        </h1>
+
+        <p className="home-subtitle">Enter if you dare...</p>
 
         {/* Recommended Button */}
         <button
@@ -30,24 +34,28 @@ const HomeScreen = () => {
           onClick={() => handleNavigation('evaluation', '/evaluation-dilemmas')}
         >
           <div className="badge-container">
-            <span className="badge-text">Recommended</span>
+            <span className="badge-text">⚠ WARNING ⚠</span>
           </div>
-          <div className="button-text">Test your morality</div>
+          <div className="button-text">🩸 Test Your Morality 🩸</div>
           <div className="button-description">
-            Start the morality test and face a series of moral dilemmas to evaluate your moral compass.
+            Face a series of disturbing moral dilemmas. Your conscience will be judged.
           </div>
         </button>
 
-        {/* Other Buttons */}
+        {/* Arcade Button */}
         <button
-          className="home-button"
+          className="home-button arcade-button"
           onClick={() => handleNavigation('infinite', '/infinite-dilemmas')}
         >
-          <div className="button-text">Arcade: Infinite Dilemmas</div>
+          <div className="button-text">💀 Endless Torment Mode 💀</div>
           <div className="button-description">
-            Enter the arcade mode with an infinite stream of moral dilemmas for endless fun and ethical challenges.
+            An infinite stream of ethical nightmares. There is no escape.
           </div>
         </button>
+
+        <p className="home-warning">
+          ⚠ This machine will expose your darkest moral boundaries ⚠
+        </p>
       </div>
     </div>
   );

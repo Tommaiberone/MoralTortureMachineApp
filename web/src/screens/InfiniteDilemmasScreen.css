@@ -17,20 +17,24 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 10px;
+  padding: 12px;
   border-radius: 8px;
-  border: none;
+  border: 2px solid var(--horror-crimson);
+  background-color: var(--horror-shadow-gray);
   cursor: pointer;
   font-family: 'Poppins', sans-serif;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 16px;
-  color: #FFFFFF;
+  color: var(--horror-ghost-white);
+  letter-spacing: 2px;
   z-index: 10;
-  transition: opacity 0.2s;
+  transition: all 0.3s;
+  box-shadow: 0 6px 12px rgba(255, 0, 0, 0.8);
 }
 
 .infinite-go-back-button:hover {
-  opacity: 0.9;
+  transform: translateY(-3px);
+  box-shadow: 0 8px 16px rgba(255, 0, 0, 0.9);
 }
 
 .arrow {
@@ -42,80 +46,40 @@
   flex-direction: column;
   align-items: center;
   margin-bottom: 20px;
-}
-
-.infinite-toggle-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 10px;
-  gap: 10px;
-}
-
-.toggle-icon {
-  font-size: 24px;
-}
-
-.toggle-switch {
-  position: relative;
-  display: inline-block;
-  width: 50px;
-  height: 24px;
-}
-
-.toggle-switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.toggle-slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: #A29BFF;
-  transition: 0.4s;
-  border-radius: 34px;
-}
-
-.toggle-slider:before {
-  position: absolute;
-  content: "";
-  height: 18px;
-  width: 18px;
-  left: 3px;
-  bottom: 3px;
-  background-color: white;
-  transition: 0.4s;
-  border-radius: 50%;
-}
-
-input:checked + .toggle-slider {
-  background-color: #3A3A5A;
-}
-
-input:checked + .toggle-slider:before {
-  transform: translateX(26px);
-  background-color: #6C71FF;
+  margin-top: 20px;
 }
 
 .infinite-title {
-  font-size: 28px;
+  font-size: 32px;
   font-weight: 700;
-  letter-spacing: 1.5px;
+  letter-spacing: 3px;
   font-family: 'Poppins', sans-serif;
   margin-top: 10px;
+  color: var(--horror-crimson);
+  text-shadow: 0 0 15px var(--horror-blood-red);
+  animation: horror-flicker 3s infinite;
+}
+
+.infinite-subtitle {
+  font-size: 16px;
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+  margin-top: 8px;
+  color: var(--horror-eerie-green);
+  letter-spacing: 1.5px;
+  text-shadow: 0 0 10px var(--horror-eerie-green);
 }
 
 .infinite-card {
   padding: 25px;
-  border-radius: 20px;
+  border-radius: 12px;
   width: 90%;
   max-width: 600px;
   margin: 0 auto;
+  background-color: var(--horror-charcoal);
+  border: 2px solid var(--horror-blood-red);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.9), 0 0 30px rgba(0, 0, 0, 0.7);
+  animation: horror-pulse 2.5s infinite;
 }
 
 .infinite-button-container {
@@ -127,47 +91,62 @@ input:checked + .toggle-slider:before {
 
 .infinite-button {
   width: 100%;
-  padding: 16px;
-  border-radius: 30px;
-  border: none;
+  padding: 18px;
+  border-radius: 12px;
+  border: 2px solid var(--horror-crimson);
+  background-color: var(--horror-blood-red);
   cursor: pointer;
   font-family: 'Poppins', sans-serif;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 18px;
-  color: #FFFFFF;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-  transition: transform 0.2s;
+  color: var(--horror-ghost-white);
+  letter-spacing: 1.5px;
+  text-shadow: 0 2px 4px var(--horror-void-black);
+  box-shadow: 0 0 15px var(--horror-blood-red), 0 0 30px rgba(220, 20, 60, 0.6);
+  transition: all 0.3s;
 }
 
 .infinite-button:hover:not(:disabled) {
-  transform: translateY(-2px);
+  transform: translateY(-3px);
+  animation: horror-pulse 1.5s infinite;
 }
 
 .infinite-button:disabled {
   cursor: not-allowed;
   opacity: 0.7;
+  background-color: var(--horror-shadow-gray);
 }
 
 .infinite-generate-new-button {
   margin-top: 25px;
+  background-color: var(--horror-dark-purple);
+  border: 2px solid var(--horror-eerie-green);
+  box-shadow: 0 0 20px var(--horror-eerie-green), 0 0 40px rgba(57, 255, 20, 0.4);
 }
 
 .infinite-generated-text-label {
-  font-size: 20px;
-  font-weight: 500;
-  margin-bottom: 10px;
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 12px;
   font-family: 'Poppins', sans-serif;
+  text-align: center;
+  letter-spacing: 2px;
+  color: var(--horror-eerie-green);
+  text-shadow: 0 0 15px var(--horror-eerie-green);
 }
 
 .infinite-generated-text {
   margin-top: 10px;
   padding: 20px;
-  border-radius: 15px;
-  font-size: 18px;
-  line-height: 24px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  font-size: 17px;
+  line-height: 26px;
+  box-shadow: 0 6px 12px rgba(255, 0, 0, 0.8);
   font-family: 'Poppins', sans-serif;
   font-weight: 400;
+  color: var(--horror-ghost-white);
+  background-color: var(--horror-charcoal);
+  border: 1px solid var(--horror-fog-gray);
 }
 
 .infinite-response-buttons {
@@ -180,32 +159,49 @@ input:checked + .toggle-slider:before {
 .infinite-yes-button,
 .infinite-no-button {
   flex: 1;
-  padding: 14px;
-  border-radius: 30px;
-  border: none;
+  padding: 16px;
+  border-radius: 12px;
   cursor: pointer;
   font-family: 'Poppins', sans-serif;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 18px;
-  color: #FFFFFF;
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
-  transition: transform 0.2s;
+  color: var(--horror-ghost-white);
+  letter-spacing: 1.5px;
+  text-shadow: 0 2px 4px var(--horror-void-black);
+  transition: all 0.3s;
+}
+
+.infinite-yes-button {
+  background-color: var(--horror-blood-red);
+  border: 2px solid var(--horror-crimson);
+  box-shadow: 0 0 15px var(--horror-blood-red);
+}
+
+.infinite-no-button {
+  background-color: var(--horror-dark-purple);
+  border: 2px solid var(--horror-eerie-green);
+  box-shadow: 0 0 20px var(--horror-eerie-green);
 }
 
 .infinite-yes-button:hover,
 .infinite-no-button:hover {
-  transform: translateY(-2px);
+  transform: translateY(-3px);
+  animation: horror-pulse 1.5s infinite;
 }
 
 .infinite-tease-text {
   margin-top: 25px;
-  padding: 18px 25px;
-  border-radius: 15px;
+  padding: 20px 25px;
+  border-radius: 12px;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 700;
   text-align: center;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 15px var(--horror-blood-red);
   font-family: 'Poppins', sans-serif;
+  letter-spacing: 1px;
+  background-color: var(--horror-blood-red);
+  color: var(--horror-ghost-white);
+  border: 2px solid var(--horror-dark-crimson);
 }
 
 /* Tablet styles */
@@ -215,7 +211,7 @@ input:checked + .toggle-slider:before {
   }
 
   .infinite-title {
-    font-size: 24px;
+    font-size: 28px;
   }
 
   .infinite-card {
@@ -261,8 +257,12 @@ input:checked + .toggle-slider:before {
   }
 
   .infinite-title {
-    font-size: 20px;
-    letter-spacing: 1px;
+    font-size: 24px;
+    letter-spacing: 2px;
+  }
+
+  .infinite-subtitle {
+    font-size: 14px;
   }
 
   .infinite-card {
@@ -278,7 +278,7 @@ input:checked + .toggle-slider:before {
   }
 
   .infinite-generated-text-label {
-    font-size: 16px;
+    font-size: 18px;
   }
 
   .infinite-generated-text {
@@ -317,7 +317,11 @@ input:checked + .toggle-slider:before {
   }
 
   .infinite-title {
-    font-size: 18px;
+    font-size: 20px;
+  }
+
+  .infinite-subtitle {
+    font-size: 13px;
   }
 
   .infinite-card {
@@ -330,7 +334,7 @@ input:checked + .toggle-slider:before {
   }
 
   .infinite-generated-text-label {
-    font-size: 15px;
+    font-size: 16px;
   }
 
   .infinite-generated-text {
