@@ -1,5 +1,5 @@
 // screens/EvaluationDilemmasScreen.jsx
-import { useNavigate } from "react-router-dom";
+import { useState, useNavigate } from "react-router-dom";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
 import "./EvaluationDilemmasScreen.css";
 
