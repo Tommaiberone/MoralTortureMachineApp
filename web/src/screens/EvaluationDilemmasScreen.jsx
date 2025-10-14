@@ -284,7 +284,7 @@ const EvaluationDilemmasScreen = () => {
                           cy="50%"
                           labelLine={false}
                           label={({ name, percent }) =>
-                            `${(percent * 100).toFixed(0)}%`
+                            `${name}: ${(percent * 100).toFixed(0)}%`
                           }
                           outerRadius={window.innerWidth < 480 ? 60 : 80}
                           fill="#8884d8"
