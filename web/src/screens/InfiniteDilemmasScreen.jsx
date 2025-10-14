@@ -1,32 +1,25 @@
-// screens/EvaluationDilemmasScreen.jsx
-import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
-import "./EvaluationDilemmasScreen.css";
+import { getCreepyMessage } from "../styles/horrorTheme";
+import "./InfiniteDilemmasScreen.css";
 
-const MAX_DILEMMAS = 5;
-
-const EvaluationDilemmasScreen = () => {
+const InfiniteDilemmasScreen = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [dilemma, setDilemma] = useState(null);
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [choiceMade, setChoiceMade] = useState(false);
+  const [generatedText, setGeneratedText] = useState("");
+  const [dilemmaGenerated, setDilemmaGenerated] = useState(false);
+  const [answers, setAnswers] = useState({
+    firstAnswer: "Yes",
+    secondAnswer: "No",
+  });
+  const [teases, setTeases] = useState({
+    teaseOption1: "",
+    teaseOption2: "",
+  });
   const [selectedTease, setSelectedTease] = useState("");
-  const [currentDilemmaCount, setCurrentDilemmaCount] = useState(0);
-  const [selectedAnswers, setSelectedAnswers] = useState([]);
-  const [currentChoice, setChoiceCounts] = useState({ first: 0, second: 0 });
-  const [voting, setVoting] = useState(false);
-  const [evaluationComplete, setEvaluationComplete] = useState(false);
+  const [choiceMade, setChoiceMade] = useState(false);
+  const [creepyMessage, setCreepyMessage] = useState("");
 
-  useEffect(() => {
-    if (currentDilemmaCount >= MAX_DILEMMAS) {
-      setEvaluationComplete(true);
-    }
-  }, [currentDilemmaCount]);
-
-  const backendUrl = "https://wxe53u88o8.execute-api.eu-west-1.amazonaws.com/get-dilemma";
-  const voteUrl = "https://wxe53u88o8.execute-api.eu-west-1.amazonaws.com/vote";
+  const backendUrl = "https://wxe53u88o8.execute-api.eu-west-1.amazonaws.com/generate-dilemma";
 
   const fetchDilemmaData = async () => {
     let response;
@@ -34,7 +27,7 @@ const EvaluationDilemmasScreen = () => {
     while (retries > 0) {
       try {
         response = await fetch(backendUrl, {
-          method: "GET",
+          method: "POST",
           headers: { "Content-Type": "application/json" },
         });
 
@@ -43,7 +36,8 @@ const EvaluationDilemmasScreen = () => {
         }
 
         const result = await response.json();
-        return result;
+        const content = JSON.parse(result.choices[0].message.content);
+        return content;
       } catch (error) {
         console.error("Error during fetch or parsing:", error);
         retries -= 1;
@@ -57,303 +51,122 @@ const EvaluationDilemmasScreen = () => {
 
   const fetchDilemma = async () => {
     setLoading(true);
-    setDilemma(null);
-    setChoiceMade(false);
+    setCreepyMessage(getCreepyMessage());
+    setDilemmaGenerated(false);
+    setGeneratedText("");
     setSelectedTease("");
-    setChoiceCounts({ first: 0, second: 0 });
+    setChoiceMade(false);
 
     try {
-      const fetchedDilemma = await fetchDilemmaData();
-      setDilemma(fetchedDilemma);
+      const content = await fetchDilemmaData();
+      setGeneratedText(content.dilemma.trim());
+      setAnswers({
+        firstAnswer: content.firstAnswer,
+        secondAnswer: content.secondAnswer,
+      });
+      setTeases({
+        teaseOption1: content.teaseOption1,
+        teaseOption2: content.teaseOption2,
+      });
+      setDilemmaGenerated(true);
     } catch (error) {
       console.error("Error during backend call:", error);
-      alert("Failed to fetch the dilemma. Please try again.");
+      setGeneratedText("⚠ The machine has malfunctioned. Your soul remains unjudged... for now.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleChoice = async (choice) => {
-    if (!dilemma || voting) return;
-
-    setVoting(true);
-
-    const tease =
-      choice === "first" ? dilemma.teaseOption1 : dilemma.teaseOption2;
-
-    setSelectedTease(tease);
-
-    const voteType = choice === "first" ? "yes" : "no";
-
-    const votePayload = {
-      _id: dilemma._id,
-      vote: voteType,
-    };
-
-    try {
-      const response = await fetch(voteUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(votePayload),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Vote failed with status: ${response.status}`);
-      }
-
-      await response.json();
-
-      setDilemma((prevDilemma) => ({
-        ...prevDilemma,
-        yesCount:
-          voteType === "yes" ? prevDilemma.yesCount + 1 : prevDilemma.yesCount,
-        noCount:
-          voteType === "no" ? prevDilemma.noCount + 1 : prevDilemma.noCount,
-      }));
-    } catch (error) {
-      console.error("Error during voting:", error);
-      alert("Failed to record your vote. Please try again.");
-      setVoting(false);
-      return;
-    }
-
-    setChoiceCounts((prevCounts) => ({
-      ...prevCounts,
-      [choice]: prevCounts[choice] + 1,
-    }));
-
-    const answerValues =
-      choice === "first"
-        ? {
-            Empathy: dilemma.firstAnswerEmpathy,
-            Integrity: dilemma.firstAnswerIntegrity,
-            Responsibility: dilemma.firstAnswerResponsibility,
-            Justice: dilemma.firstAnswerJustice,
-            Altruism: dilemma.firstAnswerAltruism,
-            Honesty: dilemma.firstAnswerHonesty,
-          }
-        : {
-            Empathy: dilemma.secondAnswerEmpathy,
-            Integrity: dilemma.secondAnswerIntegrity,
-            Responsibility: dilemma.secondAnswerResponsibility,
-            Justice: dilemma.secondAnswerJustice,
-            Altruism: dilemma.secondAnswerAltruism,
-            Honesty: dilemma.secondAnswerHonesty,
-          };
-
-    setSelectedAnswers([...selectedAnswers, answerValues]);
-    setCurrentDilemmaCount(currentDilemmaCount + 1);
+  const handleChoice = (choice) => {
+    setSelectedTease(
+      choice === "first" ? teases.teaseOption1 : teases.teaseOption2
+    );
     setChoiceMade(true);
-    setVoting(false);
   };
 
   const toggleDarkMode = () => {
     setIsDarkMode(!isDarkMode);
   };
 
-  const colors = {
-    background: isDarkMode ? "#1E1E2E" : "#F0F4FF",
-    gradientBackground: isDarkMode
-      ? "linear-gradient(135deg, #2C2C3E, #1E1E2E)"
-      : "linear-gradient(135deg, #6C71FF, #A29BFF)",
-    title: isDarkMode ? "#E0E0E0" : "#333333",
-    buttonBackground: isDarkMode ? "#3A3A5A" : "#6C71FF",
-    generateNewButtonBackground: isDarkMode ? "#3A3A5A" : "#FFB86C",
-    buttonText: "#FFFFFF",
-    generatedTextLabel: isDarkMode ? "#E0E0E0" : "#333333",
-    generatedTextBackground: isDarkMode ? "#2C2C3E" : "#FFFFFF",
-    generatedTextColor: isDarkMode ? "#CCCCCC" : "#333333",
-    teaseTextBackground: isDarkMode ? "#6C71FF" : "#A29BFF",
-    teaseTextColor: isDarkMode ? "#FFFFFF" : "#1E1E2E",
-    yesButtonBackground: "#6C71FF",
-    noButtonBackground: "#FFB86C",
-    toggleText: isDarkMode ? "#E0E0E0" : "#333333",
-  };
-
-  const pieChartData = [
-    {
-      name: dilemma ? dilemma.firstAnswer : "Option 1",
-      value: (dilemma ? dilemma.yesCount : 0) + currentChoice.first,
-      color: "#6C71FF",
-    },
-    {
-      name: dilemma ? dilemma.secondAnswer : "Option 2",
-      value: (dilemma ? dilemma.noCount : 0) + currentChoice.second,
-      color: "#FFB86C",
-    },
-  ];
-
   return (
-    <div
-      className="evaluation-gradient-background"
-      style={{ background: colors.gradientBackground }}
-    >
-      <div
-        className="evaluation-scroll-container"
-        style={{ backgroundColor: colors.background }}
-      >
+    <div className="infinite-scroll-container">
         <button
-          className="evaluation-go-back-button"
-          style={{ backgroundColor: colors.teaseTextBackground }}
+          className="infinite-go-back-button"
           onClick={() => navigate(-1)}
         >
           <span className="arrow">←</span>
-          <span>Go Back</span>
+          <span>ESCAPE</span>
         </button>
 
-        <div className="evaluation-header">
-          <div className="evaluation-toggle-container">
-            <span className="toggle-icon" style={{ color: colors.toggleText }}>
-              {isDarkMode ? "🌙" : "☀️"}
-            </span>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={isDarkMode}
-                onChange={toggleDarkMode}
-              />
-              <span className="toggle-slider"></span>
-            </label>
-          </div>
-
-          <h1 className="evaluation-title" style={{ color: colors.title }}>
-            Ethical Dilemmas
+        <div className="infinite-header">
+          <h1 className="infinite-title">
+            💀 ENDLESS TORMENT 💀
           </h1>
-          <p className="evaluation-subtitle" style={{ color: colors.title }}>
-            {currentDilemmaCount} / {MAX_DILEMMAS}
+          <p className="infinite-subtitle">
+            Your choices have consequences...
           </p>
         </div>
 
-        <div
-          className="evaluation-card"
-          style={{
-            backgroundColor: colors.generatedTextBackground,
-            boxShadow: isDarkMode
-              ? "0 8px 20px rgba(0, 0, 0, 0.5)"
-              : "0 8px 20px rgba(0, 0, 0, 0.2)",
-          }}
-        >
-          {!dilemma ? (
-            <div className="evaluation-button-container">
+        <div className="infinite-card">
+          {!dilemmaGenerated ? (
+            <div className="infinite-button-container">
               <button
                 onClick={fetchDilemma}
                 disabled={loading}
-                className="evaluation-button"
-                style={{
-                  backgroundColor: loading ? "#CCCCCC" : colors.buttonBackground,
-                }}
+                className="infinite-button"
               >
-                {loading ? "🔄 Loading..." : "✨ Get Dilemma"}
+                {loading ? `⏳ ${creepyMessage}` : "🩸 SUMMON DILEMMA 🩸"}
               </button>
-              {loading && <div className="spinner"></div>}
+              {loading && (
+                <>
+                  <div className="spinner"></div>
+                  <p className="loading-text">{creepyMessage}</p>
+                </>
+              )}
             </div>
           ) : (
             <div>
-              <p
-                className="evaluation-generated-text-label"
-                style={{ color: colors.generatedTextLabel }}
-              >
-                🧠 Retrieved Ethical Dilemma:
+              <p className="infinite-generated-text-label">
+                ☠ YOUR MORAL NIGHTMARE ☠
               </p>
-              <p
-                className="evaluation-generated-text"
-                style={{
-                  backgroundColor: colors.generatedTextBackground,
-                  color: colors.generatedTextColor,
-                }}
-              >
-                {dilemma.dilemma}
+              <p className="infinite-generated-text">
+                {generatedText}
               </p>
+
               {!choiceMade ? (
-                <div className="evaluation-response-buttons">
+                <div className="infinite-response-buttons">
                   <button
-                    className="evaluation-yes-button"
-                    style={{ backgroundColor: colors.yesButtonBackground }}
+                    className="infinite-yes-button"
                     onClick={() => handleChoice("first")}
-                    disabled={voting}
                   >
-                    {dilemma.firstAnswer}
+                    🩸 {answers.firstAnswer}
                   </button>
                   <button
-                    className="evaluation-no-button"
-                    style={{ backgroundColor: colors.noButtonBackground }}
+                    className="infinite-no-button"
                     onClick={() => handleChoice("second")}
-                    disabled={voting}
                   >
-                    {dilemma.secondAnswer}
+                    💀 {answers.secondAnswer}
                   </button>
-                  {voting && <div className="spinner" style={{ marginTop: "10px" }}></div>}
                 </div>
               ) : (
                 <div>
-                  <p
-                    className="evaluation-tease-text"
-                    style={{
-                      backgroundColor: colors.teaseTextBackground,
-                      color: colors.teaseTextColor,
-                    }}
-                  >
+                  <p className="infinite-tease-text">
                     {selectedTease}
                   </p>
-                  <div className="evaluation-chart-container">
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={pieChartData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={({ name, percent }) =>
-                            `${(percent * 100).toFixed(0)}%`
-                          }
-                          outerRadius={window.innerWidth < 480 ? 60 : 80}
-                          fill="#8884d8"
-                          dataKey="value"
-                        >
-                          {pieChartData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Legend wrapperStyle={{ fontSize: window.innerWidth < 480 ? '12px' : '14px' }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                  {evaluationComplete ? (
-                    <button
-                      onClick={() =>
-                        navigate("/results", {
-                          state: { answers: selectedAnswers },
-                        })
-                      }
-                      className="evaluation-button evaluation-generate-new-button"
-                      style={{ backgroundColor: colors.generateNewButtonBackground }}
-                    >
-                      View Results
-                    </button>
-                  ) : (
-                    <button
-                      onClick={fetchDilemma}
-                      disabled={loading}
-                      className="evaluation-button evaluation-generate-new-button"
-                      style={{
-                        backgroundColor: loading
-                          ? "#CCCCCC"
-                          : colors.generateNewButtonBackground,
-                      }}
-                    >
-                      {loading ? "🔄 Loading..." : "🔁 Get New Dilemma"}
-                    </button>
-                  )}
+                  <button
+                    onClick={fetchDilemma}
+                    disabled={loading}
+                    className="infinite-button infinite-generate-new-button"
+                  >
+                    {loading ? `⏳ ${creepyMessage}` : "🔁 SUMMON NEXT NIGHTMARE"}
+                  </button>
                 </div>
               )}
             </div>
           )}
         </div>
-      </div>
     </div>
   );
 };
 
-export default EvaluationDilemmasScreen;
+export default InfiniteDilemmasScreen;
