@@ -6,6 +6,19 @@ import './HomeScreen.css';
 const HomeScreen = () => {
   const navigate = useNavigate();
 
+  const handleNavigation = (mode, route) => {
+    // Check if tutorial has been completed for this mode
+    const tutorialCompleted = localStorage.getItem(`tutorial_completed_${mode}`);
+
+    if (tutorialCompleted === 'true') {
+      // Go directly to the mode
+      navigate(route);
+    } else {
+      // Go to tutorial first
+      navigate('/tutorial', { state: { mode } });
+    }
+  };
+
   return (
     <div className="gradient-background">
       <div className="home-container">
@@ -14,7 +27,7 @@ const HomeScreen = () => {
         {/* Recommended Button */}
         <button
           className="home-button recommended-button"
-          onClick={() => navigate('/evaluation-dilemmas')}
+          onClick={() => handleNavigation('evaluation', '/evaluation-dilemmas')}
         >
           <div className="badge-container">
             <span className="badge-text">Recommended</span>
@@ -28,7 +41,7 @@ const HomeScreen = () => {
         {/* Other Buttons */}
         <button
           className="home-button"
-          onClick={() => navigate('/infinite-dilemmas')}
+          onClick={() => handleNavigation('infinite', '/infinite-dilemmas')}
         >
           <div className="button-text">Arcade: Infinite Dilemmas</div>
           <div className="button-description">

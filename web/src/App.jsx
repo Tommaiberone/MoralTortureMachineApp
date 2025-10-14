@@ -7,6 +7,7 @@ import HomeScreen from './screens/HomeScreen';
 import InfiniteDilemmasScreen from './screens/InfiniteDilemmasScreen';
 import EvaluationDilemmasScreen from './screens/EvaluationDilemmasScreen';
 import ResultsScreen from './screens/ResultsScreen';
+import TutorialScreen from './screens/TutorialScreen';
 
 import './App.css';
 
@@ -16,6 +17,9 @@ const App = () => {
       <Routes>
         {/* Home Screen */}
         <Route path="/" element={<HomeScreen />} />
+
+        {/* Tutorial Screen */}
+        <Route path="/tutorial" element={<TutorialScreen />} />
 
         {/* Existing Generate Dilemma Screen */}
         <Route path="/infinite-dilemmas" element={<InfiniteDilemmasScreen />} />
