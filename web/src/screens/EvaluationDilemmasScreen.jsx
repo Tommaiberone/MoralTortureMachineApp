@@ -194,12 +194,12 @@ const EvaluationDilemmasScreen = () => {
           onClick={() => navigate(-1)}
         >
           <span className="arrow">←</span>
-          <span>Go Back</span>
+          <span>[ BACK ]</span>
         </button>
 
         <div className="evaluation-header">
           <h1 className="evaluation-title" style={{ color: colors.title }}>
-            Ethical Dilemmas
+            [ ETHICAL DILEMMAS ]
           </h1>
           <p className="evaluation-subtitle" style={{ color: colors.title }}>
             {currentDilemmaCount} / {MAX_DILEMMAS}
@@ -223,7 +223,7 @@ const EvaluationDilemmasScreen = () => {
                   backgroundColor: loading ? "#CCCCCC" : colors.buttonBackground,
                 }}
               >
-                {loading ? "🔄 Loading..." : "✨ Get Dilemma"}
+                {loading ? "[ LOADING ]" : "[ GET DILEMMA ]"}
               </button>
               {loading && <div className="spinner"></div>}
             </div>
@@ -233,7 +233,7 @@ const EvaluationDilemmasScreen = () => {
                 className="evaluation-generated-text-label"
                 style={{ color: colors.generatedTextLabel }}
               >
-                🧠 Retrieved Ethical Dilemma:
+                [ RETRIEVED DILEMMA ]
               </p>
               <p
                 className="evaluation-generated-text"
@@ -308,7 +308,7 @@ const EvaluationDilemmasScreen = () => {
                       className="evaluation-button evaluation-generate-new-button"
                       style={{ backgroundColor: colors.generateNewButtonBackground }}
                     >
-                      View Results
+                      [ VIEW RESULTS ]
                     </button>
                   ) : (
                     <button
@@ -321,7 +321,7 @@ const EvaluationDilemmasScreen = () => {
                           : colors.generateNewButtonBackground,
                       }}
                     >
-                      {loading ? "🔄 Loading..." : "🔁 Get New Dilemma"}
+                      {loading ? "[ LOADING ]" : "[ GET NEW DILEMMA ]"}
                     </button>
                   )}
                 </div>

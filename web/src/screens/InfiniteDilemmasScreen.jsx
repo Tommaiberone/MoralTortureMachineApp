@@ -91,16 +91,16 @@ const InfiniteDilemmasScreen = () => {
           className="infinite-go-back-button"
           onClick={() => navigate(-1)}
         >
-          <span className="arrow">←</span>
+          <span className="arrow">[&lt;]</span>
           <span>ESCAPE</span>
         </button>
 
         <div className="infinite-header">
           <h1 className="infinite-title">
-            💀 ENDLESS TORMENT 💀
+            [ ENDLESS TORMENT ]
           </h1>
           <p className="infinite-subtitle">
-            Your choices have consequences...
+            YOUR CHOICES HAVE CONSEQUENCES
           </p>
         </div>
 
@@ -112,7 +112,7 @@ const InfiniteDilemmasScreen = () => {
                 disabled={loading}
                 className="infinite-button"
               >
-                {loading ? `⏳ ${creepyMessage}` : "🩸 SUMMON DILEMMA 🩸"}
+                {loading ? `[ ${creepyMessage} ]` : "[ SUMMON DILEMMA ]"}
               </button>
               {loading && (
                 <>
@@ -124,7 +124,7 @@ const InfiniteDilemmasScreen = () => {
           ) : (
             <div>
               <p className="infinite-generated-text-label">
-                ☠ YOUR MORAL NIGHTMARE ☠
+                [ YOUR MORAL NIGHTMARE ]
               </p>
               <p className="infinite-generated-text">
                 {generatedText}
@@ -136,13 +136,13 @@ const InfiniteDilemmasScreen = () => {
                     className="infinite-yes-button"
                     onClick={() => handleChoice("first")}
                   >
-                    🩸 {answers.firstAnswer}
+                    {answers.firstAnswer}
                   </button>
                   <button
                     className="infinite-no-button"
                     onClick={() => handleChoice("second")}
                   >
-                    💀 {answers.secondAnswer}
+                    {answers.secondAnswer}
                   </button>
                 </div>
               ) : (
@@ -155,7 +155,7 @@ const InfiniteDilemmasScreen = () => {
                     disabled={loading}
                     className="infinite-button infinite-generate-new-button"
                   >
-                    {loading ? `⏳ ${creepyMessage}` : "🔁 SUMMON NEXT NIGHTMARE"}
+                    {loading ? `[ ${creepyMessage} ]` : "[ SUMMON NEXT ]"}
                   </button>
                 </div>
               )}

@@ -13,12 +13,12 @@ const ResultsScreen = () => {
     return (
       <div className="results-gradient-background">
         <div className="results-container">
-          <h1 className="results-title">No Results Available</h1>
+          <h1 className="results-title">[ NO RESULTS ]</h1>
           <button
             className="results-back-button"
             onClick={() => navigate('/')}
           >
-            Go Home
+            [ HOME ]
           </button>
         </div>
       </div>
@@ -47,10 +47,10 @@ const ResultsScreen = () => {
           onClick={() => navigate(-1)}
         >
           <span className="arrow">←</span>
-          <span>Go Back</span>
+          <span>[ BACK ]</span>
         </button>
 
-        <h1 className="results-title">Your Results</h1>
+        <h1 className="results-title">[ YOUR RESULTS ]</h1>
 
         <div className="results-chart-container">
           <ResponsiveContainer width="100%" height="100%">
@@ -64,7 +64,7 @@ const ResultsScreen = () => {
                 domain={[0, 'auto']}
               />
               <Radar
-                name="Your Moral Profile"
+                name="MORAL PROFILE"
                 dataKey="value"
                 stroke="var(--horror-crimson)"
                 fill="var(--horror-blood-red)"

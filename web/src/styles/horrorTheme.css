@@ -1,67 +1,219 @@
-/* web/src/styles/horrorTheme.css */
+/* web/src/styles/horrorTheme.css - Low-Res Creepy Dark Theme */
 
 :root {
-  /* Horror Colors */
-  --horror-dark-blood: #1A0000;
-  --horror-deep-dark: #0D0D0D;
-  --horror-charcoal: #1C1C1C;
-  --horror-void-black: #000000;
-  --horror-blood-red: #8B0000;
-  --horror-crimson: #DC143C;
-  --horror-dark-crimson: #660000;
-  --horror-rust: #A0522D;
-  --horror-eerie-green: #006400;
-  --horror-toxic-green: #006400;
-  --horror-ghost-white: #F8F8FF;
-  --horror-pale-yellow: #FFFFE0;
-  --horror-shadow-gray: #2B2B2B;
-  --horror-fog-gray: #696969;
-  --horror-ash-gray: #B2BEB5;
-  --horror-dark-purple: #301934;
-  --horror-bruise-purple: #5C2E5C;
-  --horror-warning-orange: #FF4500;
-  --horror-danger-red: #FF0000;
+  /* Core Creepy Dark Colors - Very desaturated, dark, oppressive */
+  --creepy-void: #0a0a0a;
+  --creepy-deep-black: #121212;
+  --creepy-charcoal: #1a1a1a;
+  --creepy-dark-gray: #242424;
+  --creepy-mid-gray: #2d2d2d;
+  --creepy-fog: #3a3a3a;
 
-  /* Horror Gradients */
-  --horror-gradient-blood-drip: linear-gradient(to bottom, var(--horror-dark-blood), var(--horror-void-black));
-  --horror-gradient-abyss: linear-gradient(to bottom, var(--horror-void-black), var(--horror-charcoal), var(--horror-void-black));
-  --horror-gradient-crimson-night: linear-gradient(to bottom, var(--horror-dark-crimson), var(--horror-dark-purple));
-  --horror-gradient-foggy-darkness: linear-gradient(to bottom, var(--horror-shadow-gray), var(--horror-deep-dark));
-  --horror-gradient-toxic-glow: linear-gradient(135deg, var(--horror-dark-blood), var(--horror-dark-purple), var(--horror-void-black));
+  /* Accent Colors - Muted and unsettling */
+  --creepy-dead-red: #4a1a1a;
+  --creepy-blood: #5a2020;
+  --creepy-rust: #3d2a1a;
+  --creepy-sickly-green: #1a2a1a;
+  --creepy-pale-green: #2a3a2a;
+  --creepy-dirty-white: #b8b8b8;
+  --creepy-ash: #7a7a7a;
+  --creepy-pale: #9a9a9a;
+
+  /* Text colors - Low contrast, hard to read, unsettling */
+  --text-dim: #6a6a6a;
+  --text-normal: #8a8a8a;
+  --text-highlight: #aaaaaa;
+  --text-danger: #7a4a4a;
+
+  /* Glitch/Static effect colors */
+  --glitch-1: #3a1a1a;
+  --glitch-2: #1a3a1a;
+
+  /* Legacy compatibility - map old vars to new ones */
+  --horror-void-black: var(--creepy-void);
+  --horror-deep-dark: var(--creepy-deep-black);
+  --horror-charcoal: var(--creepy-charcoal);
+  --horror-dark-blood: var(--creepy-dead-red);
+  --horror-blood-red: var(--creepy-blood);
+  --horror-crimson: var(--text-danger);
+  --horror-dark-crimson: var(--creepy-dead-red);
+  --horror-eerie-green: var(--creepy-sickly-green);
+  --horror-ghost-white: var(--creepy-dirty-white);
+  --horror-shadow-gray: var(--creepy-dark-gray);
+  --horror-fog-gray: var(--creepy-fog);
+  --horror-ash-gray: var(--creepy-ash);
+  --horror-dark-purple: var(--creepy-charcoal);
+  --horror-warning-orange: var(--creepy-rust);
+  --horror-danger-red: var(--creepy-blood);
 }
 
-/* Animations */
-@keyframes horror-background-pulse {
+/* Typography - Pixelated/Low-res feel */
+* {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+/* Animations - Unsettling, glitchy, oppressive */
+@keyframes static-flicker {
+  0%, 100% { opacity: 1; }
+  10% { opacity: 0.95; }
+  20% { opacity: 0.92; }
+  30% { opacity: 0.98; }
+  40% { opacity: 0.90; }
+  50% { opacity: 0.94; }
+  60% { opacity: 0.91; }
+  70% { opacity: 0.97; }
+  80% { opacity: 0.89; }
+  90% { opacity: 0.96; }
+}
+
+@keyframes glitch-text {
   0% {
-    background: linear-gradient(135deg, var(--horror-dark-blood), var(--horror-dark-purple), var(--horror-void-black));
+    transform: translate(0);
+    filter: hue-rotate(0deg);
+  }
+  10% {
+    transform: translate(-2px, 1px);
+  }
+  20% {
+    transform: translate(1px, -1px);
+  }
+  30% {
+    transform: translate(-1px, 2px);
+  }
+  40% {
+    transform: translate(2px, -2px);
   }
   50% {
-    background: linear-gradient(135deg, var(--horror-dark-purple), var(--horror-dark-blood), var(--horror-void-black));
+    transform: translate(-2px, -1px);
+    filter: hue-rotate(5deg);
+  }
+  60% {
+    transform: translate(1px, 1px);
+  }
+  70% {
+    transform: translate(-1px, -2px);
+  }
+  80% {
+    transform: translate(2px, 1px);
+  }
+  90% {
+    transform: translate(-2px, 2px);
   }
   100% {
-    background: linear-gradient(135deg, var(--horror-dark-blood), var(--horror-dark-purple), var(--horror-void-black));
+    transform: translate(0);
+    filter: hue-rotate(0deg);
+  }
+}
+
+@keyframes subtle-pulse {
+  0%, 100% {
+    box-shadow: 0 0 3px rgba(90, 32, 32, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 6px rgba(90, 32, 32, 0.4);
+  }
+}
+
+@keyframes screen-tear {
+  0% {
+    clip-path: inset(0 0 0 0);
+  }
+  10% {
+    clip-path: inset(5% 0 0 0);
+  }
+  20% {
+    clip-path: inset(0 0 0 0);
+  }
+  30% {
+    clip-path: inset(0 0 8% 0);
+  }
+  40% {
+    clip-path: inset(0 0 0 0);
+  }
+  50% {
+    clip-path: inset(3% 0 5% 0);
+  }
+  60% {
+    clip-path: inset(0 0 0 0);
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes slow-breathe {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.005);
+    opacity: 1;
+  }
+}
+
+@keyframes horror-background-pulse {
+  0%, 100% {
+    background-color: var(--creepy-void);
+  }
+  50% {
+    background-color: var(--creepy-deep-black);
   }
 }
 
 @keyframes horror-flicker {
-  0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% {
-    text-shadow: 0 0 10px var(--horror-dark-crimson), 0 0 20px var(--horror-dark-crimson), 0 0 30px var(--horror-dark-crimson);
+  0%, 18%, 22%, 25%, 53%, 57%, 100% {
     opacity: 1;
+    text-shadow: 0 0 2px var(--text-danger);
   }
-  20%, 24%, 55% {
+  4%, 19%, 21%, 23%, 55% {
+    opacity: 0.6;
     text-shadow: none;
-    opacity: 0.7;
   }
 }
 
 @keyframes horror-glow {
-  0% {
-    box-shadow: 0 0 5px var(--horror-dark-crimson);
+  0%, 100% {
+    box-shadow: inset 0 0 10px rgba(90, 32, 32, 0.2);
   }
   50% {
-    box-shadow: 0 0 20px var(--horror-dark-crimson), 0 0 30px var(--horror-dark-crimson);
+    box-shadow: inset 0 0 15px rgba(90, 32, 32, 0.3);
+  }
+}
+
+@keyframes horror-pulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(1.01);
+    filter: brightness(1.05);
+  }
+}
+
+/* Scanline overlay effect */
+@keyframes scanline {
+  0% {
+    transform: translateY(-100%);
   }
   100% {
-    box-shadow: 0 0 5px var(--horror-dark-crimson);
+    transform: translateY(100%);
   }
+}
+
+/* Grain/noise animation */
+@keyframes grain {
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(-5%, -10%); }
+  20% { transform: translate(-15%, 5%); }
+  30% { transform: translate(7%, -25%); }
+  40% { transform: translate(-5%, 25%); }
+  50% { transform: translate(-15%, 10%); }
+  60% { transform: translate(15%, 0%); }
+  70% { transform: translate(0%, 15%); }
+  80% { transform: translate(3%, 35%); }
+  90% { transform: translate(-10%, 10%); }
 }

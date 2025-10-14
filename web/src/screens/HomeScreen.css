@@ -8,117 +8,133 @@
   width: 90%;
   max-width: 600px;
   margin: 0 auto;
+  animation: static-flicker 0.5s infinite;
 }
 
 .home-title {
-  font-size: 48px;
-  color: var(--horror-crimson);
+  font-size: 38px;
+  color: var(--text-highlight);
   font-weight: 700;
-  font-family: 'Poppins', sans-serif;
-  margin-bottom: 20px;
+  font-family: 'Courier New', Courier, monospace;
+  margin-bottom: 30px;
   text-align: center;
-  letter-spacing: 4px;
-  text-shadow: 0 0 20px var(--horror-blood-red);
-  line-height: 56px;
-  animation: horror-flicker 3s infinite;
+  letter-spacing: 0.1em;
+  text-shadow: 2px 2px 0 var(--creepy-dead-red);
+  line-height: 1.2;
+}
+
+.glitch-text {
+  display: inline-block;
+  animation: glitch-text 5s infinite;
 }
 
 .home-subtitle {
-  font-size: 18px;
-  color: var(--horror-eerie-green);
-  font-weight: 600;
-  font-family: 'Poppins', sans-serif;
+  font-size: 14px;
+  color: var(--text-dim);
+  font-weight: 400;
+  font-family: 'Courier New', Courier, monospace;
   margin-bottom: 40px;
   text-align: center;
-  letter-spacing: 2px;
-  text-shadow: 0 0 10px var(--horror-eerie-green);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
 }
 
 .home-button {
   width: 100%;
-  padding: 20px 16px;
-  border-radius: 12px;
-  background-color: var(--horror-shadow-gray);
-  border: 2px solid var(--horror-fog-gray);
+  padding: 18px 16px;
+  border-radius: 0;
+  background-color: var(--creepy-dark-gray);
+  border: 2px solid var(--creepy-fog);
   cursor: pointer;
-  margin: 12px 0;
-  box-shadow: 0 6px 12px rgba(255, 0, 0, 0.8), 0 0 20px rgba(139, 0, 0, 0.5);
-  transition: all 0.3s ease;
+  margin: 10px 0;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+  transition: all 0.2s;
   position: relative;
+  text-transform: uppercase;
 }
 
 .home-button:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 20px rgba(255, 0, 0, 0.9), 0 0 30px rgba(139, 0, 0, 0.7);
-  animation: horror-pulse 1.5s infinite;
+  background-color: var(--creepy-mid-gray);
+  border-color: var(--text-dim);
+  box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.7);
+  animation: subtle-pulse 2s infinite;
 }
 
 .home-button:active {
-  transform: translateY(-1px);
+  transform: scale(0.98);
 }
 
 .recommended-button {
-  background-color: var(--horror-blood-red);
-  border: 3px solid var(--horror-crimson);
-  box-shadow: 0 0 15px var(--horror-blood-red), 0 0 30px rgba(220, 20, 60, 0.6);
+  background-color: var(--creepy-dead-red);
+  border: 2px solid var(--text-danger);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.6);
+}
+
+.recommended-button:hover {
+  background-color: var(--creepy-blood);
 }
 
 .arcade-button {
-  background-color: var(--horror-dark-purple);
-  border: 2px solid var(--horror-eerie-green);
-  box-shadow: 0 0 20px var(--horror-eerie-green), 0 0 40px rgba(57, 255, 20, 0.4);
+  background-color: var(--creepy-charcoal);
+  border: 2px solid var(--creepy-sickly-green);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.6);
+}
+
+.arcade-button:hover {
+  background-color: var(--creepy-dark-gray);
 }
 
 .badge-container {
   position: absolute;
-  top: -12px;
-  right: -12px;
-  background-color: var(--horror-warning-orange);
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 2px solid var(--horror-danger-red);
+  top: -10px;
+  right: -10px;
+  background-color: var(--creepy-rust);
+  padding: 4px 10px;
+  border-radius: 0;
+  border: 1px solid var(--text-danger);
   z-index: 1;
-  box-shadow: 0 6px 12px rgba(255, 0, 0, 0.8);
+  box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
 }
 
 .badge-text {
-  color: var(--horror-void-black);
-  font-size: 11px;
+  color: var(--text-highlight);
+  font-size: 10px;
   font-weight: 700;
-  font-family: 'Poppins', sans-serif;
-  letter-spacing: 1px;
+  font-family: 'Courier New', Courier, monospace;
+  letter-spacing: 0.1em;
 }
 
 .button-text {
-  color: var(--horror-ghost-white);
-  font-size: 20px;
+  color: var(--text-highlight);
+  font-size: 16px;
   font-weight: 700;
-  font-family: 'Poppins', sans-serif;
+  font-family: 'Courier New', Courier, monospace;
   margin-bottom: 8px;
-  letter-spacing: 1.5px;
-  text-shadow: 0 2px 4px var(--horror-void-black);
+  letter-spacing: 0.05em;
+  text-shadow: 1px 1px 0 var(--creepy-void);
 }
 
 .button-description {
-  color: var(--horror-ash-gray);
-  font-size: 13px;
-  font-weight: 600;
-  font-family: 'Poppins', sans-serif;
+  color: var(--text-normal);
+  font-size: 11px;
+  font-weight: 400;
+  font-family: 'Courier New', Courier, monospace;
   text-align: center;
-  margin-top: 10px;
-  line-height: 18px;
-  letter-spacing: 0.5px;
+  margin-top: 8px;
+  line-height: 1.4;
+  letter-spacing: 0.05em;
 }
 
 .home-warning {
-  color: var(--horror-warning-orange);
-  font-size: 12px;
-  font-weight: 600;
-  font-family: 'Poppins', sans-serif;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 400;
+  font-family: 'Courier New', Courier, monospace;
   text-align: center;
   margin-top: 30px;
-  letter-spacing: 1px;
-  text-shadow: 0 0 8px var(--horror-dark-crimson);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  animation: horror-flicker 4s infinite;
 }
 
 /* Tablet styles */
@@ -129,16 +145,16 @@
   }
 
   .home-title {
-    font-size: 28px;
-    margin-bottom: 30px;
+    font-size: 32px;
+    margin-bottom: 25px;
   }
 
   .button-text {
-    font-size: 16px;
+    font-size: 14px;
   }
 
   .button-description {
-    font-size: 13px;
+    font-size: 10px;
   }
 }
 
@@ -150,55 +166,53 @@
   }
 
   .home-title {
-    font-size: 24px;
-    margin-bottom: 25px;
+    font-size: 28px;
+    margin-bottom: 20px;
     line-height: 1.3;
   }
 
   .home-button {
-    padding: 18px 15px;
+    padding: 16px 14px;
     margin: 8px 0;
-    border-radius: 25px;
   }
 
   .badge-container {
     top: -8px;
     right: -8px;
-    padding: 3px 6px;
-    border-radius: 10px;
+    padding: 3px 8px;
   }
 
   .badge-text {
-    font-size: 10px;
+    font-size: 9px;
   }
 
   .button-text {
-    font-size: 15px;
+    font-size: 13px;
     margin-bottom: 6px;
   }
 
   .button-description {
-    font-size: 12px;
-    line-height: 1.4;
+    font-size: 10px;
+    line-height: 1.3;
   }
 }
 
 /* Very small mobile styles */
 @media (max-width: 360px) {
   .home-title {
-    font-size: 22px;
-    margin-bottom: 20px;
+    font-size: 24px;
+    margin-bottom: 18px;
   }
 
   .home-button {
-    padding: 16px 12px;
+    padding: 14px 12px;
   }
 
   .button-text {
-    font-size: 14px;
+    font-size: 12px;
   }
 
   .button-description {
-    font-size: 11px;
+    font-size: 9px;
   }
 }

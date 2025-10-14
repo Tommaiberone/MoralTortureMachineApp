@@ -22,38 +22,38 @@ const HomeScreen = () => {
   return (
     <div className="home-container">
       <h1 className="home-title">
-        MORAL<br />TORTURE<br />MACHINE
+        <span className="glitch-text">MORAL</span><br />
+        <span className="glitch-text">TORTURE</span><br />
+        <span className="glitch-text">MACHINE</span>
       </h1>
 
-        <p className="home-subtitle">Enter if you dare...</p>
+        <p className="home-subtitle">[ ENTER IF YOU DARE ]</p>
 
-        {/* Recommended Button */}
         <button
           className="home-button recommended-button"
           onClick={() => handleNavigation('evaluation', '/evaluation-dilemmas')}
         >
           <div className="badge-container">
-            <span className="badge-text">⚠ WARNING ⚠</span>
+            <span className="badge-text">! WARNING !</span>
           </div>
-          <div className="button-text">🩸 Test Your Morality 🩸</div>
+          <div className="button-text">TEST YOUR MORALITY</div>
           <div className="button-description">
-            Face a series of disturbing moral dilemmas. Your conscience will be judged.
+            FACE MORAL DILEMMAS. YOUR CONSCIENCE WILL BE JUDGED.
           </div>
         </button>
 
-        {/* Arcade Button */}
         <button
           className="home-button arcade-button"
           onClick={() => handleNavigation('infinite', '/infinite-dilemmas')}
         >
-          <div className="button-text">💀 Endless Torment Mode 💀</div>
+          <div className="button-text">ENDLESS TORMENT MODE</div>
           <div className="button-description">
-            An infinite stream of ethical nightmares. There is no escape.
+            AN INFINITE STREAM OF ETHICAL NIGHTMARES. NO ESCAPE.
           </div>
         </button>
 
         <p className="home-warning">
-          ⚠ This machine will expose your darkest moral boundaries ⚠
+          [ THIS WILL EXPOSE YOUR DARKEST BOUNDARIES ]
         </p>
       </div>
   );

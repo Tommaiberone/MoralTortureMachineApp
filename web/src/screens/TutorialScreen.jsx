@@ -11,47 +11,47 @@ const TutorialScreen = () => {
 
   const evaluationTutorialSteps = [
     {
-      title: "Welcome to Test Your Morality",
-      description: "Face 5 carefully crafted moral dilemmas that will evaluate your ethical compass across 6 core values: Empathy, Integrity, Responsibility, Justice, Altruism, and Honesty.",
-      icon: "🧠",
+      title: "[ TEST YOUR MORALITY ]",
+      description: "FACE 5 MORAL DILEMMAS. EVALUATION ACROSS 6 VALUES: EMPATHY, INTEGRITY, RESPONSIBILITY, JUSTICE, ALTRUISM, HONESTY.",
+      icon: "[X]",
     },
     {
-      title: "Make Your Choices",
-      description: "Read each dilemma carefully and choose between two options. There are no right or wrong answers - just honest reflections of your moral values.",
-      icon: "⚖️",
+      title: "[ MAKE CHOICES ]",
+      description: "READ EACH DILEMMA. CHOOSE BETWEEN TWO OPTIONS. NO RIGHT ANSWERS. ONLY REFLECTIONS OF YOUR MORAL VALUES.",
+      icon: "[ ]",
     },
     {
-      title: "See How Others Voted",
-      description: "After making your choice, see how other people responded to the same dilemma. Compare your moral reasoning with the community.",
-      icon: "📊",
+      title: "[ SEE OTHERS ]",
+      description: "AFTER YOUR CHOICE, SEE HOW OTHERS RESPONDED. COMPARE YOUR MORAL REASONING WITH THE COMMUNITY.",
+      icon: "[=]",
     },
     {
-      title: "Discover Your Moral Profile",
-      description: "After completing all 5 dilemmas, view your personalized moral profile showing which values guide your decision-making the most.",
-      icon: "🎯",
+      title: "[ DISCOVER PROFILE ]",
+      description: "AFTER 5 DILEMMAS, VIEW YOUR MORAL PROFILE. SEE WHICH VALUES GUIDE YOUR DECISION-MAKING.",
+      icon: "[!]",
     },
   ];
 
   const infiniteTutorialSteps = [
     {
-      title: "Welcome to Arcade Mode",
-      description: "Experience an endless stream of AI-generated moral dilemmas. Each dilemma is unique and challenges you to think about complex ethical situations.",
-      icon: "🎮",
+      title: "[ ENDLESS MODE ]",
+      description: "ENDLESS AI-GENERATED MORAL DILEMMAS. EACH ONE UNIQUE. CHALLENGES YOUR ETHICS IN COMPLEX SITUATIONS.",
+      icon: "[∞]",
     },
     {
-      title: "Generate Dilemmas",
-      description: "Click the 'Generate Dilemma' button to create a new ethical scenario powered by artificial intelligence. Each one is different!",
-      icon: "✨",
+      title: "[ GENERATE ]",
+      description: "SUMMON NEW ETHICAL SCENARIOS POWERED BY AI. EACH ONE DIFFERENT. EACH ONE DARKER.",
+      icon: "[+]",
     },
     {
-      title: "Choose Your Path",
-      description: "Select between two morally challenging options. After your choice, you'll receive a thought-provoking response that reflects on your decision.",
-      icon: "🤔",
+      title: "[ CHOOSE PATH ]",
+      description: "SELECT BETWEEN TWO MORALLY CHALLENGING OPTIONS. RECEIVE RESPONSE THAT REFLECTS ON YOUR DECISION.",
+      icon: "[?]",
     },
     {
-      title: "Play Endlessly",
-      description: "There's no limit! Keep generating new dilemmas and exploring different ethical perspectives for as long as you want.",
-      icon: "♾️",
+      title: "[ NO LIMIT ]",
+      description: "KEEP GENERATING DILEMMAS. EXPLORE ETHICAL PERSPECTIVES. AS LONG AS YOU CAN ENDURE.",
+      icon: "[∞]",
     },
   ];
 

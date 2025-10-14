@@ -1,9 +1,9 @@
-
 .infinite-scroll-container {
   min-height: 100vh;
   width: 100%;
   padding: 40px 20px;
   position: relative;
+  animation: static-flicker 0.5s infinite;
 }
 
 .infinite-go-back-button {
@@ -12,29 +12,32 @@
   left: 20px;
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 12px;
-  border-radius: 8px;
-  border: 2px solid var(--horror-crimson);
-  background-color: var(--horror-shadow-gray);
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 0;
+  border: 2px solid var(--creepy-fog);
+  background-color: var(--creepy-dark-gray);
   cursor: pointer;
-  font-family: 'Poppins', sans-serif;
+  font-family: 'Courier New', Courier, monospace;
   font-weight: 700;
-  font-size: 16px;
-  color: var(--horror-ghost-white);
-  letter-spacing: 2px;
+  font-size: 13px;
+  color: var(--text-normal);
+  letter-spacing: 0.1em;
   z-index: 10;
-  transition: all 0.3s;
-  box-shadow: 0 6px 12px rgba(255, 0, 0, 0.8);
+  transition: all 0.2s;
+  box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
+  text-transform: uppercase;
 }
 
 .infinite-go-back-button:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 16px rgba(255, 0, 0, 0.9);
+  background-color: var(--creepy-mid-gray);
+  color: var(--text-highlight);
+  border-color: var(--text-dim);
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.7);
 }
 
 .arrow {
-  font-size: 24px;
+  font-size: 18px;
 }
 
 .infinite-header {
@@ -46,36 +49,36 @@
 }
 
 .infinite-title {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 700;
-  letter-spacing: 3px;
-  font-family: 'Poppins', sans-serif;
+  letter-spacing: 0.1em;
+  font-family: 'Courier New', Courier, monospace;
   margin-top: 10px;
-  color: var(--horror-crimson);
-  text-shadow: 0 0 15px var(--horror-blood-red);
-  animation: horror-flicker 3s infinite;
+  color: var(--text-highlight);
+  text-shadow: 2px 2px 0 var(--creepy-dead-red);
+  animation: glitch-text 6s infinite;
 }
 
 .infinite-subtitle {
-  font-size: 16px;
-  font-family: 'Poppins', sans-serif;
-  font-weight: 600;
+  font-size: 13px;
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 400;
   margin-top: 8px;
-  color: var(--horror-eerie-green);
-  letter-spacing: 1.5px;
-  text-shadow: 0 0 10px var(--horror-eerie-green);
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .infinite-card {
   padding: 25px;
-  border-radius: 12px;
+  border-radius: 0;
   width: 90%;
   max-width: 600px;
   margin: 0 auto;
-  background-color: var(--horror-charcoal);
-  border: 2px solid var(--horror-blood-red);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.9), 0 0 30px rgba(0, 0, 0, 0.7);
-  animation: horror-pulse 2.5s infinite;
+  background-color: var(--creepy-charcoal);
+  border: 2px solid var(--creepy-fog);
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8);
+  animation: slow-breathe 6s infinite;
 }
 
 .infinite-button-container {
@@ -87,62 +90,68 @@
 
 .infinite-button {
   width: 100%;
-  padding: 18px;
-  border-radius: 12px;
-  border: 2px solid var(--horror-crimson);
-  background-color: var(--horror-blood-red);
+  padding: 16px;
+  border-radius: 0;
+  border: 2px solid var(--creepy-fog);
+  background-color: var(--creepy-dead-red);
   cursor: pointer;
-  font-family: 'Poppins', sans-serif;
+  font-family: 'Courier New', Courier, monospace;
   font-weight: 700;
-  font-size: 18px;
-  color: var(--horror-ghost-white);
-  letter-spacing: 1.5px;
-  text-shadow: 0 2px 4px var(--horror-void-black);
-  box-shadow: 0 0 15px var(--horror-blood-red), 0 0 30px rgba(220, 20, 60, 0.6);
-  transition: all 0.3s;
+  font-size: 15px;
+  color: var(--text-highlight);
+  letter-spacing: 0.1em;
+  text-shadow: 1px 1px 0 var(--creepy-void);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+  transition: all 0.2s;
+  text-transform: uppercase;
 }
 
 .infinite-button:hover:not(:disabled) {
-  transform: translateY(-3px);
-  animation: horror-pulse 1.5s infinite;
+  background-color: var(--creepy-blood);
+  border-color: var(--text-danger);
+  box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.7);
 }
 
 .infinite-button:disabled {
   cursor: not-allowed;
-  opacity: 0.7;
-  background-color: var(--horror-shadow-gray);
+  opacity: 0.5;
+  background-color: var(--creepy-dark-gray);
 }
 
 .infinite-generate-new-button {
   margin-top: 25px;
-  background-color: var(--horror-dark-purple);
-  border: 2px solid var(--horror-eerie-green);
-  box-shadow: 0 0 20px var(--horror-eerie-green), 0 0 40px rgba(57, 255, 20, 0.4);
+  background-color: var(--creepy-charcoal);
+  border: 2px solid var(--creepy-sickly-green);
+}
+
+.infinite-generate-new-button:hover:not(:disabled) {
+  background-color: var(--creepy-dark-gray);
 }
 
 .infinite-generated-text-label {
-  font-size: 22px;
+  font-size: 16px;
   font-weight: 700;
   margin-bottom: 12px;
-  font-family: 'Poppins', sans-serif;
+  font-family: 'Courier New', Courier, monospace;
   text-align: center;
-  letter-spacing: 2px;
-  color: var(--horror-eerie-green);
-  text-shadow: 0 0 15px var(--horror-eerie-green);
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  text-transform: uppercase;
 }
 
 .infinite-generated-text {
   margin-top: 10px;
   padding: 20px;
-  border-radius: 12px;
-  font-size: 17px;
-  line-height: 26px;
-  box-shadow: 0 6px 12px rgba(255, 0, 0, 0.8);
-  font-family: 'Poppins', sans-serif;
+  border-radius: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+  font-family: 'Courier New', Courier, monospace;
   font-weight: 400;
-  color: var(--horror-ghost-white);
-  background-color: var(--horror-charcoal);
-  border: 1px solid var(--horror-fog-gray);
+  color: var(--text-normal);
+  background-color: var(--creepy-deep-black);
+  border: 1px solid var(--creepy-fog);
+  letter-spacing: 0.02em;
 }
 
 .infinite-response-buttons {
@@ -155,49 +164,49 @@
 .infinite-yes-button,
 .infinite-no-button {
   flex: 1;
-  padding: 16px;
-  border-radius: 12px;
+  padding: 14px;
+  border-radius: 0;
   cursor: pointer;
-  font-family: 'Poppins', sans-serif;
+  font-family: 'Courier New', Courier, monospace;
   font-weight: 700;
-  font-size: 18px;
-  color: var(--horror-ghost-white);
-  letter-spacing: 1.5px;
-  text-shadow: 0 2px 4px var(--horror-void-black);
-  transition: all 0.3s;
+  font-size: 14px;
+  color: var(--text-highlight);
+  letter-spacing: 0.05em;
+  text-shadow: 1px 1px 0 var(--creepy-void);
+  transition: all 0.2s;
+  text-transform: uppercase;
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.5);
 }
 
 .infinite-yes-button {
-  background-color: var(--horror-blood-red);
-  border: 2px solid var(--horror-crimson);
-  box-shadow: 0 0 15px var(--horror-blood-red);
+  background-color: var(--creepy-blood);
+  border: 2px solid var(--text-danger);
 }
 
 .infinite-no-button {
-  background-color: var(--horror-dark-purple);
-  border: 2px solid var(--horror-eerie-green);
-  box-shadow: 0 0 20px var(--horror-eerie-green);
+  background-color: var(--creepy-charcoal);
+  border: 2px solid var(--creepy-pale-green);
 }
 
 .infinite-yes-button:hover,
 .infinite-no-button:hover {
-  transform: translateY(-3px);
-  animation: horror-pulse 1.5s infinite;
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.7);
 }
 
 .infinite-tease-text {
   margin-top: 25px;
-  padding: 20px 25px;
-  border-radius: 12px;
-  font-size: 18px;
-  font-weight: 700;
+  padding: 18px 20px;
+  border-radius: 0;
+  font-size: 14px;
+  font-weight: 400;
   text-align: center;
-  box-shadow: 0 0 15px var(--horror-blood-red);
-  font-family: 'Poppins', sans-serif;
-  letter-spacing: 1px;
-  background-color: var(--horror-blood-red);
-  color: var(--horror-ghost-white);
-  border: 2px solid var(--horror-dark-crimson);
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.5);
+  font-family: 'Courier New', Courier, monospace;
+  letter-spacing: 0.05em;
+  background-color: var(--creepy-dark-gray);
+  color: var(--text-normal);
+  border: 2px solid var(--creepy-fog);
+  line-height: 1.5;
 }
 
 /* Tablet styles */
@@ -207,7 +216,7 @@
   }
 
   .infinite-title {
-    font-size: 28px;
+    font-size: 24px;
   }
 
   .infinite-card {
@@ -225,9 +234,9 @@
   }
 
   .infinite-generated-text {
-    font-size: 16px;
-    line-height: 22px;
-    padding: 18px;
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 16px;
   }
 }
 
@@ -240,12 +249,12 @@
   .infinite-go-back-button {
     top: 10px;
     left: 10px;
-    padding: 8px;
-    font-size: 14px;
+    padding: 8px 12px;
+    font-size: 12px;
   }
 
   .arrow {
-    font-size: 20px;
+    font-size: 16px;
   }
 
   .infinite-header {
@@ -253,34 +262,32 @@
   }
 
   .infinite-title {
-    font-size: 24px;
-    letter-spacing: 2px;
+    font-size: 20px;
+    letter-spacing: 0.08em;
   }
 
   .infinite-subtitle {
-    font-size: 14px;
+    font-size: 11px;
   }
 
   .infinite-card {
     width: 95%;
     padding: 15px;
-    border-radius: 15px;
   }
 
   .infinite-button {
-    padding: 14px;
-    font-size: 16px;
-    border-radius: 25px;
+    padding: 12px;
+    font-size: 13px;
   }
 
   .infinite-generated-text-label {
-    font-size: 18px;
+    font-size: 14px;
   }
 
   .infinite-generated-text {
-    font-size: 15px;
-    line-height: 20px;
-    padding: 15px;
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 14px;
   }
 
   .infinite-response-buttons {
@@ -291,14 +298,13 @@
   .infinite-yes-button,
   .infinite-no-button {
     padding: 12px;
-    font-size: 16px;
-    border-radius: 25px;
+    font-size: 12px;
   }
 
   .infinite-tease-text {
     margin-top: 20px;
-    padding: 15px 20px;
-    font-size: 16px;
+    padding: 14px 16px;
+    font-size: 12px;
   }
 
   .infinite-generate-new-button {
@@ -313,11 +319,11 @@
   }
 
   .infinite-title {
-    font-size: 20px;
+    font-size: 18px;
   }
 
   .infinite-subtitle {
-    font-size: 13px;
+    font-size: 10px;
   }
 
   .infinite-card {
@@ -325,28 +331,28 @@
   }
 
   .infinite-button {
-    padding: 12px;
-    font-size: 15px;
+    padding: 10px;
+    font-size: 12px;
   }
 
   .infinite-generated-text-label {
-    font-size: 16px;
+    font-size: 13px;
   }
 
   .infinite-generated-text {
-    font-size: 14px;
-    line-height: 19px;
+    font-size: 11px;
+    line-height: 1.4;
     padding: 12px;
   }
 
   .infinite-yes-button,
   .infinite-no-button {
-    padding: 11px;
-    font-size: 15px;
+    padding: 10px;
+    font-size: 11px;
   }
 
   .infinite-tease-text {
-    font-size: 15px;
-    padding: 12px 15px;
+    font-size: 11px;
+    padding: 12px 14px;
   }
 }

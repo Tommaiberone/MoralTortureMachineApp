@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
 @import './styles/horrorTheme.css';
 
 * {
@@ -8,17 +7,19 @@
 }
 
 body {
-  font-family: 'Poppins', sans-serif;
-  -webkit-font-smoothing: antialiased;
+  font-family: 'Courier New', Courier, monospace;
+  -webkit-font-smoothing: none;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
-  background-color: var(--horror-void-black);
+  background-color: var(--creepy-void);
+  image-rendering: pixelated;
 }
 
 #root {
   width: 100%;
   min-height: 100vh;
   overflow-x: hidden;
+  position: relative;
 }
 
 /* Loading container */
@@ -28,26 +29,30 @@ body {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background-color: var(--horror-void-black);
+  background-color: var(--creepy-void);
+  animation: static-flicker 0.5s infinite;
 }
 
 .loading-text {
-  color: var(--horror-eerie-green);
-  font-size: 16px;
-  font-weight: 600;
+  color: var(--text-dim);
+  font-size: 14px;
+  font-weight: 400;
   margin-top: 20px;
-  letter-spacing: 2px;
-  text-shadow: 0 0 10px var(--horror-eerie-green);
-  animation: horror-flicker 2s infinite;
+  letter-spacing: 0.15em;
+  text-shadow: 0 0 3px var(--text-dim);
+  animation: horror-flicker 3s infinite;
+  font-family: 'Courier New', Courier, monospace;
+  text-transform: uppercase;
 }
 
 .spinner {
-  border: 4px solid rgba(139, 0, 0, 0.2);
-  border-left-color: var(--horror-blood-red);
-  border-radius: 50%;
-  width: 60px;
-  height: 60px;
-  animation: spin 1s linear infinite, horror-glow 2s infinite;
+  border: 2px solid var(--creepy-charcoal);
+  border-left-color: var(--text-dim);
+  border-radius: 0;
+  width: 40px;
+  height: 40px;
+  animation: spin 1.5s linear infinite;
+  box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
 }
 
 @keyframes spin {

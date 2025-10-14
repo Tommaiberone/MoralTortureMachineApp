@@ -1,33 +1,64 @@
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
+  font-family: 'Courier New', Courier, monospace;
+  line-height: 1.4;
   font-weight: 400;
 
-  color: var(--horror-ghost-white);
-  background-color: var(--horror-void-black);
+  color: var(--text-normal);
+  background-color: var(--creepy-void);
 
   font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: none;
   -moz-osx-font-smoothing: grayscale;
 
-  /* Prevent text from being too small on mobile */
   -webkit-text-size-adjust: 100%;
   -moz-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
 
+/* Grain/noise overlay */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 200%;
+  height: 200%;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.15'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+  animation: grain 8s steps(10) infinite;
+  opacity: 0.5;
+}
+
+/* Scanline effect */
+body::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(transparent, rgba(170, 170, 170, 0.1), transparent);
+  pointer-events: none;
+  z-index: 9998;
+  animation: scanline 6s linear infinite;
+}
+
 a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-  /* Improve touch target size */
+  font-weight: 400;
+  color: var(--text-normal);
+  text-decoration: none;
   min-height: 44px;
   display: inline-flex;
   align-items: center;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s;
 }
+
 a:hover {
-  color: var(--horror-crimson);
+  color: var(--text-highlight);
+  border-bottom-color: var(--text-dim);
 }
 
 body {
@@ -36,52 +67,62 @@ body {
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
-  /* Prevent horizontal scroll on mobile */
   overflow-x: hidden;
-  background: var(--horror-gradient-toxic-glow);
-  animation: horror-background-pulse 4s infinite;
+  background-color: var(--creepy-void);
+  animation: static-flicker 0.5s infinite;
 }
 
 h1 {
-  font-size: 3.2em;
+  font-size: 2.5em;
   line-height: 1.1;
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 700;
+  letter-spacing: 0.05em;
 }
 
 button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: var(--horror-dark-blood);
-  color: var(--horror-ghost-white);
+  border-radius: 0;
+  border: 1px solid var(--creepy-fog);
+  padding: 0.8em 1.5em;
+  font-size: 0.95em;
+  font-weight: 400;
+  font-family: 'Courier New', Courier, monospace;
+  background-color: var(--creepy-dark-gray);
+  color: var(--text-normal);
   cursor: pointer;
-  transition: border-color 0.25s;
-  /* Improve touch target size on mobile */
+  transition: all 0.15s;
   min-height: 44px;
   min-width: 44px;
+  box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
+
 button:hover {
-  border-color: var(--horror-crimson);
+  background-color: var(--creepy-mid-gray);
+  border-color: var(--text-dim);
+  color: var(--text-highlight);
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.7);
 }
+
+button:active {
+  transform: scale(0.98);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.9);
+}
+
 button:focus,
 button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  outline: 1px solid var(--text-dim);
+  outline-offset: 2px;
 }
 
-/* Improve tap highlight color on mobile */
 button:active,
 a:active {
-  -webkit-tap-highlight-color: rgba(108, 113, 255, 0.3);
+  -webkit-tap-highlight-color: rgba(58, 26, 26, 0.3);
 }
 
-a:hover {
-  color: var(--horror-crimson);
-}
-button {
-  background-color: var(--horror-dark-blood);
-}
-button:hover {
-  border-color: var(--horror-crimson);
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: var(--creepy-charcoal);
 }
