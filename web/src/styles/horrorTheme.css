@@ -10,8 +10,8 @@
   --horror-crimson: #DC143C;
   --horror-dark-crimson: #660000;
   --horror-rust: #A0522D;
-  --horror-eerie-green: #39FF14;
-  --horror-toxic-green: #00FF00;
+  --horror-eerie-green: #006400;
+  --horror-toxic-green: #006400;
   --horror-ghost-white: #F8F8FF;
   --horror-pale-yellow: #FFFFE0;
   --horror-shadow-gray: #2B2B2B;
@@ -45,7 +45,7 @@
 
 @keyframes horror-flicker {
   0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% {
-    text-shadow: 0 0 10px var(--horror-eerie-green), 0 0 20px var(--horror-eerie-green), 0 0 30px var(--horror-eerie-green);
+    text-shadow: 0 0 10px var(--horror-dark-crimson), 0 0 20px var(--horror-dark-crimson), 0 0 30px var(--horror-dark-crimson);
     opacity: 1;
   }
   20%, 24%, 55% {
@@ -56,12 +56,12 @@
 
 @keyframes horror-glow {
   0% {
-    box-shadow: 0 0 5px var(--horror-blood-red);
+    box-shadow: 0 0 5px var(--horror-dark-crimson);
   }
   50% {
-    box-shadow: 0 0 20px var(--horror-blood-red), 0 0 30px var(--horror-blood-red);
+    box-shadow: 0 0 20px var(--horror-dark-crimson), 0 0 30px var(--horror-dark-crimson);
   }
   100% {
-    box-shadow: 0 0 5px var(--horror-blood-red);
+    box-shadow: 0 0 5px var(--horror-dark-crimson);
   }
 }

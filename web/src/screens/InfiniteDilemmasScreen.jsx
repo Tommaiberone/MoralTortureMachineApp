@@ -84,10 +84,6 @@ const InfiniteDilemmasScreen = () => {
     setChoiceMade(true);
   };
 
-  const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode);
-  };
-
   return (
     <div className="infinite-scroll-container">
         <button

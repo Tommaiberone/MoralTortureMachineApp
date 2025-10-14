@@ -10,7 +10,7 @@ const EvaluationDilemmasScreen = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [dilemma, setDilemma] = useState(null);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+
   const [choiceMade, setChoiceMade] = useState(false);
   const [selectedTease, setSelectedTease] = useState("");
   const [currentDilemmaCount, setCurrentDilemmaCount] = useState(0);
@@ -149,27 +149,21 @@ const EvaluationDilemmasScreen = () => {
     setVoting(false);
   };
 
-  const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode);
-  };
-
   const colors = {
-    background: isDarkMode ? "#1E1E2E" : "#F0F4FF",
-    gradientBackground: isDarkMode
-      ? "linear-gradient(135deg, #2C2C3E, #1E1E2E)"
-      : "linear-gradient(135deg, #6C71FF, #A29BFF)",
-    title: isDarkMode ? "#E0E0E0" : "#333333",
-    buttonBackground: isDarkMode ? "#3A3A5A" : "#6C71FF",
-    generateNewButtonBackground: isDarkMode ? "#3A3A5A" : "#FFB86C",
+    background: "#1E1E2E",
+    gradientBackground: "linear-gradient(135deg, #2C2C3E, #1E1E2E)",
+    title: "#E0E0E0",
+    buttonBackground: "#3A3A5A",
+    generateNewButtonBackground: "#3A3A5A",
     buttonText: "#FFFFFF",
-    generatedTextLabel: isDarkMode ? "#E0E0E0" : "#333333",
-    generatedTextBackground: isDarkMode ? "#2C2C3E" : "#FFFFFF",
-    generatedTextColor: isDarkMode ? "#CCCCCC" : "#333333",
-    teaseTextBackground: isDarkMode ? "#6C71FF" : "#A29BFF",
-    teaseTextColor: isDarkMode ? "#FFFFFF" : "#1E1E2E",
+    generatedTextLabel: "#E0E0E0",
+    generatedTextBackground: "#2C2C3E",
+    generatedTextColor: "#CCCCCC",
+    teaseTextBackground: "#6C71FF",
+    teaseTextColor: "#FFFFFF",
     yesButtonBackground: "#6C71FF",
     noButtonBackground: "#FFB86C",
-    toggleText: isDarkMode ? "#E0E0E0" : "#333333",
+    toggleText: "#E0E0E0",
   };
 
   const pieChartData = [
@@ -204,20 +198,6 @@ const EvaluationDilemmasScreen = () => {
         </button>
 
         <div className="evaluation-header">
-          <div className="evaluation-toggle-container">
-            <span className="toggle-icon" style={{ color: colors.toggleText }}>
-              {isDarkMode ? "🌙" : "☀️"}
-            </span>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={isDarkMode}
-                onChange={toggleDarkMode}
-              />
-              <span className="toggle-slider"></span>
-            </label>
-          </div>
-
           <h1 className="evaluation-title" style={{ color: colors.title }}>
             Ethical Dilemmas
           </h1>
@@ -230,9 +210,7 @@ const EvaluationDilemmasScreen = () => {
           className="evaluation-card"
           style={{
             backgroundColor: colors.generatedTextBackground,
-            boxShadow: isDarkMode
-              ? "0 8px 20px rgba(0, 0, 0, 0.5)"
-              : "0 8px 20px rgba(0, 0, 0, 0.2)",
+            boxShadow: "0 8px 20px rgba(0, 0, 0, 0.5)",
           }}
         >
           {!dilemma ? (
