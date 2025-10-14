@@ -1,5 +1,5 @@
 // screens/EvaluationDilemmasScreen.js
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Switch,
   Dimensions,
   Alert,
+  Animated,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -21,7 +22,14 @@ import {
   Poppins_700Bold,
 } from "@expo-google-fonts/poppins";
 import { useNavigation } from "@react-navigation/native";
-import { PieChart } from "react-native-gifted-charts"; // Import PieChart
+import { PieChart } from "react-native-gifted-charts";
+import {
+  HorrorColors,
+  HorrorGradients,
+  HorrorShadows,
+  getCreepyMessage,
+  createPulseAnimation,
+} from '../styles/horrorTheme';
 
 const { width } = Dimensions.get("window");
 
@@ -30,11 +38,12 @@ const MAX_DILEMMAS = 5;
 const EvaluationDilemmasScreen = () => {
   const [loading, setLoading] = useState(false);
   const [dilemma, setDilemma] = useState(null);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true);
   const [choiceMade, setChoiceMade] = useState(false);
   const [selectedTease, setSelectedTease] = useState("");
   const [currentDilemmaCount, setCurrentDilemmaCount] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState([]);
+  const [creepyMessage, setCreepyMessage] = useState("");
 
   // State to track choices
   const [currentChoice, setChoiceCounts] = useState({ first: 0, second: 0 });
@@ -46,11 +55,49 @@ const EvaluationDilemmasScreen = () => {
 
   const [evaluationComplete, setEvaluationComplete] = useState(false);
 
+  // Animation values
+  const cardPulse = useRef(new Animated.Value(0)).current;
+  const progressGlow = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
     if (currentDilemmaCount >= MAX_DILEMMAS) {
       setEvaluationComplete(true);
     }
   }, [currentDilemmaCount]);
+
+  useEffect(() => {
+    // Card pulse animation
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(cardPulse, {
+          toValue: 1,
+          duration: 2500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(cardPulse, {
+          toValue: 0,
+          duration: 2500,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    // Progress glow animation
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(progressGlow, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(progressGlow, {
+          toValue: 0,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
 
   let [fontsLoaded] = useFonts({
     Poppins_400Regular,
@@ -61,7 +108,8 @@ const EvaluationDilemmasScreen = () => {
   if (!fontsLoaded) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#6C71FF" />
+        <ActivityIndicator size="large" color={HorrorColors.bloodRed} />
+        <Text style={styles.loadingText}>{getCreepyMessage()}</Text>
       </View>
     );
   }
@@ -102,6 +150,7 @@ const EvaluationDilemmasScreen = () => {
 
   const fetchDilemma = async () => {
     setLoading(true);
+    setCreepyMessage(getCreepyMessage());
     setDilemma(null);
     setChoiceMade(false);
     setSelectedTease("");
@@ -116,7 +165,7 @@ const EvaluationDilemmasScreen = () => {
       setDilemma(fetchedDilemma);
     } catch (error) {
       console.error("Error during backend call:", error);
-      Alert.alert("Error", "Failed to fetch the dilemma. Please try again.");
+      Alert.alert("⚠ ERROR ⚠", "The machine has failed to extract your dilemma. Try again... if you dare.");
     } finally {
       setLoading(false);
     }
@@ -216,28 +265,26 @@ const EvaluationDilemmasScreen = () => {
   };
 
   const colors = {
-    background: isDarkMode ? "#1E1E2E" : "#F0F4FF",
-    gradientBackground: isDarkMode
-      ? ["#2C2C3E", "#1E1E2E"]
-      : ["#6C71FF", "#A29BFF"],
-    title: isDarkMode ? "#E0E0E0" : "#333333",
-    buttonBackground: isDarkMode ? "#3A3A5A" : "#6C71FF",
-    generateNewButtonBackground: isDarkMode ? "#3A3A5A" : "#FFB86C",
-    buttonText: "#FFFFFF",
-    generatedTextLabel: isDarkMode ? "#E0E0E0" : "#333333",
-    generatedTextBackground: isDarkMode ? "#2C2C3E" : "#FFFFFF",
-    generatedTextColor: isDarkMode ? "#CCCCCC" : "#333333",
-    teaseTextBackground: isDarkMode ? "#6C71FF" : "#A29BFF",
-    teaseTextColor: isDarkMode ? "#FFFFFF" : "#1E1E2E",
-    distributionOptionColor: isDarkMode ? "#E0E0E0" : "#333333",
-    progressBarBackground: isDarkMode ? "#3A3A5A" : "#A29BFF",
-    firstSegment: "#6C71FF",
-    secondSegment: "#FFB86C",
-    yesButtonBackground: "#6C71FF",
-    noButtonBackground: "#FFB86C",
-    toggleText: isDarkMode ? "#E0E0E0" : "#333333",
-    toggleSwitchBackground: isDarkMode ? "#3A3A5A" : "#A29BFF",
-    toggleSwitchCircle: isDarkMode ? "#6C71FF" : "#FFFFFF",
+    background: HorrorColors.voidBlack,
+    gradientBackground: HorrorGradients.crimsonNight,
+    title: HorrorColors.crimson,
+    buttonBackground: HorrorColors.bloodRed,
+    generateNewButtonBackground: HorrorColors.darkPurple,
+    buttonText: HorrorColors.ghostWhite,
+    generatedTextLabel: HorrorColors.eerieGreen,
+    generatedTextBackground: HorrorColors.charcoal,
+    generatedTextColor: HorrorColors.ghostWhite,
+    teaseTextBackground: HorrorColors.bloodRed,
+    teaseTextColor: HorrorColors.ghostWhite,
+    distributionOptionColor: HorrorColors.ashGray,
+    progressBarBackground: HorrorColors.shadowGray,
+    firstSegment: HorrorColors.bloodRed,
+    secondSegment: HorrorColors.eerieGreen,
+    yesButtonBackground: HorrorColors.bloodRed,
+    noButtonBackground: HorrorColors.darkPurple,
+    toggleText: HorrorColors.ashGray,
+    toggleSwitchBackground: HorrorColors.shadowGray,
+    toggleSwitchCircle: HorrorColors.eerieGreen,
   };
 
   // Prepare data for the PieChart
@@ -290,6 +337,14 @@ const EvaluationDilemmasScreen = () => {
 
   console.log("pieChartDataWithPercent", pieChartDataWithPercent);
 
+  const cardAnimation = createPulseAnimation(cardPulse);
+  const progressAnimation = {
+    opacity: progressGlow.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0.7, 1],
+    }),
+  };
+
   return (
     <LinearGradient
       colors={colors.gradientBackground}
@@ -303,53 +358,41 @@ const EvaluationDilemmasScreen = () => {
         <TouchableOpacity
           style={{
             ...styles.goBackButton,
-            backgroundColor: colors.teaseTextBackground,
+            backgroundColor: HorrorColors.shadowGray,
+            borderColor: HorrorColors.bloodRed,
+            borderWidth: 2,
           }}
           onPress={() => navigation.goBack()}
-          accessibilityLabel="Go back to the previous screen"
+          accessibilityLabel="Escape the evaluation"
         >
-          <Ionicons name="arrow-back" size={24} color="#E0E0E0" />
-          <Text style={styles.goBackText}>Go Back</Text>
+          <Ionicons name="arrow-back" size={24} color={HorrorColors.ghostWhite} />
+          <Text style={styles.goBackText}>ESCAPE</Text>
         </TouchableOpacity>
 
-        {/* Header with Toggle (Slider) above the Title */}
+        {/* Header with Title */}
         <View style={styles.header}>
-          {/* Toggle Container */}
-          <View style={styles.toggleContainer}>
-            <Ionicons
-              name={isDarkMode ? "moon" : "sunny"}
-              size={24}
-              color={colors.toggleText}
-            />
-            <Switch
-              trackColor={{
-                false: colors.toggleSwitchBackground,
-                true: colors.toggleSwitchBackground,
-              }}
-              thumbColor={isDarkMode ? colors.toggleSwitchCircle : "#FFFFFF"}
-              ios_backgroundColor="#3e3e3e"
-              onValueChange={toggleDarkMode}
-              value={isDarkMode}
-              style={{ marginTop: 0, marginLeft: 10 }}
-            />
-          </View>
-
           {/* Title */}
-          <Text style={[styles.title, { color: colors.title }]}>
-            Ethical Dilemmas
-          </Text>
-          <Text style={[styles.subtitle, { color: colors.title }]}>
-            {currentDilemmaCount} / {MAX_DILEMMAS}
+          <Animated.Text style={[styles.title, { color: colors.title }, progressAnimation]}>
+            🩸 MORALITY TEST 🩸
+          </Animated.Text>
+          <Animated.Text style={[styles.subtitle, { color: colors.generatedTextLabel }, progressAnimation]}>
+            Victim {currentDilemmaCount} of {MAX_DILEMMAS}
+          </Animated.Text>
+          <Text style={[styles.warningText, { color: HorrorColors.warningOrange }]}>
+            ⚠ Your soul is being evaluated ⚠
           </Text>
         </View>
 
         {/* Main Content Card */}
-        <View
+        <Animated.View
           style={[
             styles.card,
+            cardAnimation,
             {
               backgroundColor: colors.generatedTextBackground,
-              shadowColor: isDarkMode ? "#000" : "#000",
+              shadowColor: HorrorColors.bloodRed,
+              borderColor: HorrorColors.crimson,
+              borderWidth: 2,
             },
           ]}
         >
@@ -357,39 +400,45 @@ const EvaluationDilemmasScreen = () => {
             <View style={styles.buttonContainer}>
               {/* Initial "Get Dilemma" Button */}
               <TouchableOpacity
-                onPress={fetchDilemma} // Directly fetch a new dilemma
+                onPress={fetchDilemma}
                 disabled={loading}
                 style={[
                   styles.button,
                   {
                     backgroundColor: loading
-                      ? "#CCCCCC"
+                      ? HorrorColors.shadowGray
                       : colors.buttonBackground,
+                    borderColor: HorrorColors.crimson,
+                    borderWidth: 2,
                   },
                 ]}
               >
                 <Text style={styles.buttonText}>
-                  {loading ? "🔄 Loading..." : "✨ Get Dilemma"}
+                  {loading ? "⏳ " + creepyMessage : "🩸 RECEIVE JUDGMENT 🩸"}
                 </Text>
               </TouchableOpacity>
               {loading && (
-                <ActivityIndicator
-                  size="large"
-                  color={colors.buttonText}
-                  style={{ marginTop: 15 }}
-                />
+                <>
+                  <ActivityIndicator
+                    size="large"
+                    color={HorrorColors.bloodRed}
+                    style={{ marginTop: 15 }}
+                  />
+                  <Text style={styles.loadingText}>{creepyMessage}</Text>
+                </>
               )}
             </View>
           ) : (
             <View>
-              <Text
+              <Animated.Text
                 style={[
                   styles.generatedTextLabel,
                   { color: colors.generatedTextLabel },
+                  progressAnimation,
                 ]}
               >
-                🧠 Retrieved Ethical Dilemma:
-              </Text>
+                ☠ YOUR MORAL TORMENT ☠
+              </Animated.Text>
               <Text
                 style={[
                   styles.generatedText,
@@ -406,29 +455,37 @@ const EvaluationDilemmasScreen = () => {
                   <TouchableOpacity
                     style={[
                       styles.yesButton,
-                      { backgroundColor: colors.yesButtonBackground },
+                      {
+                        backgroundColor: colors.yesButtonBackground,
+                        borderColor: HorrorColors.crimson,
+                        borderWidth: 2,
+                      },
                     ]}
                     onPress={() => handleChoice("first")}
-                    disabled={voting} // Disable during voting
+                    disabled={voting}
                   >
-                    <Text style={styles.buttonText}>{dilemma.firstAnswer}</Text>
+                    <Text style={styles.buttonText}>🩸 {dilemma.firstAnswer}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[
                       styles.noButton,
-                      { backgroundColor: colors.noButtonBackground },
+                      {
+                        backgroundColor: colors.noButtonBackground,
+                        borderColor: HorrorColors.eerieGreen,
+                        borderWidth: 2,
+                      },
                     ]}
                     onPress={() => handleChoice("second")}
-                    disabled={voting} // Disable during voting
+                    disabled={voting}
                   >
                     <Text style={styles.buttonText}>
-                      {dilemma.secondAnswer}
+                      💀 {dilemma.secondAnswer}
                     </Text>
                   </TouchableOpacity>
                   {voting && (
                     <ActivityIndicator
                       size="small"
-                      color="#FFFFFF"
+                      color={HorrorColors.bloodRed}
                       style={{ marginTop: 10 }}
                     />
                   )}
@@ -500,10 +557,14 @@ const EvaluationDilemmasScreen = () => {
                       style={[
                         styles.button,
                         styles.generateNewButton,
-                        { backgroundColor: colors.generateNewButtonBackground },
+                        {
+                          backgroundColor: colors.generateNewButtonBackground,
+                          borderColor: HorrorColors.eerieGreen,
+                          borderWidth: 2,
+                        },
                       ]}
                     >
-                      <Text style={styles.buttonText}>View Results</Text>
+                      <Text style={styles.buttonText}>💀 SEE YOUR JUDGMENT 💀</Text>
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity
@@ -514,13 +575,15 @@ const EvaluationDilemmasScreen = () => {
                         styles.generateNewButton,
                         {
                           backgroundColor: loading
-                            ? "#CCCCCC"
+                            ? HorrorColors.shadowGray
                             : colors.generateNewButtonBackground,
+                          borderColor: HorrorColors.eerieGreen,
+                          borderWidth: 2,
                         },
                       ]}
                     >
                       <Text style={styles.buttonText}>
-                        {loading ? "🔄 Loading..." : "🔁 Get New Dilemma"}
+                        {loading ? "⏳ " + creepyMessage : "🔁 NEXT TORMENT"}
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -548,25 +611,50 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
     paddingHorizontal: 20,
   },
+  loadingText: {
+    color: HorrorColors.eerieGreen,
+    fontSize: 14,
+    fontFamily: "Poppins_600SemiBold",
+    marginTop: 10,
+    textAlign: 'center',
+    letterSpacing: 1,
+    textShadowColor: HorrorColors.eerieGreen,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
+  },
   header: {
     width: "100%",
     flexDirection: "column",
     alignItems: "center",
     verticalAlign: "center",
     marginBottom: 20,
+    marginTop: 20,
   },
   title: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: "700",
-    letterSpacing: 1.5,
+    letterSpacing: 3,
     fontFamily: "Poppins_700Bold",
-    marginTop: 10,
+    textShadowColor: HorrorColors.bloodRed,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 20,
   },
   subtitle: {
-    fontSize: 16,
-    fontWeight: "400",
-    fontFamily: "Poppins_400Regular",
-    marginTop: 5,
+    fontSize: 18,
+    fontWeight: "600",
+    fontFamily: "Poppins_600SemiBold",
+    marginTop: 8,
+    letterSpacing: 2,
+    textShadowColor: HorrorColors.eerieGreen,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 12,
+  },
+  warningText: {
+    fontSize: 13,
+    fontFamily: "Poppins_600SemiBold",
+    marginTop: 8,
+    letterSpacing: 1.5,
+    textAlign: 'center',
   },
   toggleContainer: {
     marginTop:10,
@@ -577,13 +665,9 @@ const styles = StyleSheet.create({
   },
   card: {
     padding: 25,
-    borderRadius: 20,
+    borderRadius: 12,
     width: width * 0.9,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 8,
+    ...HorrorShadows.ominous,
   },
   buttonContainer: {
     alignItems: "center",
@@ -592,45 +676,49 @@ const styles = StyleSheet.create({
   },
   button: {
     width: "100%",
-    paddingVertical: 16,
-    borderRadius: 30,
-    elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    paddingVertical: 18,
+    borderRadius: 12,
     alignItems: "center",
     verticalAlign: "center",
     justifyContent: "center",
+    ...HorrorShadows.bloodGlow,
   },
   buttonText: {
-    color: "#FFFFFF",
+    color: HorrorColors.ghostWhite,
     fontSize: 18,
-    fontWeight: "600",
+    fontWeight: "700",
     textAlign: "center",
-    fontFamily: "Poppins_600SemiBold",
+    fontFamily: "Poppins_700Bold",
+    letterSpacing: 1.5,
+    textShadowColor: HorrorColors.voidBlack,
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   generateNewButton: {
     marginTop: 25,
   },
   generatedTextLabel: {
-    fontSize: 20,
-    fontWeight: "500",
-    marginBottom: 10,
-    fontFamily: "Poppins_600SemiBold",
+    fontSize: 22,
+    fontWeight: "700",
+    marginBottom: 12,
+    fontFamily: "Poppins_700Bold",
+    textAlign: 'center',
+    letterSpacing: 2,
+    textShadowColor: HorrorColors.eerieGreen,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 15,
   },
   generatedText: {
     marginTop: 10,
     padding: 20,
-    borderRadius: 15,
-    fontSize: 18,
-    lineHeight: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    borderRadius: 12,
+    fontSize: 17,
+    lineHeight: 26,
     elevation: 5,
     fontFamily: "Poppins_400Regular",
+    borderWidth: 1,
+    borderColor: HorrorColors.fogGray,
+    ...HorrorShadows.deep,
   },
   responseButtons: {
     flexDirection: "row",
@@ -639,42 +727,33 @@ const styles = StyleSheet.create({
   },
   yesButton: {
     flex: 0.48,
-    paddingVertical: 14,
-    borderRadius: 30,
-    elevation: 3,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    paddingVertical: 16,
+    borderRadius: 12,
     alignItems: "center",
     verticalAlign: "center",
+    ...HorrorShadows.bloodGlow,
   },
   noButton: {
     flex: 0.48,
-    paddingVertical: 14,
-    borderRadius: 30,
-    elevation: 3,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    paddingVertical: 16,
+    borderRadius: 12,
     alignItems: "center",
     verticalAlign: "center",
+    ...HorrorShadows.glow,
   },
   teaseText: {
     marginTop: 25,
-    paddingVertical: 18,
+    paddingVertical: 20,
     paddingHorizontal: 25,
-    borderRadius: 15,
+    borderRadius: 12,
     fontSize: 18,
-    fontWeight: "600",
+    fontWeight: "700",
     textAlign: "center",
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    fontFamily: "Poppins_600SemiBold",
+    fontFamily: "Poppins_700Bold",
+    letterSpacing: 1,
+    borderWidth: 2,
+    borderColor: HorrorColors.darkCrimson,
+    ...HorrorShadows.bloodGlow,
   },
   distributionBarWrapper: {
     marginTop: 25,
@@ -733,21 +812,23 @@ const styles = StyleSheet.create({
    * Go Back Button (Additional Styles)
    **********************************************/
   goBackButton: {
-    position: "absolute", // Position the button at the top-left corner
-    top: 50, // Adjust based on your layout (e.g., status bar height)
+    position: "absolute",
+    top: 40,
     left: 20,
     flexDirection: "row",
     alignItems: "center",
     verticalAlign: "center",
-    padding: 10,
+    padding: 12,
     borderRadius: 8,
-    zIndex: 1, // Ensure the button appears above other elements
+    zIndex: 1,
+    ...HorrorShadows.deep,
   },
   goBackText: {
-    color: "#FFFFFF",
+    color: HorrorColors.ghostWhite,
     fontSize: 16,
-    fontFamily: "Poppins_600SemiBold",
-    marginLeft: 5, // Space between icon and text
+    fontFamily: "Poppins_700Bold",
+    marginLeft: 5,
+    letterSpacing: 2,
   },
   chartContainer: {
     marginTop: 25,
