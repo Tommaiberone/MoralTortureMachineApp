@@ -149,186 +149,128 @@ const EvaluationDilemmasScreen = () => {
     setVoting(false);
   };
 
-  const colors = {
-    background: "#1E1E2E",
-    gradientBackground: "linear-gradient(135deg, #2C2C3E, #1E1E2E)",
-    title: "#E0E0E0",
-    buttonBackground: "#3A3A5A",
-    generateNewButtonBackground: "#3A3A5A",
-    buttonText: "#FFFFFF",
-    generatedTextLabel: "#E0E0E0",
-    generatedTextBackground: "#2C2C3E",
-    generatedTextColor: "#CCCCCC",
-    teaseTextBackground: "#6C71FF",
-    teaseTextColor: "#FFFFFF",
-    yesButtonBackground: "#6C71FF",
-    noButtonBackground: "#FFB86C",
-    toggleText: "#E0E0E0",
-  };
-
   const pieChartData = [
     {
       name: dilemma ? dilemma.firstAnswer : "Option 1",
       value: (dilemma ? dilemma.yesCount : 0) + currentChoice.first,
-      color: "#6C71FF",
+      color: "#7a4a4a",
     },
     {
       name: dilemma ? dilemma.secondAnswer : "Option 2",
       value: (dilemma ? dilemma.noCount : 0) + currentChoice.second,
-      color: "#FFB86C",
+      color: "#2a3a2a",
     },
   ];
 
   return (
-    <div
-      className="evaluation-gradient-background"
-      style={{ background: colors.gradientBackground }}
-    >
-      <div
-        className="evaluation-scroll-container"
-        style={{ backgroundColor: colors.background }}
+    <div className="evaluation-scroll-container">
+      <button
+        className="evaluation-go-back-button"
+        onClick={() => navigate(-1)}
       >
-        <button
-          className="evaluation-go-back-button"
-          style={{ backgroundColor: colors.teaseTextBackground }}
-          onClick={() => navigate(-1)}
-        >
-          <span className="arrow">←</span>
-          <span>[ BACK ]</span>
-        </button>
+        <span className="arrow">←</span>
+        <span>[ BACK ]</span>
+      </button>
 
-        <div className="evaluation-header">
-          <h1 className="evaluation-title" style={{ color: colors.title }}>
-            [ ETHICAL DILEMMAS ]
-          </h1>
-          <p className="evaluation-subtitle" style={{ color: colors.title }}>
-            {currentDilemmaCount} / {MAX_DILEMMAS}
-          </p>
-        </div>
+      <div className="evaluation-header">
+        <h1 className="evaluation-title">
+          [ ETHICAL DILEMMAS ]
+        </h1>
+        <p className="evaluation-subtitle">
+          {currentDilemmaCount} / {MAX_DILEMMAS}
+        </p>
+      </div>
 
-        <div
-          className="evaluation-card"
-          style={{
-            backgroundColor: colors.generatedTextBackground,
-            boxShadow: "0 8px 20px rgba(0, 0, 0, 0.5)",
-          }}
-        >
-          {!dilemma ? (
-            <div className="evaluation-button-container">
-              <button
-                onClick={fetchDilemma}
-                disabled={loading}
-                className="evaluation-button"
-                style={{
-                  backgroundColor: loading ? "#CCCCCC" : colors.buttonBackground,
-                }}
-              >
-                {loading ? "[ LOADING ]" : "[ GET DILEMMA ]"}
-              </button>
-              {loading && <div className="spinner"></div>}
-            </div>
-          ) : (
-            <div>
-              <p
-                className="evaluation-generated-text-label"
-                style={{ color: colors.generatedTextLabel }}
-              >
-                [ RETRIEVED DILEMMA ]
-              </p>
-              <p
-                className="evaluation-generated-text"
-                style={{
-                  backgroundColor: colors.generatedTextBackground,
-                  color: colors.generatedTextColor,
-                }}
-              >
-                {dilemma.dilemma}
-              </p>
-              {!choiceMade ? (
-                <div className="evaluation-response-buttons">
-                  <button
-                    className="evaluation-yes-button"
-                    style={{ backgroundColor: colors.yesButtonBackground }}
-                    onClick={() => handleChoice("first")}
-                    disabled={voting}
-                  >
-                    {dilemma.firstAnswer}
-                  </button>
-                  <button
-                    className="evaluation-no-button"
-                    style={{ backgroundColor: colors.noButtonBackground }}
-                    onClick={() => handleChoice("second")}
-                    disabled={voting}
-                  >
-                    {dilemma.secondAnswer}
-                  </button>
-                  {voting && <div className="spinner" style={{ marginTop: "10px" }}></div>}
+      <div className="evaluation-card">
+        {!dilemma ? (
+          <div className="evaluation-button-container">
+            <button
+              onClick={fetchDilemma}
+              disabled={loading}
+              className="evaluation-button"
+            >
+              {loading ? "[ LOADING ]" : "[ GET DILEMMA ]"}
+            </button>
+            {loading && <div className="spinner"></div>}
+          </div>
+        ) : (
+          <div>
+            <p className="evaluation-generated-text-label">
+              [ RETRIEVED DILEMMA ]
+            </p>
+            <p className="evaluation-generated-text">
+              {dilemma.dilemma}
+            </p>
+            {!choiceMade ? (
+              <div className="evaluation-response-buttons">
+                <button
+                  className="evaluation-yes-button"
+                  onClick={() => handleChoice("first")}
+                  disabled={voting}
+                >
+                  {dilemma.firstAnswer}
+                </button>
+                <button
+                  className="evaluation-no-button"
+                  onClick={() => handleChoice("second")}
+                  disabled={voting}
+                >
+                  {dilemma.secondAnswer}
+                </button>
+                {voting && <div className="spinner" style={{ marginTop: "10px" }}></div>}
+              </div>
+            ) : (
+              <div>
+                <p className="evaluation-tease-text">
+                  {selectedTease}
+                </p>
+                <div className="evaluation-chart-container">
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={pieChartData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) =>
+                          `${name}: ${(percent * 100).toFixed(0)}%`
+                        }
+                        outerRadius={window.innerWidth < 480 ? 60 : 80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {pieChartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Legend wrapperStyle={{ fontSize: window.innerWidth < 480 ? '12px' : '14px' }} />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
-              ) : (
-                <div>
-                  <p
-                    className="evaluation-tease-text"
-                    style={{
-                      backgroundColor: colors.teaseTextBackground,
-                      color: colors.teaseTextColor,
-                    }}
+                {evaluationComplete ? (
+                  <button
+                    onClick={() =>
+                      navigate("/results", {
+                        state: { answers: selectedAnswers },
+                      })
+                    }
+                    className="evaluation-button evaluation-generate-new-button"
                   >
-                    {selectedTease}
-                  </p>
-                  <div className="evaluation-chart-container">
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={pieChartData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={({ name, percent }) =>
-                            `${name}: ${(percent * 100).toFixed(0)}%`
-                          }
-                          outerRadius={window.innerWidth < 480 ? 60 : 80}
-                          fill="#8884d8"
-                          dataKey="value"
-                        >
-                          {pieChartData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Legend wrapperStyle={{ fontSize: window.innerWidth < 480 ? '12px' : '14px' }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                  {evaluationComplete ? (
-                    <button
-                      onClick={() =>
-                        navigate("/results", {
-                          state: { answers: selectedAnswers },
-                        })
-                      }
-                      className="evaluation-button evaluation-generate-new-button"
-                      style={{ backgroundColor: colors.generateNewButtonBackground }}
-                    >
-                      [ VIEW RESULTS ]
-                    </button>
-                  ) : (
-                    <button
-                      onClick={fetchDilemma}
-                      disabled={loading}
-                      className="evaluation-button evaluation-generate-new-button"
-                      style={{
-                        backgroundColor: loading
-                          ? "#CCCCCC"
-                          : colors.generateNewButtonBackground,
-                      }}
-                    >
-                      {loading ? "[ LOADING ]" : "[ GET NEW DILEMMA ]"}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+                    [ VIEW RESULTS ]
+                  </button>
+                ) : (
+                  <button
+                    onClick={fetchDilemma}
+                    disabled={loading}
+                    className="evaluation-button evaluation-generate-new-button"
+                  >
+                    {loading ? "[ LOADING ]" : "[ GET NEW DILEMMA ]"}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
