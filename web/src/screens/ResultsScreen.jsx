@@ -1,5 +1,5 @@
 // screens/ResultsScreen.jsx
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend } from 'recharts';
 import './ResultsScreen.css';
@@ -8,6 +8,8 @@ const ResultsScreen = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { answers } = location.state || { answers: [] };
+  const [aiAnalysis, setAiAnalysis] = useState('');
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
 
   if (!answers || answers.length === 0) {
     return (
@@ -39,6 +41,37 @@ const ResultsScreen = () => {
     value: (aggregated[label] / answers.length).toFixed(2),
     fullMark: Math.max(...Object.values(aggregated).map(v => v / answers.length)) * 1.2,
   }));
+
+  // Fetch AI analysis when component mounts
+  useEffect(() => {
+    const fetchAiAnalysis = async () => {
+      if (!answers || answers.length === 0) return;
+
+      setLoadingAnalysis(true);
+      try {
+        const backendUrl = "https://wxe53u88o8.execute-api.eu-west-1.amazonaws.com/analyze-results";
+        const response = await fetch(backendUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ answers }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+        setAiAnalysis(result.analysis);
+      } catch (error) {
+        console.error("Error fetching AI analysis:", error);
+        setAiAnalysis("The machine's consciousness flickers... Unable to analyze your soul at this moment.");
+      } finally {
+        setLoadingAnalysis(false);
+      }
+    };
+
+    fetchAiAnalysis();
+  }, [answers]);
 
   return (
     <div className="results-scroll-container">
@@ -84,6 +117,18 @@ const ResultsScreen = () => {
               </span>
             </div>
           ))}
+        </div>
+
+        <div className="results-ai-analysis">
+          <h2 className="results-ai-title">[ THE MACHINE'S VERDICT ]</h2>
+          {loadingAnalysis ? (
+            <div className="results-ai-loading">
+              <div className="spinner"></div>
+              <p className="results-ai-loading-text">Analyzing your soul...</p>
+            </div>
+          ) : (
+            <p className="results-ai-text">{aiAnalysis}</p>
+          )}
         </div>
     </div>
   );

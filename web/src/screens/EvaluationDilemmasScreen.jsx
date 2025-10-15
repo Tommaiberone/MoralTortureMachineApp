@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
 import "./EvaluationDilemmasScreen.css";
 
-const MAX_DILEMMAS = 5;
+const MAX_DILEMMAS = 7;
 
 const EvaluationDilemmasScreen = () => {
   const navigate = useNavigate();

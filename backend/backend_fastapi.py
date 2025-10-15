@@ -77,6 +77,9 @@ class DilemmaResponse(BaseModel):
         "by_alias": True
     }
 
+class AnalyzeResultsRequest(BaseModel):
+    answers: list[Dict[str, float]] = Field(..., description="List of moral category scores from user's answers")
+
 # Helper function to convert Decimal to native types
 def decimal_to_native(obj):
     """Convert DynamoDB Decimal types to native Python types"""
@@ -254,6 +257,90 @@ async def generate_dilemma():
         raise
     except Exception as e:
         logger.error(f"Error in /generate-dilemma: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+@app.post("/analyze-results")
+async def analyze_results(request: AnalyzeResultsRequest):
+    """
+    Analyze user's moral profile and generate a summary using Groq AI API
+
+    Returns an AI-generated analysis of the user's moral choices
+    """
+    try:
+        if not API_KEY:
+            raise HTTPException(
+                status_code=500,
+                detail="API_KEY not configured"
+            )
+
+        # Aggregate the answers to compute average values
+        aggregated = {}
+        for answer in request.answers:
+            for key, value in answer.items():
+                aggregated[key] = aggregated.get(key, 0) + value
+
+        # Calculate averages
+        num_answers = len(request.answers)
+        averages = {key: round(value / num_answers, 2) for key, value in aggregated.items()}
+
+        # Create a summary of the moral profile
+        profile_summary = ", ".join([f"{key}: {value}" for key, value in averages.items()])
+
+        payload = {
+            "model": "llama-3.3-70b-versatile",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": (
+                        f'You are analyzing a person\'s moral profile based on their responses to ethical dilemmas. '
+                        f'Here are their average scores across different moral categories: {profile_summary}. '
+                        f'Generate a thoughtful, slightly dark and creepy analysis (80-120 words) that: '
+                        f'1) Identifies their dominant moral traits '
+                        f'2) Explains what their choices reveal about their character '
+                        f'3) Provides insight into potential moral blind spots or strengths '
+                        f'4) Uses a tone that fits the "Moral Torture Machine" theme - mysterious, slightly unsettling, but insightful '
+                        f'Write in second person (addressing "you") and maintain a haunting, philosophical tone. '
+                        f'Do not use JSON format, just return the analysis text directly.'
+                    )
+                }
+            ],
+        }
+
+        api_url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {API_KEY}",
+            "Content-Type": "application/json",
+        }
+
+        logger.info(f"Sending request to Groq API for results analysis")
+        response = requests.post(api_url, headers=headers, json=payload, timeout=30)
+
+        if response.status_code != 200:
+            logger.error(f"Groq API error: {response.status_code} - {response.text}")
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Error from external API: {response.status_code}"
+            )
+
+        result = response.json()
+        analysis_text = result['choices'][0]['message']['content']
+
+        logger.info("Successfully generated analysis from Groq API")
+        return {
+            "analysis": analysis_text,
+            "averages": averages
+        }
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request error in /analyze-results: {str(e)}")
+        raise HTTPException(status_code=502, detail="Failed to connect to external API")
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error in /analyze-results: {str(e)}")
+        raise HTTPException(status_code=500, detail="Invalid JSON response from external API")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in /analyze-results: {str(e)}")
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 # Lambda handler
