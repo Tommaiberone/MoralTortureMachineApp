@@ -2,7 +2,7 @@
 
 :root {
   /* Core Creepy Dark Colors - Very desaturated, dark, oppressive */
-  --creepy-void: #0a0a0a;
+  --creepy-void: #1a1a1a;
   --creepy-deep-black: #121212;
   --creepy-charcoal: #1a1a1a;
   --creepy-dark-gray: #242424;
@@ -20,9 +20,9 @@
   --creepy-pale: #9a9a9a;
 
   /* Text colors - Low contrast, hard to read, unsettling */
-  --text-dim: #6a6a6a;
-  --text-normal: #8a8a8a;
-  --text-highlight: #aaaaaa;
+  --text-dim: #8a8a8a;
+  --text-normal: #c5c5c5;
+  --text-highlight: #ffffff;
   --text-danger: #7a4a4a;
 
   /* Glitch/Static effect colors */
