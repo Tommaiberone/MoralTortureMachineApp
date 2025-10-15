@@ -61,8 +61,8 @@ resource "aws_s3_bucket_policy" "frontend" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid       = "AllowCloudFrontAccess"
-        Effect    = "Allow"
+        Sid    = "AllowCloudFrontAccess"
+        Effect = "Allow"
         Principal = {
           Service = "cloudfront.amazonaws.com"
         }
@@ -90,6 +90,85 @@ resource "aws_cloudfront_origin_access_control" "frontend" {
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
+}
+
+# ACM Certificate per il dominio personalizzato (DEVE essere in us-east-1 per CloudFront)
+resource "aws_acm_certificate" "frontend" {
+  count                     = var.use_custom_domain ? 1 : 0
+  provider                  = aws.us_east_1
+  domain_name               = var.domain_name
+  subject_alternative_names = ["www.${var.domain_name}"]
+  validation_method         = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = {
+    Name        = "Moral Torture Machine SSL Certificate"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
+
+# Validazione del certificato ACM
+resource "aws_acm_certificate_validation" "frontend" {
+  count                   = var.use_custom_domain ? 1 : 0
+  provider                = aws.us_east_1
+  certificate_arn         = aws_acm_certificate.frontend[0].arn
+  validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
+}
+
+# Zona Route53 (assumi che esista già)
+data "aws_route53_zone" "main" {
+  count = var.use_custom_domain ? 1 : 0
+  name  = var.domain_name
+}
+
+# Record DNS per la validazione del certificato
+resource "aws_route53_record" "cert_validation" {
+  for_each = var.use_custom_domain ? {
+    for dvo in aws_acm_certificate.frontend[0].domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  } : {}
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = data.aws_route53_zone.main[0].zone_id
+}
+
+# Record DNS per il dominio principale
+resource "aws_route53_record" "frontend" {
+  count   = var.use_custom_domain ? 1 : 0
+  zone_id = data.aws_route53_zone.main[0].zone_id
+  name    = var.domain_name
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.frontend.domain_name
+    zone_id                = aws_cloudfront_distribution.frontend.hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+# Record DNS per www
+resource "aws_route53_record" "frontend_www" {
+  count   = var.use_custom_domain ? 1 : 0
+  zone_id = data.aws_route53_zone.main[0].zone_id
+  name    = "www.${var.domain_name}"
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.frontend.domain_name
+    zone_id                = aws_cloudfront_distribution.frontend.hosted_zone_id
+    evaluate_target_health = false
+  }
 }
 
 # CloudFront Distribution
@@ -142,7 +221,7 @@ resource "aws_cloudfront_distribution" "frontend" {
 
     viewer_protocol_policy = "redirect-to-https"
     min_ttl                = 0
-    default_ttl            = 31536000  # 1 anno
+    default_ttl            = 31536000 # 1 anno
     max_ttl                = 31536000
     compress               = true
   }
@@ -166,8 +245,16 @@ resource "aws_cloudfront_distribution" "frontend" {
     }
   }
 
+  # Domain aliases (se usi un dominio personalizzato)
+  aliases = var.use_custom_domain && var.domain_name != "" ? [
+    var.domain_name,
+    "www.${var.domain_name}"
+  ] : []
+
   viewer_certificate {
-    cloudfront_default_certificate = true
+    cloudfront_default_certificate = var.use_custom_domain ? false : true
+    acm_certificate_arn            = var.use_custom_domain ? aws_acm_certificate_validation.frontend[0].certificate_arn : null
+    ssl_support_method             = var.use_custom_domain ? "sni-only" : null
     minimum_protocol_version       = "TLSv1.2_2021"
   }
 
@@ -201,7 +288,7 @@ output "frontend_url" {
 
 output "deployment_summary" {
   description = "Summary of the frontend deployment"
-  value = <<-EOT
+  value       = <<-EOT
 
     ==========================================
     Frontend Deployment Complete!

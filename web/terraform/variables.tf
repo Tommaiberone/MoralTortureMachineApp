@@ -21,3 +21,15 @@ variable "environment" {
   type        = string
   default     = "production"
 }
+
+variable "domain_name" {
+  description = "Custom domain name for the website (e.g., moraltorturemachine.com)"
+  type        = string
+  default     = ""
+}
+
+variable "use_custom_domain" {
+  description = "Whether to use a custom domain with ACM certificate"
+  type        = bool
+  default     = false
+}

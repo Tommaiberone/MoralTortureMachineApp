@@ -22,6 +22,8 @@ app = FastAPI(title="Moral Torture Machine API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://moraltorturemachine.com",
+        "https://www.moraltorturemachine.com",
         "https://tommaiberone.github.io",
         "https://d1vklv6uo7wyz2.cloudfront.net",
         "http://localhost:3000",
