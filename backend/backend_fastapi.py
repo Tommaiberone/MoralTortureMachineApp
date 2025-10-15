@@ -77,8 +77,16 @@ class DilemmaResponse(BaseModel):
         "by_alias": True
     }
 
+class DilemmaWithChoice(BaseModel):
+    dilemma: str = Field(..., description="The dilemma text")
+    firstAnswer: str = Field(..., description="First answer option")
+    secondAnswer: str = Field(..., description="Second answer option")
+    chosenAnswer: str = Field(..., description="The answer the user chose")
+    chosenValues: Dict[str, float] = Field(..., description="Moral values of the chosen answer")
+
 class AnalyzeResultsRequest(BaseModel):
     answers: list[Dict[str, float]] = Field(..., description="List of moral category scores from user's answers")
+    dilemmasWithChoices: Optional[list[DilemmaWithChoice]] = Field(default=[], description="List of dilemmas with user's choices")
 
 # Helper function to convert Decimal to native types
 def decimal_to_native(obj):
@@ -286,6 +294,15 @@ async def analyze_results(request: AnalyzeResultsRequest):
         # Create a summary of the moral profile
         profile_summary = ", ".join([f"{key}: {value}" for key, value in averages.items()])
 
+        # Create detailed summary of dilemmas and choices if available
+        dilemmas_summary = ""
+        if request.dilemmasWithChoices and len(request.dilemmasWithChoices) > 0:
+            dilemmas_summary = "\n\nHere are the specific dilemmas they faced and their choices:\n"
+            for i, d in enumerate(request.dilemmasWithChoices, 1):
+                dilemmas_summary += f"\n{i}. Dilemma: {d.dilemma}\n"
+                dilemmas_summary += f"   Options: '{d.firstAnswer}' or '{d.secondAnswer}'\n"
+                dilemmas_summary += f"   They chose: '{d.chosenAnswer}'\n"
+
         payload = {
             "model": "llama-3.3-70b-versatile",
             "messages": [
@@ -293,13 +310,16 @@ async def analyze_results(request: AnalyzeResultsRequest):
                     "role": "user",
                     "content": (
                         f'You are analyzing a person\'s moral profile based on their responses to ethical dilemmas. '
-                        f'Here are their average scores across different moral categories: {profile_summary}. '
-                        f'Generate a thoughtful, slightly dark and creepy analysis (80-120 words) that: '
-                        f'1) Identifies their dominant moral traits '
-                        f'2) Explains what their choices reveal about their character '
-                        f'3) Provides insight into potential moral blind spots or strengths '
-                        f'4) Uses a tone that fits the "Moral Torture Machine" theme - mysterious, slightly unsettling, but insightful '
+                        f'Here are their average scores across different moral categories: {profile_summary}.'
+                        f'{dilemmas_summary}'
+                        f'\nGenerate a thoughtful, slightly dark and creepy analysis (100-150 words) that: '
+                        f'1) References their SPECIFIC choices in the dilemmas they faced '
+                        f'2) Identifies their dominant moral traits based on their actual decisions '
+                        f'3) Explains what their choices reveal about their character and priorities '
+                        f'4) Provides insight into potential moral blind spots or strengths '
+                        f'5) Uses a tone that fits the "Moral Torture Machine" theme - mysterious, slightly unsettling, but insightful '
                         f'Write in second person (addressing "you") and maintain a haunting, philosophical tone. '
+                        f'IMPORTANT: Base your analysis on the ACTUAL choices they made, not just the numerical scores. '
                         f'Do not use JSON format, just return the analysis text directly.'
                     )
                 }

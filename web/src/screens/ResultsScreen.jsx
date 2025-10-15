@@ -7,7 +7,7 @@ import './ResultsScreen.css';
 const ResultsScreen = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { answers } = location.state || { answers: [] };
+  const { answers, dilemmasWithChoices } = location.state || { answers: [], dilemmasWithChoices: [] };
   const [aiAnalysis, setAiAnalysis] = useState('');
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
 
@@ -53,7 +53,10 @@ const ResultsScreen = () => {
         const response = await fetch(backendUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ answers }),
+          body: JSON.stringify({
+            answers,
+            dilemmasWithChoices: dilemmasWithChoices || []
+          }),
         });
 
         if (!response.ok) {
@@ -71,7 +74,7 @@ const ResultsScreen = () => {
     };
 
     fetchAiAnalysis();
-  }, [answers]);
+  }, [answers, dilemmasWithChoices]);
 
   return (
     <div className="results-scroll-container">

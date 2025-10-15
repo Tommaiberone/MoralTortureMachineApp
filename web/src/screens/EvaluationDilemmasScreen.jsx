@@ -15,6 +15,7 @@ const EvaluationDilemmasScreen = () => {
   const [selectedTease, setSelectedTease] = useState("");
   const [currentDilemmaCount, setCurrentDilemmaCount] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState([]);
+  const [dilemmasWithChoices, setDilemmasWithChoices] = useState([]);
   const [currentChoice, setChoiceCounts] = useState({ first: 0, second: 0 });
   const [voting, setVoting] = useState(false);
   const [evaluationComplete, setEvaluationComplete] = useState(false);
@@ -144,6 +145,17 @@ const EvaluationDilemmasScreen = () => {
           };
 
     setSelectedAnswers([...selectedAnswers, answerValues]);
+
+    // Store the complete dilemma with the user's choice
+    const dilemmaWithChoice = {
+      dilemma: dilemma.dilemma,
+      firstAnswer: dilemma.firstAnswer,
+      secondAnswer: dilemma.secondAnswer,
+      chosenAnswer: choice === "first" ? dilemma.firstAnswer : dilemma.secondAnswer,
+      chosenValues: answerValues
+    };
+    setDilemmasWithChoices([...dilemmasWithChoices, dilemmaWithChoice]);
+
     setCurrentDilemmaCount(currentDilemmaCount + 1);
     setChoiceMade(true);
     setVoting(false);
@@ -251,7 +263,10 @@ const EvaluationDilemmasScreen = () => {
                   <button
                     onClick={() =>
                       navigate("/results", {
-                        state: { answers: selectedAnswers },
+                        state: {
+                          answers: selectedAnswers,
+                          dilemmasWithChoices: dilemmasWithChoices
+                        },
                       })
                     }
                     className="evaluation-button evaluation-generate-new-button"
