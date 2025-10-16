@@ -6,7 +6,7 @@ import "./InfiniteDilemmasScreen.css";
 
 const InfiniteDilemmasScreen = () => {
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [generatedText, setGeneratedText] = useState("");
   const [dilemmaGenerated, setDilemmaGenerated] = useState(false);
@@ -27,9 +27,10 @@ const InfiniteDilemmasScreen = () => {
   const fetchDilemmaData = async () => {
     let response;
     let retries = 5;
+    const currentLanguage = i18n.language;
     while (retries > 0) {
       try {
-        response = await fetch(backendUrl, {
+        response = await fetch(`${backendUrl}?language=${currentLanguage}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
         });
