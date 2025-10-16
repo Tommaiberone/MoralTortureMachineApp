@@ -53,7 +53,7 @@ jobs:
         uses: astral-sh/setup-uv@v4
         with:
           version: "latest"
-          enable-cache: true # Abilitato cache per velocità
+          enable-cache: false # Disabilitato cache perché non esiste uv.lock
 
       - name: Install dependencies
         run: uv pip install --system -r requirements.txt
