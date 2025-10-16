@@ -1,0 +1,610 @@
+name: Deploy Full Stack
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      deploy_backend:
+        description: 'Deploy backend'
+        required: false
+        default: true
+        type: boolean
+      deploy_frontend:
+        description: 'Deploy frontend'
+        required: false
+        default: true
+        type: boolean
+      populate_dynamodb:
+        description: 'Populate DynamoDB with fresh data'
+        required: false
+        default: false
+        type: boolean
+      invalidate_cache:
+        description: 'Invalidate CloudFront cache'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  AWS_REGION: eu-west-1
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+  TERRAFORM_VERSION: 1.9.0
+  TF_VERSION_FRONTEND: '1.9.5'
+  DYNAMODB_TABLE_NAME: moral-torture-machine-dilemmas
+
+jobs:
+  # Job 1: Lint e Test Backend
+  backend-lint-test:
+    name: Backend Lint & Test
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && contains(github.event.head_commit.modified, 'backend/')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_backend == 'true')
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: false
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('backend/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+
+      - name: Install dependencies
+        run: uv pip install --system -r requirements.txt
+
+      - name: Lint with ruff
+        continue-on-error: true
+        run: |
+          uv pip install --system ruff
+          ruff check backend_fastapi.py populate_dynamodb.py populate_dynamodb_multilang.py || true
+
+      - name: Check Python syntax
+        run: |
+          python -m py_compile backend_fastapi.py
+          python -m py_compile populate_dynamodb.py
+          if [ -f populate_dynamodb_multilang.py ]; then
+            python -m py_compile populate_dynamodb_multilang.py
+          fi
+
+  # Job 2: Terraform Plan Backend (solo PR)
+  backend-terraform-plan:
+    name: Backend Terraform Plan
+    runs-on: ubuntu-latest
+    needs: backend-lint-test
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.changed_files, 'backend/')
+    defaults:
+      run:
+        working-directory: ./backend/terraform
+
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan -no-color -var="groq_api_key=${{ secrets.GROQ_API_KEY }}" -out=tfplan
+          terraform show -no-color tfplan > plan.txt
+        continue-on-error: true
+
+      - name: Comment PR with Backend Plan
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('backend/terraform/plan.txt', 'utf8');
+            const output = `### Backend Terraform Plan 🔧
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`terraform
+            ${plan.substring(0, 65000)}
+            \`\`\`
+
+            </details>
+
+            *Pushed by: @${{ github.actor }}*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+  # Job 3: Deploy Backend
+  backend-deploy:
+    name: Deploy Backend
+    runs-on: ubuntu-latest
+    needs: backend-lint-test
+    if: |
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_backend == 'true'))
+    defaults:
+      run:
+        working-directory: ./backend
+
+    permissions:
+      contents: read
+      id-token: write
+
+    outputs:
+      api_url: ${{ steps.api-endpoint.outputs.api_url }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: false
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Build Lambda package
+        run: |
+          rm -rf lambda_deployment lambda_function.zip
+          mkdir -p lambda_deployment
+          cp backend_fastapi.py lambda_deployment/
+
+          cd lambda_deployment
+          pip install \
+            --target . \
+            --platform manylinux2014_x86_64 \
+            --implementation cp \
+            --python-version ${{ env.PYTHON_VERSION }} \
+            --only-binary=:all: \
+            -r ../requirements.txt
+
+          zip -q -r ../lambda_function.zip .
+          cd ..
+
+          echo "📦 Lambda package size: $(du -h lambda_function.zip)"
+
+      - name: Terraform Init & Apply
+        working-directory: ./backend/terraform
+        run: |
+          terraform init
+          terraform apply -auto-approve \
+            -var="groq_api_key=${{ secrets.GROQ_API_KEY }}" \
+            -var="force_rebuild=false"
+
+      - name: Get API Endpoint
+        id: api-endpoint
+        working-directory: ./backend/terraform
+        run: |
+          API_URL=$(terraform output -raw api_endpoint)
+          echo "api_url=$API_URL" >> $GITHUB_OUTPUT
+          echo "✅ API Endpoint: $API_URL"
+
+      - name: Test API Health
+        run: |
+          API_URL="${{ steps.api-endpoint.outputs.api_url }}"
+          echo "🧪 Testing API at: $API_URL"
+
+          curl -f "$API_URL/" || exit 1
+          curl -f "$API_URL/get-dilemma" || exit 1
+
+          echo "✅ API health check passed!"
+
+  # Job 4: Terraform Plan Frontend (solo PR)
+  frontend-terraform-plan:
+    name: Frontend Terraform Plan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.changed_files, 'web/terraform/')
+    defaults:
+      run:
+        working-directory: web/terraform
+
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION_FRONTEND }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan -no-color -out=tfplan
+          terraform show -no-color tfplan > plan.txt
+        continue-on-error: true
+
+      - name: Comment PR with Frontend Plan
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('web/terraform/plan.txt', 'utf8');
+            const truncatedPlan = plan.length > 65000 ? plan.substring(0, 65000) + '\n\n... (truncated)' : plan;
+
+            const output = `### Frontend Terraform Plan 🎨
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`terraform
+            ${truncatedPlan}
+            \`\`\`
+
+            </details>
+
+            *Pushed by: @${{ github.actor }}*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+  # Job 5: Deploy Frontend Infrastructure
+  frontend-infrastructure:
+    name: Frontend Infrastructure
+    runs-on: ubuntu-latest
+    if: |
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_frontend == 'true'))
+    defaults:
+      run:
+        working-directory: web/terraform
+
+    permissions:
+      contents: read
+      id-token: write
+
+    outputs:
+      bucket_name: ${{ steps.outputs.outputs.bucket_name }}
+      distribution_id: ${{ steps.outputs.outputs.distribution_id }}
+      frontend_url: ${{ steps.outputs.outputs.frontend_url }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION_FRONTEND }}
+          terraform_wrapper: false
+
+      - name: Terraform Init & Apply
+        run: |
+          terraform init
+          terraform apply -auto-approve
+
+      - name: Get Terraform Outputs
+        id: outputs
+        run: |
+          echo "bucket_name=$(terraform output -raw s3_bucket_name || echo 'moral-torture-machine-frontend')" >> $GITHUB_OUTPUT
+          echo "distribution_id=$(terraform output -raw cloudfront_distribution_id)" >> $GITHUB_OUTPUT
+          echo "frontend_url=$(terraform output -raw frontend_url)" >> $GITHUB_OUTPUT
+
+  # Job 6: Build e Deploy Frontend
+  frontend-deploy:
+    name: Build & Deploy Frontend
+    runs-on: ubuntu-latest
+    needs: frontend-infrastructure
+    if: |
+      always() &&
+      needs.frontend-infrastructure.result == 'success' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_frontend == 'true'))
+    defaults:
+      run:
+        working-directory: web
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Lint code
+        run: pnpm lint
+        continue-on-error: true
+
+      - name: Build frontend
+        run: pnpm build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload to S3
+        run: |
+          BUCKET_NAME="${{ needs.frontend-infrastructure.outputs.bucket_name }}"
+
+          # Upload all files except index.html with long cache
+          aws s3 sync dist/ s3://${BUCKET_NAME}/ \
+            --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+
+          # Upload index.html with short cache
+          aws s3 cp dist/index.html s3://${BUCKET_NAME}/index.html \
+            --cache-control "public, max-age=0, must-revalidate"
+
+      - name: Invalidate CloudFront cache
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.invalidate_cache == 'true')
+        run: |
+          DISTRIBUTION_ID="${{ needs.frontend-infrastructure.outputs.distribution_id }}"
+
+          INVALIDATION_ID=$(aws cloudfront create-invalidation \
+            --distribution-id ${DISTRIBUTION_ID} \
+            --paths "/*" \
+            --query 'Invalidation.Id' \
+            --output text)
+
+          echo "☁️  CloudFront invalidation created: ${INVALIDATION_ID}"
+
+          aws cloudfront wait invalidation-completed \
+            --distribution-id ${DISTRIBUTION_ID} \
+            --id ${INVALIDATION_ID}
+
+          echo "✅ Invalidation completed!"
+
+  # Job 7: Populate DynamoDB (opzionale)
+  populate-dynamodb:
+    name: Populate DynamoDB
+    runs-on: ubuntu-latest
+    needs: backend-deploy
+    if: |
+      always() &&
+      needs.backend-deploy.result == 'success' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event.inputs.populate_dynamodb == 'true' || contains(github.event.head_commit.message, '[populate-db]'))
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install boto3
+        run: pip install boto3
+
+      - name: Check dilemma files
+        working-directory: backend
+        run: |
+          echo "📋 Checking dilemma files..."
+
+          if [ -f "dilemmas_it.json" ] && [ -f "dilemmas.json" ]; then
+            echo "MULTILANG=true" >> $GITHUB_ENV
+            en_count=$(jq '. | length' dilemmas.json)
+            it_count=$(jq '. | length' dilemmas_it.json)
+            echo "✅ Found $en_count English + $it_count Italian dilemmas"
+          elif [ -f "dilemmas.json" ]; then
+            echo "MULTILANG=false" >> $GITHUB_ENV
+            count=$(jq '. | length' dilemmas.json)
+            echo "✅ Found $count dilemmas"
+          else
+            echo "❌ No dilemma files found!"
+            exit 1
+          fi
+
+      - name: Backup DynamoDB
+        run: |
+          timestamp=$(date +%Y%m%d-%H%M%S)
+          aws dynamodb create-backup \
+            --table-name ${{ env.DYNAMODB_TABLE_NAME }} \
+            --backup-name "backup-$timestamp" \
+            --region ${{ env.AWS_REGION }}
+          echo "💾 Backup created: backup-$timestamp"
+
+      - name: Populate DynamoDB
+        working-directory: backend
+        run: |
+          echo "📊 Populating DynamoDB..."
+
+          if [ "$MULTILANG" = "true" ]; then
+            python3 -u populate_dynamodb_multilang.py ${{ env.DYNAMODB_TABLE_NAME }} <<EOF
+          yes
+          EOF
+          else
+            python3 populate_dynamodb.py ${{ env.DYNAMODB_TABLE_NAME }} dilemmas.json
+          fi
+
+          echo "✅ DynamoDB populated!"
+
+      - name: Verify population
+        run: |
+          total=$(aws dynamodb describe-table \
+            --table-name ${{ env.DYNAMODB_TABLE_NAME }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Table.ItemCount' \
+            --output text)
+
+          echo "📊 Total items: $total"
+
+          if [ "$total" -eq 0 ]; then
+            echo "❌ No items in table!"
+            exit 1
+          fi
+
+  # Job 8: Summary finale
+  deployment-summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [backend-deploy, frontend-deploy]
+    if: |
+      always() &&
+      github.ref == 'refs/heads/main' &&
+      (needs.backend-deploy.result == 'success' || needs.frontend-deploy.result == 'success')
+
+    steps:
+      - name: Create summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          ## 🚀 Deployment Summary
+
+          ### Backend
+          $(if [ "${{ needs.backend-deploy.result }}" == "success" ]; then
+            echo "✅ **Deployed successfully**"
+            echo ""
+            echo "**API Endpoint:** ${{ needs.backend-deploy.outputs.api_url }}"
+          elif [ "${{ needs.backend-deploy.result }}" == "skipped" ]; then
+            echo "⏭️ Skipped (no backend changes)"
+          else
+            echo "❌ Failed"
+          fi)
+
+          ### Frontend
+          $(if [ "${{ needs.frontend-deploy.result }}" == "success" ]; then
+            echo "✅ **Deployed successfully**"
+            echo ""
+            echo "**Frontend URL:** ${{ needs.frontend-infrastructure.outputs.frontend_url }}"
+          elif [ "${{ needs.frontend-deploy.result }}" == "skipped" ]; then
+            echo "⏭️ Skipped (no frontend changes)"
+          else
+            echo "❌ Failed"
+          fi)
+
+          ---
+
+          **Commit:** \`${{ github.sha }}\`
+          **Branch:** \`${{ github.ref_name }}\`
+          **Region:** \`${{ env.AWS_REGION }}\`
+          EOF
+
+  # Job 9: Notifica fallimenti
+  notify-failure:
+    name: Notify Failure
+    runs-on: ubuntu-latest
+    needs: [backend-deploy, frontend-deploy]
+    if: failure() && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Failure summary
+        run: |
+          echo "## ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Check the logs above for details." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
