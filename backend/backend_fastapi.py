@@ -3,11 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 from pydantic import BaseModel, Field
 import boto3
-from boto3.dynamodb.conditions import Key
 import requests
 import os
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict
 from decimal import Decimal
 import json
 
@@ -165,25 +164,34 @@ async def vote(vote_request: VoteRequest):
 @app.get("/get-dilemma", response_model=DilemmaResponse, response_model_by_alias=True)
 async def get_dilemma(language: str = "en"):
     """
-    Get a random dilemma from the database
+    Get a random dilemma from DynamoDB
 
     Returns a random dilemma with all its attributes in the specified language
     """
     try:
-        # Determine which dilemmas file to use based on language
-        dilemmas_file = "dilemmas.json" if language == "en" else "dilemmas_it.json"
-        dilemmas_path = os.path.join(os.path.dirname(__file__), dilemmas_file)
-
-        # Load dilemmas from the appropriate JSON file
-        with open(dilemmas_path, 'r', encoding='utf-8') as f:
-            dilemmas = json.load(f)
-
-        if not dilemmas:
-            raise HTTPException(status_code=404, detail="No dilemmas found")
+        # Scan DynamoDB for all items with the specified language
+        response = table.scan(
+            FilterExpression='attribute_exists(#lang) AND #lang = :language',
+            ExpressionAttributeNames={
+                '#lang': 'language'
+            },
+            ExpressionAttributeValues={
+                ':language': language
+            }
+        )
+        
+        items = response.get('Items', [])
+        
+        if not items:
+            logger.warning(f"No dilemmas found for language: {language}")
+            raise HTTPException(status_code=404, detail=f"No dilemmas found for language: {language}")
 
         # Select a random dilemma
         import random
-        dilemma = random.choice(dilemmas)
+        dilemma = random.choice(items)
+
+        # Convert Decimal types to native Python types
+        dilemma = decimal_to_native(dilemma)
 
         # Ensure all required fields have default values
         dilemma.setdefault('yesCount', 0)
@@ -195,9 +203,6 @@ async def get_dilemma(language: str = "en"):
 
     except HTTPException:
         raise
-    except FileNotFoundError:
-        logger.error(f"Dilemmas file not found for language: {language}")
-        raise HTTPException(status_code=404, detail=f"Dilemmas file not found for language: {language}")
     except Exception as e:
         logger.error(f"Error in /get-dilemma: {str(e)}")
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
@@ -268,7 +273,7 @@ async def generate_dilemma(language: str = "en"):
             "Content-Type": "application/json",
         }
 
-        logger.info(f"Sending request to Groq API")
+        logger.info("Sending request to Groq API")
         response = requests.post(api_url, headers=headers, json=payload, timeout=30)
 
         if response.status_code != 200:
@@ -384,7 +389,7 @@ async def analyze_results(request: AnalyzeResultsRequest, language: str = "en"):
             "Content-Type": "application/json",
         }
 
-        logger.info(f"Sending request to Groq API for results analysis")
+        logger.info("Sending request to Groq API for results analysis")
         response = requests.post(api_url, headers=headers, json=payload, timeout=30)
 
         if response.status_code != 200:

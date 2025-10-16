@@ -1,53 +1,81 @@
 # Backend API - FastAPI + AWS Lambda + DynamoDB
 
-High-performance serverless backend for Moral Torture Machine.
+High-performance serverless backend for Moral Torture Machine with multilingual support.
 
-## Deployment Options
+## 🚀 Quick Start
 
-### Option 1: Automated CI/CD with GitHub Actions (Recommended)
+The backend uses **GitHub Actions** for automated deployment. No manual scripts needed!
 
-The backend automatically deploys via GitHub Actions when you push to the main branch.
+### Prerequisites
+- AWS Account with Lambda and DynamoDB access
+- GitHub repository with Actions enabled
+- Python 3.11+
 
-**Setup:**
+### Setup Instructions
 
-1. **Get your AWS credentials:**
-   ```bash
-   # If you have AWS CLI configured, get your credentials:
-   cat ~/.aws/credentials
-
-   # Or create new credentials in AWS Console:
-   # Go to AWS Console → IAM → Users → Your User → Security Credentials → Create Access Key
+1. **Configure GitHub Secrets:**
+   
+   Go to GitHub → Settings → Secrets and variables → Actions
+   
+   Add these secrets:
+   ```
+   AWS_ACCESS_KEY_ID         - Your AWS access key
+   AWS_SECRET_ACCESS_KEY     - Your AWS secret key
+   GROQ_API_KEY             - (Optional) For AI generation
    ```
 
-2. **Add secrets to GitHub repository:**
-   - Go to your GitHub repository
-   - Click **Settings** → **Secrets and variables** → **Actions**
-   - Click **New repository secret** for each:
+2. **Initial DynamoDB Population:**
+   
+   - Go to GitHub → Actions → "Populate DynamoDB with Dilemmas"
+   - Click "Run workflow"
+   - Type "yes" to confirm
+   - Wait for completion
 
-     | Secret Name | Value | Required |
-     |-------------|-------|----------|
-     | `AWS_ACCESS_KEY_ID` | Your AWS access key ID (e.g., `AKIAIOSFODNN7EXAMPLE`) | ✅ Yes |
-     | `AWS_SECRET_ACCESS_KEY` | Your AWS secret access key (e.g., `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`) | ✅ Yes |
-     | `GROQ_API_KEY` | Your Groq API key from https://console.groq.com | ⚠️ Optional |
-
-3. **Verify secrets are added:**
-   - You should see the secrets listed (values will be hidden)
-   - Secret names must match exactly (case-sensitive)
-
-4. Push changes to trigger deployment:
+3. **Deploy Backend:**
+   
+   Just push your code - GitHub Actions handles everything!
    ```bash
    git add .
-   git commit -m "Deploy backend"
+   git commit -m "Update backend"
    git push origin main
    ```
 
-3. Monitor deployment in the Actions tab
+## 📋 GitHub Actions Workflows
 
-**Features:**
-- Automated testing and linting
-- Terraform plan preview on PRs
-- Automatic Lambda deployment with uv
-- API health checks
+### Automatic Deploy (on push)
+- **Workflow**: `backend-deploy-dynamodb.yml`
+- **Triggers**: Push to main with backend changes
+- **Actions**: 
+  - ✅ Build Lambda package
+  - ✅ Deploy to AWS
+  - ✅ Test API endpoints
+
+### Manual DynamoDB Population
+- **Workflow**: `populate-dynamodb.yml`
+- **Trigger**: Manual only
+- **Actions**:
+  - ✅ Backup current data
+  - ✅ Load dilemmas (EN + IT)
+  - ✅ Verify population
+  - ✅ Test API
+
+See [GITHUB_ACTIONS_GUIDE.md](../GITHUB_ACTIONS_GUIDE.md) for detailed documentation.
+
+## 🗂️ Project Structure
+
+```
+backend/
+├── backend_fastapi.py                 # Main API code
+├── populate_dynamodb_multilang.py     # DB population script
+├── dilemmas.json                      # English dilemmas
+├── dilemmas_it.json                   # Italian dilemmas
+├── requirements.txt                   # Python dependencies
+├── lambda_deployment/                 # Lambda build directory
+│   └── (auto-generated during CI/CD)
+└── terraform/                         # Infrastructure as Code
+    ├── main.tf
+    └── variables.tf
+```
 - Deployment summaries
 
 ### Option 2: Manual Terraform Deployment
