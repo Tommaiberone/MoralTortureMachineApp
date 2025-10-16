@@ -20,7 +20,7 @@
   cursor: pointer;
   font-family: 'Courier New', Courier, monospace;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 16px;
   color: var(--text-normal);
   letter-spacing: 0.1em;
   z-index: 10;
@@ -56,7 +56,7 @@
 }
 
 .evaluation-subtitle {
-  font-size: 13px;
+  font-size: 16px;
   font-family: 'Courier New', Courier, monospace;
   font-weight: 400;
   margin-top: 8px;
@@ -92,7 +92,7 @@
   cursor: pointer;
   font-family: 'Courier New', Courier, monospace;
   font-weight: 700;
-  font-size: 15px;
+  font-size: 18px;
   color: var(--text-highlight);
   letter-spacing: 0.1em;
   text-shadow: 1px 1px 0 var(--creepy-void);
@@ -124,7 +124,7 @@
 }
 
 .evaluation-generated-text-label {
-  font-size: 16px;
+  font-size: 19px;
   font-weight: 700;
   margin-bottom: 12px;
   font-family: 'Courier New', Courier, monospace;
@@ -138,7 +138,7 @@
   margin-top: 10px;
   padding: 20px;
   border-radius: 0;
-  font-size: 14px;
+  font-size: 17px;
   line-height: 1.6;
   box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
   font-family: 'Courier New', Courier, monospace;
@@ -164,7 +164,7 @@
   cursor: pointer;
   font-family: 'Courier New', Courier, monospace;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 17px;
   color: var(--text-highlight);
   letter-spacing: 0.05em;
   text-shadow: 1px 1px 0 var(--creepy-void);
@@ -192,7 +192,7 @@
   margin-top: 25px;
   padding: 18px 20px;
   border-radius: 0;
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 400;
   text-align: center;
   box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.5);
@@ -219,7 +219,7 @@
   }
 
   .evaluation-title {
-    font-size: 22px;
+    font-size: 25px;
   }
 
   .evaluation-card {
@@ -237,7 +237,7 @@
   }
 
   .evaluation-generated-text {
-    font-size: 13px;
+    font-size: 16px;
     line-height: 1.5;
     padding: 16px;
   }
@@ -257,7 +257,7 @@
     top: 10px;
     left: 10px;
     padding: 8px 12px;
-    font-size: 12px;
+    font-size: 15px;
   }
 
   .evaluation-header {
@@ -265,12 +265,12 @@
   }
 
   .evaluation-title {
-    font-size: 18px;
+    font-size: 21px;
     letter-spacing: 0.08em;
   }
 
   .evaluation-subtitle {
-    font-size: 11px;
+    font-size: 14px;
   }
 
   .evaluation-card {
@@ -280,15 +280,15 @@
 
   .evaluation-button {
     padding: 12px;
-    font-size: 13px;
+    font-size: 16px;
   }
 
   .evaluation-generated-text-label {
-    font-size: 14px;
+    font-size: 17px;
   }
 
   .evaluation-generated-text {
-    font-size: 12px;
+    font-size: 15px;
     line-height: 1.5;
     padding: 14px;
   }
@@ -301,13 +301,13 @@
   .evaluation-yes-button,
   .evaluation-no-button {
     padding: 12px;
-    font-size: 12px;
+    font-size: 15px;
   }
 
   .evaluation-tease-text {
     margin-top: 20px;
     padding: 14px 16px;
-    font-size: 12px;
+    font-size: 15px;
   }
 
   .evaluation-chart-container {
@@ -326,11 +326,11 @@
   }
 
   .evaluation-title {
-    font-size: 16px;
+    font-size: 19px;
   }
 
   .evaluation-subtitle {
-    font-size: 10px;
+    font-size: 13px;
   }
 
   .evaluation-card {
@@ -339,15 +339,15 @@
 
   .evaluation-button {
     padding: 10px;
-    font-size: 12px;
+    font-size: 15px;
   }
 
   .evaluation-generated-text-label {
-    font-size: 13px;
+    font-size: 16px;
   }
 
   .evaluation-generated-text {
-    font-size: 11px;
+    font-size: 14px;
     line-height: 1.4;
     padding: 12px;
   }
@@ -355,11 +355,11 @@
   .evaluation-yes-button,
   .evaluation-no-button {
     padding: 10px;
-    font-size: 11px;
+    font-size: 14px;
   }
 
   .evaluation-tease-text {
-    font-size: 11px;
+    font-size: 14px;
     padding: 12px 14px;
   }
 }

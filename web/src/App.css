@@ -35,7 +35,7 @@ body {
 
 .loading-text {
   color: var(--text-dim);
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 400;
   margin-top: 20px;
   letter-spacing: 0.15em;

@@ -30,7 +30,7 @@
   cursor: pointer;
   font-family: 'Courier New', Courier, monospace;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 16px;
   color: var(--text-normal);
   letter-spacing: 0.1em;
   z-index: 10;
@@ -90,7 +90,7 @@
 }
 
 .results-summary-label {
-  font-size: 14px;
+  font-size: 17px;
   font-family: 'Courier New', Courier, monospace;
   font-weight: 600;
   color: var(--text-dim);
@@ -99,7 +99,7 @@
 }
 
 .results-summary-value {
-  font-size: 14px;
+  font-size: 17px;
   font-family: 'Courier New', Courier, monospace;
   font-weight: 400;
   color: var(--text-normal);
@@ -117,7 +117,7 @@
 }
 
 .results-ai-title {
-  font-size: 18px;
+  font-size: 21px;
   font-weight: 700;
   letter-spacing: 0.15em;
   font-family: 'Courier New', Courier, monospace;
@@ -140,7 +140,7 @@
 .results-ai-loading-text {
   margin-top: 15px;
   font-family: 'Courier New', Courier, monospace;
-  font-size: 14px;
+  font-size: 17px;
   color: var(--text-dim);
   letter-spacing: 0.1em;
   animation: flicker-text 2s infinite;
@@ -148,7 +148,7 @@
 
 .results-ai-text {
   font-family: 'Courier New', Courier, monospace;
-  font-size: 15px;
+  font-size: 18px;
   line-height: 1.7;
   color: var(--text-normal);
   text-align: justify;
@@ -183,7 +183,7 @@
   cursor: pointer;
   font-family: 'Courier New', Courier, monospace;
   font-weight: 700;
-  font-size: 15px;
+  font-size: 18px;
   color: var(--text-highlight);
   letter-spacing: 0.1em;
   text-shadow: 1px 1px 0 var(--creepy-void);
@@ -205,7 +205,7 @@
   }
 
   .results-title {
-    font-size: 22px;
+    font-size: 25px;
     margin-top: 50px;
   }
 
@@ -224,7 +224,7 @@
 
   .results-summary-label,
   .results-summary-value {
-    font-size: 13px;
+    font-size: 16px;
   }
 
   .results-ai-analysis {
@@ -233,11 +233,11 @@
   }
 
   .results-ai-title {
-    font-size: 16px;
+    font-size: 19px;
   }
 
   .results-ai-text {
-    font-size: 14px;
+    font-size: 17px;
   }
 }
 
@@ -251,15 +251,15 @@
     top: 10px;
     left: 10px;
     padding: 8px 12px;
-    font-size: 12px;
+    font-size: 15px;
   }
 
   .arrow {
-    font-size: 16px;
+    font-size: 19px;
   }
 
   .results-title {
-    font-size: 20px;
+    font-size: 23px;
     margin-top: 10px;
     margin-bottom: 20px;
     letter-spacing: 0.08em;
@@ -282,17 +282,17 @@
   }
 
   .results-summary-label {
-    font-size: 12px;
+    font-size: 15px;
   }
 
   .results-summary-value {
-    font-size: 12px;
+    font-size: 15px;
   }
 
   .results-back-button {
     margin-top: 15px;
     padding: 12px 18px;
-    font-size: 13px;
+    font-size: 16px;
   }
 
   .results-ai-analysis {
@@ -303,17 +303,17 @@
   }
 
   .results-ai-title {
-    font-size: 15px;
+    font-size: 18px;
     margin-bottom: 15px;
   }
 
   .results-ai-text {
-    font-size: 13px;
+    font-size: 16px;
     line-height: 1.6;
   }
 
   .results-ai-loading-text {
-    font-size: 13px;
+    font-size: 16px;
   }
 }
 
@@ -324,7 +324,7 @@
   }
 
   .results-title {
-    font-size: 18px;
+    font-size: 21px;
     margin-bottom: 15px;
   }
 
@@ -339,12 +339,12 @@
 
   .results-summary-label,
   .results-summary-value {
-    font-size: 11px;
+    font-size: 14px;
   }
 
   .results-back-button {
     padding: 10px 16px;
-    font-size: 12px;
+    font-size: 15px;
   }
 
   .results-ai-analysis {
@@ -354,18 +354,18 @@
   }
 
   .results-ai-title {
-    font-size: 14px;
+    font-size: 17px;
     letter-spacing: 0.1em;
   }
 
   .results-ai-text {
-    font-size: 12px;
+    font-size: 15px;
     line-height: 1.5;
     padding: 8px;
   }
 
   .results-ai-loading-text {
-    font-size: 12px;
+    font-size: 15px;
   }
 }
 
@@ -379,7 +379,7 @@
 }
 
 .results-share-title {
-  font-size: 18px;
+  font-size: 21px;
   font-weight: 700;
   letter-spacing: 0.15em;
   font-family: 'Courier New', Courier, monospace;
@@ -404,7 +404,7 @@
   cursor: pointer;
   font-family: 'Courier New', Courier, monospace;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 17px;
   color: var(--text-normal);
   letter-spacing: 0.1em;
   transition: all 0.2s;

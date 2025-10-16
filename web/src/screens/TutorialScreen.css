@@ -39,7 +39,7 @@
 }
 
 .tutorial-description {
-  font-size: 13px;
+  font-size: 16px;
   color: var(--text-normal);
   line-height: 1.6;
   margin-bottom: 30px;
@@ -89,7 +89,7 @@
   padding: 12px 24px;
   border: none;
   border-radius: 0;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -139,7 +139,7 @@
   background: none;
   border: none;
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: 15px;
   cursor: pointer;
   margin-top: 10px;
   transition: color 0.3s ease;
@@ -163,11 +163,11 @@
   }
 
   .tutorial-title {
-    font-size: 20px;
+    font-size: 23px;
   }
 
   .tutorial-description {
-    font-size: 12px;
+    font-size: 15px;
   }
 
   .tutorial-buttons {
@@ -190,11 +190,11 @@
   }
 
   .tutorial-title {
-    font-size: 18px;
+    font-size: 21px;
   }
 
   .tutorial-description {
-    font-size: 11px;
+    font-size: 14px;
   }
 
   .tutorial-progress-dot {
