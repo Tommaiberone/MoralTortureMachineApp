@@ -39,7 +39,11 @@
     "moral_profile": "MORAL PROFILE",
     "verdict": "[ THE MACHINE'S VERDICT ]",
     "analyzing": "Analyzing your soul...",
-    "analysis_error": "The machine's consciousness flickers... Unable to analyze your soul at this moment."
+    "analysis_error": "The machine's consciousness flickers... Unable to analyze your soul at this moment.",
+    "share_title": "Share your results",
+    "share_text": "I have been judged by the Moral Torture Machine! This is the verdict:",
+    "share_challenge": "If you're brave enough, try it too:",
+    "facebook_share_alert": "Text copied to clipboard! Paste it into your Facebook post."
   },
   "tutorial": {
     "previous": "Previous",

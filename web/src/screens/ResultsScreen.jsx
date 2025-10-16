@@ -135,6 +135,38 @@ const ResultsScreen = () => {
             <p className="results-ai-text">{aiAnalysis}</p>
           )}
         </div>
+
+        <div className="results-share-container">
+          <h2 className="results-share-title">{t('results.share_title')}</h2>
+          <div className="results-share-buttons">
+            <button
+              className="results-share-button whatsapp"
+              onClick={() => {
+                const shareText = t('results.share_text');
+                const shareChallenge = t('results.share_challenge');
+                const url = window.location.origin;
+                const message = `${shareText}\n\n${aiAnalysis}\n\n${shareChallenge} ${url}`;
+                window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`);
+              }}
+            >
+              WhatsApp
+            </button>
+            <button
+              className="results-share-button facebook"
+              onClick={() => {
+                const shareText = t('results.share_text');
+                const shareChallenge = t('results.share_challenge');
+                const url = window.location.origin;
+                const message = `${shareText}\n\n${aiAnalysis}\n\n${shareChallenge} ${url}`;
+                navigator.clipboard.writeText(message);
+                alert(t('results.facebook_share_alert'));
+                window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`);
+              }}
+            >
+              Facebook
+            </button>
+          </div>
+        </div>
     </div>
   );
 };

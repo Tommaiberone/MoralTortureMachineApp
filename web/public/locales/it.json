@@ -39,7 +39,11 @@
     "moral_profile": "PROFILO MORALE",
     "verdict": "[ IL VERDETTO DELLA MACCHINA ]",
     "analyzing": "Analizzando la tua anima...",
-    "analysis_error": "La coscienza della macchina vacilla... Impossibile analizzare la tua anima in questo momento."
+    "analysis_error": "La coscienza della macchina vacilla... Impossibile analizzare la tua anima in questo momento.",
+    "share_title": "Condividi i tuoi risultati",
+    "share_text": "Sono stato giudicato dalla Moral Torture Machine! Questo è il verdetto:",
+    "share_challenge": "Se sei coraggioso, prova anche tu:",
+    "facebook_share_alert": "Testo copiato negli appunti! Incollalo nel tuo post di Facebook."
   },
   "tutorial": {
     "previous": "Precedente",
