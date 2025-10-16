@@ -2,12 +2,14 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
+import { useTranslation } from 'react-i18next';
 import "./EvaluationDilemmasScreen.css";
 
 const MAX_DILEMMAS = 7;
 
 const EvaluationDilemmasScreen = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [dilemma, setDilemma] = useState(null);
 
@@ -68,7 +70,7 @@ const EvaluationDilemmasScreen = () => {
       setDilemma(fetchedDilemma);
     } catch (error) {
       console.error("Error during backend call:", error);
-      alert("Failed to fetch the dilemma. Please try again.");
+      alert(t('evaluation.failed_fetch'));
     } finally {
       setLoading(false);
     }
@@ -115,7 +117,7 @@ const EvaluationDilemmasScreen = () => {
       }));
     } catch (error) {
       console.error("Error during voting:", error);
-      alert("Failed to record your vote. Please try again.");
+      alert(t('evaluation.failed_vote'));
       setVoting(false);
       return;
     }
@@ -181,12 +183,12 @@ const EvaluationDilemmasScreen = () => {
         onClick={() => navigate(-1)}
       >
         <span className="arrow">←</span>
-        <span>[ BACK ]</span>
+        <span>{t('evaluation.back_button')}</span>
       </button>
 
       <div className="evaluation-header">
         <h1 className="evaluation-title">
-          [ ETHICAL DILEMMAS ]
+          {t('evaluation.title')}
         </h1>
         <p className="evaluation-subtitle">
           {currentDilemmaCount} / {MAX_DILEMMAS}
@@ -201,14 +203,14 @@ const EvaluationDilemmasScreen = () => {
               disabled={loading}
               className="evaluation-button"
             >
-              {loading ? "[ LOADING ]" : "[ GET DILEMMA ]"}
+              {loading ? t('evaluation.loading') : t('evaluation.get_dilemma')}
             </button>
             {loading && <div className="spinner"></div>}
           </div>
         ) : (
           <div>
             <p className="evaluation-generated-text-label">
-              [ RETRIEVED DILEMMA ]
+              {t('evaluation.retrieved_dilemma')}
             </p>
             <p className="evaluation-generated-text">
               {dilemma.dilemma}
@@ -271,7 +273,7 @@ const EvaluationDilemmasScreen = () => {
                     }
                     className="evaluation-button evaluation-generate-new-button"
                   >
-                    [ VIEW RESULTS ]
+                    {t('evaluation.view_results')}
                   </button>
                 ) : (
                   <button
@@ -279,7 +281,7 @@ const EvaluationDilemmasScreen = () => {
                     disabled={loading}
                     className="evaluation-button evaluation-generate-new-button"
                   >
-                    {loading ? "[ LOADING ]" : "[ GET NEW DILEMMA ]"}
+                    {loading ? t('evaluation.loading') : t('evaluation.get_new_dilemma')}
                   </button>
                 )}
               </div>

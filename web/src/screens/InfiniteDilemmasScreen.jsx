@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getCreepyMessage } from "../styles/horrorTheme";
+import { useTranslation } from 'react-i18next';
 import "./InfiniteDilemmasScreen.css";
 
 const InfiniteDilemmasScreen = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [generatedText, setGeneratedText] = useState("");
   const [dilemmaGenerated, setDilemmaGenerated] = useState(false);
@@ -72,7 +74,7 @@ const InfiniteDilemmasScreen = () => {
       setDilemmaGenerated(true);
     } catch (error) {
       console.error("Error during backend call:", error);
-      setGeneratedText("⚠ The machine has malfunctioned. Your soul remains unjudged... for now.");
+      setGeneratedText(t('infinite.malfunction'));
     } finally {
       setLoading(false);
     }
@@ -92,15 +94,15 @@ const InfiniteDilemmasScreen = () => {
           onClick={() => navigate(-1)}
         >
           <span className="arrow">[&lt;]</span>
-          <span>ESCAPE</span>
+          <span>{t('infinite.escape_button')}</span>
         </button>
 
         <div className="infinite-header">
           <h1 className="infinite-title">
-            [ ENDLESS TORMENT ]
+            {t('infinite.title')}
           </h1>
           <p className="infinite-subtitle">
-            YOUR CHOICES HAVE CONSEQUENCES
+            {t('infinite.subtitle')}
           </p>
         </div>
 
@@ -112,7 +114,7 @@ const InfiniteDilemmasScreen = () => {
                 disabled={loading}
                 className="infinite-button"
               >
-                {loading ? `[ ${creepyMessage} ]` : "[ SUMMON DILEMMA ]"}
+                {loading ? `[ ${creepyMessage} ]` : t('infinite.summon_dilemma')}
               </button>
               {loading && (
                 <>
@@ -124,7 +126,7 @@ const InfiniteDilemmasScreen = () => {
           ) : (
             <div>
               <p className="infinite-generated-text-label">
-                [ YOUR MORAL NIGHTMARE ]
+                {t('infinite.your_moral_nightmare')}
               </p>
               <p className="infinite-generated-text">
                 {generatedText}
@@ -155,7 +157,7 @@ const InfiniteDilemmasScreen = () => {
                     disabled={loading}
                     className="infinite-button infinite-generate-new-button"
                   >
-                    {loading ? `[ ${creepyMessage} ]` : "[ SUMMON NEXT ]"}
+                    {loading ? `[ ${creepyMessage} ]` : t('infinite.summon_next')}
                   </button>
                 </div>
               )}

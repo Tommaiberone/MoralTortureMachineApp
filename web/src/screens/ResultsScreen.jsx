@@ -2,11 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend } from 'recharts';
+import { useTranslation } from 'react-i18next';
 import './ResultsScreen.css';
 
 const ResultsScreen = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { answers, dilemmasWithChoices } = location.state || { answers: [], dilemmasWithChoices: [] };
   const [aiAnalysis, setAiAnalysis] = useState('');
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
@@ -15,12 +17,12 @@ const ResultsScreen = () => {
     return (
       <div className="results-gradient-background">
         <div className="results-container">
-          <h1 className="results-title">[ NO RESULTS ]</h1>
+          <h1 className="results-title">{t('results.no_results')}</h1>
           <button
             className="results-back-button"
             onClick={() => navigate('/')}
           >
-            [ HOME ]
+            {t('results.home_button')}
           </button>
         </div>
       </div>
@@ -67,7 +69,7 @@ const ResultsScreen = () => {
         setAiAnalysis(result.analysis);
       } catch (error) {
         console.error("Error fetching AI analysis:", error);
-        setAiAnalysis("The machine's consciousness flickers... Unable to analyze your soul at this moment.");
+        setAiAnalysis(t('results.analysis_error'));
       } finally {
         setLoadingAnalysis(false);
       }
@@ -83,10 +85,10 @@ const ResultsScreen = () => {
           onClick={() => navigate(-1)}
         >
           <span className="arrow">←</span>
-          <span>[ BACK ]</span>
+          <span>{t('results.back_button')}</span>
         </button>
 
-        <h1 className="results-title">[ YOUR RESULTS ]</h1>
+        <h1 className="results-title">{t('results.title')}</h1>
 
         <div className="results-chart-container">
           <ResponsiveContainer width="100%" height="100%">
@@ -100,7 +102,7 @@ const ResultsScreen = () => {
                 domain={[0, 'auto']}
               />
               <Radar
-                name="MORAL PROFILE"
+                name={t('results.moral_profile')}
                 dataKey="value"
                 stroke="var(--horror-crimson)"
                 fill="var(--horror-blood-red)"
@@ -123,11 +125,11 @@ const ResultsScreen = () => {
         </div>
 
         <div className="results-ai-analysis">
-          <h2 className="results-ai-title">[ THE MACHINE'S VERDICT ]</h2>
+          <h2 className="results-ai-title">{t('results.verdict')}</h2>
           {loadingAnalysis ? (
             <div className="results-ai-loading">
               <div className="spinner"></div>
-              <p className="results-ai-loading-text">Analyzing your soul...</p>
+              <p className="results-ai-loading-text">{t('results.analyzing')}</p>
             </div>
           ) : (
             <p className="results-ai-text">{aiAnalysis}</p>

@@ -1,0 +1,67 @@
+{
+  "home": {
+    "title_moral": "MORAL",
+    "title_torture": "TORTURE",
+    "title_machine": "MACHINE",
+    "subtitle": "[ ENTER IF YOU DARE ]",
+    "warning_badge": "! WARNING !",
+    "eval_button": "TEST YOUR MORALITY",
+    "eval_description": "FACE MORAL DILEMMAS. YOUR CONSCIENCE WILL BE JUDGED.",
+    "infinite_button": "ENDLESS TORMENT MODE",
+    "infinite_description": "AN INFINITE STREAM OF ETHICAL NIGHTMARES. NO ESCAPE.",
+    "warning_footer": "[ THIS WILL EXPOSE YOUR DARKEST BOUNDARIES ]"
+  },
+  "evaluation": {
+    "back_button": "[ BACK ]",
+    "title": "[ ETHICAL DILEMMAS ]",
+    "get_dilemma": "[ GET DILEMMA ]",
+    "loading": "[ LOADING ]",
+    "retrieved_dilemma": "[ RETRIEVED DILEMMA ]",
+    "get_new_dilemma": "[ GET NEW DILEMMA ]",
+    "view_results": "[ VIEW RESULTS ]",
+    "failed_fetch": "Failed to fetch the dilemma. Please try again.",
+    "failed_vote": "Failed to record your vote. Please try again."
+  },
+  "infinite": {
+    "escape_button": "ESCAPE",
+    "title": "[ ENDLESS TORMENT ]",
+    "subtitle": "YOUR CHOICES HAVE CONSEQUENCES",
+    "summon_dilemma": "[ SUMMON DILEMMA ]",
+    "your_moral_nightmare": "[ YOUR MORAL NIGHTMARE ]",
+    "summon_next": "[ SUMMON NEXT ]",
+    "malfunction": "⚠ The machine has malfunctioned. Your soul remains unjudged... for now."
+  },
+  "results": {
+    "back_button": "[ BACK ]",
+    "title": "[ YOUR RESULTS ]",
+    "no_results": "[ NO RESULTS ]",
+    "home_button": "[ HOME ]",
+    "moral_profile": "MORAL PROFILE",
+    "verdict": "[ THE MACHINE'S VERDICT ]",
+    "analyzing": "Analyzing your soul...",
+    "analysis_error": "The machine's consciousness flickers... Unable to analyze your soul at this moment."
+  },
+  "tutorial": {
+    "previous": "Previous",
+    "skip": "Skip",
+    "next": "Next",
+    "start": "Let's Start!",
+    "back_to_home": "← Back to Home",
+    "evaluation_step1_title": "[ TEST YOUR MORALITY ]",
+    "evaluation_step1_desc": "FACE 5 MORAL DILEMMAS. EVALUATION ACROSS 6 VALUES: EMPATHY, INTEGRITY, RESPONSIBILITY, JUSTICE, ALTRUISM, HONESTY.",
+    "evaluation_step2_title": "[ MAKE CHOICES ]",
+    "evaluation_step2_desc": "READ EACH DILEMMA. CHOOSE BETWEEN TWO OPTIONS. NO RIGHT ANSWERS. ONLY REFLECTIONS OF YOUR MORAL VALUES.",
+    "evaluation_step3_title": "[ SEE OTHERS ]",
+    "evaluation_step3_desc": "AFTER YOUR CHOICE, SEE HOW OTHERS RESPONDED. COMPARE YOUR MORAL REASONING WITH THE COMMUNITY.",
+    "evaluation_step4_title": "[ DISCOVER PROFILE ]",
+    "evaluation_step4_desc": "AFTER 5 DILEMMAS, VIEW YOUR MORAL PROFILE. SEE WHICH VALUES GUIDE YOUR DECISION-MAKING.",
+    "infinite_step1_title": "[ ENDLESS MODE ]",
+    "infinite_step1_desc": "ENDLESS AI-GENERATED MORAL DILEMMAS. EACH ONE UNIQUE. CHALLENGES YOUR ETHICS IN COMPLEX SITUATIONS.",
+    "infinite_step2_title": "[ GENERATE ]",
+    "infinite_step2_desc": "SUMMON NEW ETHICAL SCENARIOS POWERED BY AI. EACH ONE DIFFERENT. EACH ONE DARKER.",
+    "infinite_step3_title": "[ CHOOSE PATH ]",
+    "infinite_step3_desc": "SELECT BETWEEN TWO MORALLY CHALLENGING OPTIONS. RECEIVE RESPONSE THAT REFLECTS ON YOUR DECISION.",
+    "infinite_step4_title": "[ NO LIMIT ]",
+    "infinite_step4_desc": "KEEP GENERATING DILEMMAS. EXPLORE ETHICAL PERSPECTIVES. AS LONG AS YOU CAN ENDURE."
+  }
+}

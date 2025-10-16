@@ -1,10 +1,12 @@
 // screens/HomeScreen.jsx
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import './HomeScreen.css';
 
 const HomeScreen = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const handleNavigation = (mode, route) => {
     // Check if tutorial has been completed for this mode
@@ -22,23 +24,23 @@ const HomeScreen = () => {
   return (
     <div className="home-container">
       <h1 className="home-title">
-        <span className="glitch-text">MORAL</span><br />
-        <span className="glitch-text">TORTURE</span><br />
-        <span className="glitch-text">MACHINE</span>
+        <span className="glitch-text">{t('home.title_moral')}</span><br />
+        <span className="glitch-text">{t('home.title_torture')}</span><br />
+        <span className="glitch-text">{t('home.title_machine')}</span>
       </h1>
 
-        <p className="home-subtitle">[ ENTER IF YOU DARE ]</p>
+        <p className="home-subtitle">{t('home.subtitle')}</p>
 
         <button
           className="home-button recommended-button"
           onClick={() => handleNavigation('evaluation', '/evaluation-dilemmas')}
         >
           <div className="badge-container">
-            <span className="badge-text">! WARNING !</span>
+            <span className="badge-text">{t('home.warning_badge')}</span>
           </div>
-          <div className="button-text">TEST YOUR MORALITY</div>
+          <div className="button-text">{t('home.eval_button')}</div>
           <div className="button-description">
-            FACE MORAL DILEMMAS. YOUR CONSCIENCE WILL BE JUDGED.
+            {t('home.eval_description')}
           </div>
         </button>
 
@@ -46,14 +48,14 @@ const HomeScreen = () => {
           className="home-button arcade-button"
           onClick={() => handleNavigation('infinite', '/infinite-dilemmas')}
         >
-          <div className="button-text">ENDLESS TORMENT MODE</div>
+          <div className="button-text">{t('home.infinite_button')}</div>
           <div className="button-description">
-            AN INFINITE STREAM OF ETHICAL NIGHTMARES. NO ESCAPE.
+            {t('home.infinite_description')}
           </div>
         </button>
 
         <p className="home-warning">
-          [ THIS WILL EXPOSE YOUR DARKEST BOUNDARIES ]
+          {t('home.warning_footer')}
         </p>
       </div>
   );

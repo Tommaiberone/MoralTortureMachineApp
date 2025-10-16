@@ -1,56 +1,58 @@
 // screens/TutorialScreen.jsx
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import './TutorialScreen.css';
 
 const TutorialScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useTranslation();
   const mode = location.state?.mode || 'evaluation'; // 'evaluation' or 'infinite'
   const [currentStep, setCurrentStep] = useState(0);
 
   const evaluationTutorialSteps = [
     {
-      title: "[ TEST YOUR MORALITY ]",
-      description: "FACE 5 MORAL DILEMMAS. EVALUATION ACROSS 6 VALUES: EMPATHY, INTEGRITY, RESPONSIBILITY, JUSTICE, ALTRUISM, HONESTY.",
+      title: t('tutorial.evaluation_step1_title'),
+      description: t('tutorial.evaluation_step1_desc'),
       icon: "[X]",
     },
     {
-      title: "[ MAKE CHOICES ]",
-      description: "READ EACH DILEMMA. CHOOSE BETWEEN TWO OPTIONS. NO RIGHT ANSWERS. ONLY REFLECTIONS OF YOUR MORAL VALUES.",
+      title: t('tutorial.evaluation_step2_title'),
+      description: t('tutorial.evaluation_step2_desc'),
       icon: "[ ]",
     },
     {
-      title: "[ SEE OTHERS ]",
-      description: "AFTER YOUR CHOICE, SEE HOW OTHERS RESPONDED. COMPARE YOUR MORAL REASONING WITH THE COMMUNITY.",
+      title: t('tutorial.evaluation_step3_title'),
+      description: t('tutorial.evaluation_step3_desc'),
       icon: "[=]",
     },
     {
-      title: "[ DISCOVER PROFILE ]",
-      description: "AFTER 5 DILEMMAS, VIEW YOUR MORAL PROFILE. SEE WHICH VALUES GUIDE YOUR DECISION-MAKING.",
+      title: t('tutorial.evaluation_step4_title'),
+      description: t('tutorial.evaluation_step4_desc'),
       icon: "[!]",
     },
   ];
 
   const infiniteTutorialSteps = [
     {
-      title: "[ ENDLESS MODE ]",
-      description: "ENDLESS AI-GENERATED MORAL DILEMMAS. EACH ONE UNIQUE. CHALLENGES YOUR ETHICS IN COMPLEX SITUATIONS.",
+      title: t('tutorial.infinite_step1_title'),
+      description: t('tutorial.infinite_step1_desc'),
       icon: "[∞]",
     },
     {
-      title: "[ GENERATE ]",
-      description: "SUMMON NEW ETHICAL SCENARIOS POWERED BY AI. EACH ONE DIFFERENT. EACH ONE DARKER.",
+      title: t('tutorial.infinite_step2_title'),
+      description: t('tutorial.infinite_step2_desc'),
       icon: "[+]",
     },
     {
-      title: "[ CHOOSE PATH ]",
-      description: "SELECT BETWEEN TWO MORALLY CHALLENGING OPTIONS. RECEIVE RESPONSE THAT REFLECTS ON YOUR DECISION.",
+      title: t('tutorial.infinite_step3_title'),
+      description: t('tutorial.infinite_step3_desc'),
       icon: "[?]",
     },
     {
-      title: "[ NO LIMIT ]",
-      description: "KEEP GENERATING DILEMMAS. EXPLORE ETHICAL PERSPECTIVES. AS LONG AS YOU CAN ENDURE.",
+      title: t('tutorial.infinite_step4_title'),
+      description: t('tutorial.infinite_step4_desc'),
       icon: "[∞]",
     },
   ];
@@ -105,19 +107,19 @@ const TutorialScreen = () => {
           <div className="tutorial-buttons">
             {currentStep > 0 && (
               <button className="tutorial-button tutorial-button-secondary" onClick={handlePrevious}>
-                Previous
+                {t('tutorial.previous')}
               </button>
             )}
             <button className="tutorial-button tutorial-button-skip" onClick={handleSkip}>
-              Skip
+              {t('tutorial.skip')}
             </button>
             <button className="tutorial-button tutorial-button-primary" onClick={handleNext}>
-              {currentStep === tutorialSteps.length - 1 ? "Let's Start!" : 'Next'}
+              {currentStep === tutorialSteps.length - 1 ? t('tutorial.start') : t('tutorial.next')}
             </button>
           </div>
 
           <button className="tutorial-home-button" onClick={() => navigate('/')}>
-            ← Back to Home
+            {t('tutorial.back_to_home')}
           </button>
         </div>
     </div>
