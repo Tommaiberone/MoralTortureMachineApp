@@ -8,7 +8,7 @@ import './ResultsScreen.css';
 const ResultsScreen = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { answers, dilemmasWithChoices } = location.state || { answers: [], dilemmasWithChoices: [] };
   const [aiAnalysis, setAiAnalysis] = useState('');
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
@@ -51,8 +51,9 @@ const ResultsScreen = () => {
 
       setLoadingAnalysis(true);
       try {
+        const currentLanguage = i18n.language;
         const backendUrl = "https://wxe53u88o8.execute-api.eu-west-1.amazonaws.com/analyze-results";
-        const response = await fetch(backendUrl, {
+        const response = await fetch(`${backendUrl}?language=${currentLanguage}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -76,7 +77,7 @@ const ResultsScreen = () => {
     };
 
     fetchAiAnalysis();
-  }, [answers, dilemmasWithChoices]);
+  }, [answers, dilemmasWithChoices, i18n.language]);
 
   return (
     <div className="results-scroll-container">

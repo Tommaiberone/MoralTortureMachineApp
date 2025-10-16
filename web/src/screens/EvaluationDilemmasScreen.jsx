@@ -9,7 +9,7 @@ const MAX_DILEMMAS = 7;
 
 const EvaluationDilemmasScreen = () => {
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [dilemma, setDilemma] = useState(null);
 
@@ -34,9 +34,10 @@ const EvaluationDilemmasScreen = () => {
   const fetchDilemmaData = async () => {
     let response;
     let retries = 5;
+    const currentLanguage = i18n.language;
     while (retries > 0) {
       try {
-        response = await fetch(backendUrl, {
+        response = await fetch(`${backendUrl}?language=${currentLanguage}`, {
           method: "GET",
           headers: { "Content-Type": "application/json" },
         });

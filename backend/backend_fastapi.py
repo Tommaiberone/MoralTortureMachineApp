@@ -163,48 +163,51 @@ async def vote(vote_request: VoteRequest):
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 @app.get("/get-dilemma", response_model=DilemmaResponse, response_model_by_alias=True)
-async def get_dilemma():
+async def get_dilemma(language: str = "en"):
     """
     Get a random dilemma from the database
 
-    Returns a random dilemma with all its attributes
+    Returns a random dilemma with all its attributes in the specified language
     """
     try:
-        # Scan the table to get all items (for small datasets)
-        # For larger datasets, consider using a different approach with random selection
-        response = table.scan()
-        items = response.get('Items', [])
+        # Determine which dilemmas file to use based on language
+        dilemmas_file = "dilemmas.json" if language == "en" else "dilemmas_it.json"
+        dilemmas_path = os.path.join(os.path.dirname(__file__), dilemmas_file)
 
-        if not items:
+        # Load dilemmas from the appropriate JSON file
+        with open(dilemmas_path, 'r', encoding='utf-8') as f:
+            dilemmas = json.load(f)
+
+        if not dilemmas:
             raise HTTPException(status_code=404, detail="No dilemmas found")
 
         # Select a random dilemma
         import random
-        dilemma = random.choice(items)
-
-        # Convert Decimal types to native types
-        dilemma = decimal_to_native(dilemma)
+        dilemma = random.choice(dilemmas)
 
         # Ensure all required fields have default values
         dilemma.setdefault('yesCount', 0)
         dilemma.setdefault('noCount', 0)
 
-        logger.info(f"Retrieved dilemma: {dilemma.get('_id')}")
+        logger.info(f"Retrieved dilemma: {dilemma.get('_id')} in language: {language}")
 
         return dilemma
 
     except HTTPException:
         raise
+    except FileNotFoundError:
+        logger.error(f"Dilemmas file not found for language: {language}")
+        raise HTTPException(status_code=404, detail=f"Dilemmas file not found for language: {language}")
     except Exception as e:
         logger.error(f"Error in /get-dilemma: {str(e)}")
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 @app.post("/generate-dilemma")
-async def generate_dilemma():
+async def generate_dilemma(language: str = "en"):
     """
     Generate a new dilemma using Groq AI API
 
-    Returns a newly generated ethical dilemma
+    Returns a newly generated ethical dilemma in the specified language
     """
     try:
         if not API_KEY:
@@ -213,27 +216,48 @@ async def generate_dilemma():
                 detail="API_KEY not configured"
             )
 
+        # Define prompts for different languages
+        if language == "it":
+            prompt_content = (
+                'Genera un conciso dilemma etico (40-80 parole) con due opzioni difficili. '
+                'Ogni opzione dovrebbe presentare un punto di vista valido ma contrastante, incoraggiando la riflessione. '
+                'Aggiungi una leggera presa in giro per ogni opzione per rendere il dilemma più coinvolgente. '
+                'Assicurati equilibrio e complessità, evitando scelte semplificate. '
+                'Rispondi rigorosamente in formato JSON con la seguente struttura: '
+                '{"dilemma": "...", "firstAnswer": "...", "secondAnswer": "...", '
+                '"teaseOption1": "...", "teaseOption2": "..."} '
+                'Ecco un esempio di una buona risposta (solo il json, con la struttura corretta): '
+                '{"dilemma": "Un leader comunitario deve decidere se allocare risorse limitate per ricostruire le case dopo un disastro naturale o investire in programmi educativi a lungo termine per prevenire vulnerabilità future. Allocare risorse per la ricostruzione immediata potrebbe ripristinare le vite rapidamente ma potrebbe trascurare la preparazione futura. D\'altra parte, investire nell\'istruzione potrebbe rafforzare la resilienza della comunità ma ritardare gli sforzi di soccorso immediato.", '
+                '"firstAnswer": "Ricostruire le case", '
+                '"secondAnswer": "Investire nell\'istruzione", '
+                '"teaseOption1": "Dare priorità al presente rispetto al futuro? Scelta interessante!", '
+                '"teaseOption2": "Pianificare per il futuro, ma a quale costo?"}'
+                'FORMATTA LA RISPOSTA RIGOROSAMENTE NEL JSON CHE HO FORNITO! NIENT\'ALTRO CHE IL JSON DOVREBBE ESSERE NELLA TUA RISPOSTA'
+            )
+        else:
+            prompt_content = (
+                'Generate a concise ethical dilemma (40-80 words) with two challenging options. '
+                'Each option should present a valid but contrasting viewpoint, encouraging reflection. '
+                'Add a light tease for each option to make the dilemma more engaging. '
+                'Ensure balance and complexity, avoiding oversimplified choices. '
+                'Respond strictly in JSON format with the following structure: '
+                '{"dilemma": "...", "firstAnswer": "...", "secondAnswer": "...", '
+                '"teaseOption1": "...", "teaseOption2": "..."} '
+                'Here is an example of a good answer (just the json, with the correct structure): '
+                '{"dilemma": "A community leader must decide whether to allocate limited resources to rebuilding homes after a natural disaster or invest in long-term educational programs to prevent future vulnerabilities. Allocating resources to immediate rebuilding could restore lives quickly but might neglect future preparedness. On the other hand, investing in education could strengthen the community\'s resilience but delay immediate relief efforts.", '
+                '"firstAnswer": "Rebuild homes", '
+                '"secondAnswer": "Invest in education", '
+                '"teaseOption1": "Prioritizing now over later? Interesting choice!", '
+                '"teaseOption2": "Planning for the future, but at what cost?"}'
+                'FORMAT THE ANSWER STRICTLY IN THE JSON I PROVIDED! NOTHING BUT THE JSON SHOULD BE IN YOUR ANSWER'
+            )
+
         payload = {
             "model": "llama-3.3-70b-versatile",
             "messages": [
                 {
                     "role": "user",
-                    "content": (
-                        'Generate a concise ethical dilemma (40-80 words) with two challenging options. '
-                        'Each option should present a valid but contrasting viewpoint, encouraging reflection. '
-                        'Add a light tease for each option to make the dilemma more engaging. '
-                        'Ensure balance and complexity, avoiding oversimplified choices. '
-                        'Respond strictly in JSON format with the following structure: '
-                        '{"dilemma": "...", "firstAnswer": "...", "secondAnswer": "...", '
-                        '"teaseOption1": "...", "teaseOption2": "..."} '
-                        'Here is an example of a good answer (just the json, with the correct structure): '
-                        '{"dilemma": "A community leader must decide whether to allocate limited resources to rebuilding homes after a natural disaster or invest in long-term educational programs to prevent future vulnerabilities. Allocating resources to immediate rebuilding could restore lives quickly but might neglect future preparedness. On the other hand, investing in education could strengthen the community\'s resilience but delay immediate relief efforts.", '
-                        '"firstAnswer": "Rebuild homes", '
-                        '"secondAnswer": "Invest in education", '
-                        '"teaseOption1": "Prioritizing now over later? Interesting choice!", '
-                        '"teaseOption2": "Planning for the future, but at what cost?"}'
-                        'FORMAT THE ANSWER STRICTLY IN THE JSON I PROVIDED! NOTHING BUT THE JSON SHOULD BE IN YOUR ANSWER'
-                    )
+                    "content": prompt_content
                 }
             ],
         }
@@ -270,11 +294,11 @@ async def generate_dilemma():
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 @app.post("/analyze-results")
-async def analyze_results(request: AnalyzeResultsRequest):
+async def analyze_results(request: AnalyzeResultsRequest, language: str = "en"):
     """
     Analyze user's moral profile and generate a summary using Groq AI API
 
-    Returns an AI-generated analysis of the user's moral choices
+    Returns an AI-generated analysis of the user's moral choices in the specified language
     """
     try:
         if not API_KEY:
@@ -297,33 +321,59 @@ async def analyze_results(request: AnalyzeResultsRequest):
         profile_summary = ", ".join([f"{key}: {value}" for key, value in averages.items()])
 
         # Create detailed summary of dilemmas and choices if available
-        dilemmas_summary = ""
-        if request.dilemmasWithChoices and len(request.dilemmasWithChoices) > 0:
-            dilemmas_summary = "\n\nHere are the specific dilemmas they faced and their choices:\n"
-            for i, d in enumerate(request.dilemmasWithChoices, 1):
-                dilemmas_summary += f"\n{i}. Dilemma: {d.dilemma}\n"
-                dilemmas_summary += f"   Options: '{d.firstAnswer}' or '{d.secondAnswer}'\n"
-                dilemmas_summary += f"   They chose: '{d.chosenAnswer}'\n"
+        if language == "it":
+            dilemmas_summary = ""
+            if request.dilemmasWithChoices and len(request.dilemmasWithChoices) > 0:
+                dilemmas_summary = "\n\nEcco i dilemmi specifici che hanno affrontato e le loro scelte:\n"
+                for i, d in enumerate(request.dilemmasWithChoices, 1):
+                    dilemmas_summary += f"\n{i}. Dilemma: {d.dilemma}\n"
+                    dilemmas_summary += f"   Opzioni: '{d.firstAnswer}' oppure '{d.secondAnswer}'\n"
+                    dilemmas_summary += f"   Hanno scelto: '{d.chosenAnswer}'\n"
+
+            prompt_content = (
+                f'Stai analizzando il profilo morale di una persona basandoti sulle sue risposte a dilemmi etici. '
+                f'Ecco i loro punteggi medi attraverso diverse categorie morali: {profile_summary}.'
+                f'{dilemmas_summary}'
+                f'\nGenera un\'analisi ponderata, leggermente oscura e inquietante (100-150 parole) che: '
+                f'1) Fa riferimento alle loro scelte SPECIFICHE nei dilemmi che hanno affrontato '
+                f'2) Identifica i loro tratti morali dominanti basandosi sulle loro decisioni effettive '
+                f'3) Spiega cosa rivelano le loro scelte sul loro carattere e priorità '
+                f'4) Fornisce intuizioni su potenziali punti ciechi morali o punti di forza '
+                f'5) Usa un tono che si adatta al tema "Moral Torture Machine" - misterioso, leggermente inquietante, ma perspicace '
+                f'Scrivi in seconda persona (rivolgendoti a "tu") e mantieni un tono inquietante e filosofico. '
+                f'IMPORTANTE: Basa la tua analisi sulle scelte EFFETTIVE che hanno fatto, non solo sui punteggi numerici. '
+                f'Non usare il formato JSON, restituisci solo il testo dell\'analisi direttamente.'
+            )
+        else:
+            dilemmas_summary = ""
+            if request.dilemmasWithChoices and len(request.dilemmasWithChoices) > 0:
+                dilemmas_summary = "\n\nHere are the specific dilemmas they faced and their choices:\n"
+                for i, d in enumerate(request.dilemmasWithChoices, 1):
+                    dilemmas_summary += f"\n{i}. Dilemma: {d.dilemma}\n"
+                    dilemmas_summary += f"   Options: '{d.firstAnswer}' or '{d.secondAnswer}'\n"
+                    dilemmas_summary += f"   They chose: '{d.chosenAnswer}'\n"
+
+            prompt_content = (
+                f'You are analyzing a person\'s moral profile based on their responses to ethical dilemmas. '
+                f'Here are their average scores across different moral categories: {profile_summary}.'
+                f'{dilemmas_summary}'
+                f'\nGenerate a thoughtful, slightly dark and creepy analysis (100-150 words) that: '
+                f'1) References their SPECIFIC choices in the dilemmas they faced '
+                f'2) Identifies their dominant moral traits based on their actual decisions '
+                f'3) Explains what their choices reveal about their character and priorities '
+                f'4) Provides insight into potential moral blind spots or strengths '
+                f'5) Uses a tone that fits the "Moral Torture Machine" theme - mysterious, slightly unsettling, but insightful '
+                f'Write in second person (addressing "you") and maintain a haunting, philosophical tone. '
+                f'IMPORTANT: Base your analysis on the ACTUAL choices they made, not just the numerical scores. '
+                f'Do not use JSON format, just return the analysis text directly.'
+            )
 
         payload = {
             "model": "llama-3.3-70b-versatile",
             "messages": [
                 {
                     "role": "user",
-                    "content": (
-                        f'You are analyzing a person\'s moral profile based on their responses to ethical dilemmas. '
-                        f'Here are their average scores across different moral categories: {profile_summary}.'
-                        f'{dilemmas_summary}'
-                        f'\nGenerate a thoughtful, slightly dark and creepy analysis (100-150 words) that: '
-                        f'1) References their SPECIFIC choices in the dilemmas they faced '
-                        f'2) Identifies their dominant moral traits based on their actual decisions '
-                        f'3) Explains what their choices reveal about their character and priorities '
-                        f'4) Provides insight into potential moral blind spots or strengths '
-                        f'5) Uses a tone that fits the "Moral Torture Machine" theme - mysterious, slightly unsettling, but insightful '
-                        f'Write in second person (addressing "you") and maintain a haunting, philosophical tone. '
-                        f'IMPORTANT: Base your analysis on the ACTUAL choices they made, not just the numerical scores. '
-                        f'Do not use JSON format, just return the analysis text directly.'
-                    )
+                    "content": prompt_content
                 }
             ],
         }
