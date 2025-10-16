@@ -111,65 +111,15 @@ resource "aws_acm_certificate" "frontend" {
   }
 }
 
-# Validazione del certificato ACM
-resource "aws_acm_certificate_validation" "frontend" {
-  count                   = var.use_custom_domain ? 1 : 0
-  provider                = aws.us_east_1
-  certificate_arn         = aws_acm_certificate.frontend[0].arn
-  validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
-}
-
-# Zona Route53 (assumi che esista già)
-data "aws_route53_zone" "main" {
-  count = var.use_custom_domain ? 1 : 0
-  name  = var.domain_name
-}
-
-# Record DNS per la validazione del certificato
-resource "aws_route53_record" "cert_validation" {
-  for_each = var.use_custom_domain ? {
-    for dvo in aws_acm_certificate.frontend[0].domain_validation_options : dvo.domain_name => {
-      name   = dvo.resource_record_name
-      record = dvo.resource_record_value
-      type   = dvo.resource_record_type
-    }
-  } : {}
-
-  allow_overwrite = true
-  name            = each.value.name
-  records         = [each.value.record]
-  ttl             = 60
-  type            = each.value.type
-  zone_id         = data.aws_route53_zone.main[0].zone_id
-}
-
-# Record DNS per il dominio principale
-resource "aws_route53_record" "frontend" {
-  count   = var.use_custom_domain ? 1 : 0
-  zone_id = data.aws_route53_zone.main[0].zone_id
-  name    = var.domain_name
-  type    = "A"
-
-  alias {
-    name                   = aws_cloudfront_distribution.frontend.domain_name
-    zone_id                = aws_cloudfront_distribution.frontend.hosted_zone_id
-    evaluate_target_health = false
-  }
-}
-
-# Record DNS per www
-resource "aws_route53_record" "frontend_www" {
-  count   = var.use_custom_domain ? 1 : 0
-  zone_id = data.aws_route53_zone.main[0].zone_id
-  name    = "www.${var.domain_name}"
-  type    = "A"
-
-  alias {
-    name                   = aws_cloudfront_distribution.frontend.domain_name
-    zone_id                = aws_cloudfront_distribution.frontend.hosted_zone_id
-    evaluate_target_health = false
-  }
-}
+# NOTE: Certificate validation must be done manually in Cloudflare
+# After running terraform apply, you'll need to:
+# 1. Get the DNS validation records from the ACM console or terraform output
+# 2. Add those CNAME records to your Cloudflare DNS settings
+# 3. Wait for the certificate to be validated (can take a few minutes)
+#
+# DNS records for domain pointing must also be created manually in Cloudflare:
+# - CNAME for @ (root) pointing to CloudFront domain (use DNS only, grey cloud)
+# - CNAME for www pointing to CloudFront domain (use DNS only, grey cloud)
 
 # CloudFront Distribution
 resource "aws_cloudfront_distribution" "frontend" {
@@ -253,7 +203,7 @@ resource "aws_cloudfront_distribution" "frontend" {
 
   viewer_certificate {
     cloudfront_default_certificate = var.use_custom_domain ? false : true
-    acm_certificate_arn            = var.use_custom_domain ? aws_acm_certificate_validation.frontend[0].certificate_arn : null
+    acm_certificate_arn            = var.use_custom_domain ? aws_acm_certificate.frontend[0].arn : null
     ssl_support_method             = var.use_custom_domain ? "sni-only" : null
     minimum_protocol_version       = "TLSv1.2_2021"
   }
@@ -286,6 +236,22 @@ output "frontend_url" {
   value       = "https://${aws_cloudfront_distribution.frontend.domain_name}"
 }
 
+output "certificate_validation_records" {
+  description = "DNS records needed for ACM certificate validation - Add these to Cloudflare"
+  value = var.use_custom_domain ? {
+    for dvo in aws_acm_certificate.frontend[0].domain_validation_options : dvo.domain_name => {
+      name  = dvo.resource_record_name
+      type  = dvo.resource_record_type
+      value = dvo.resource_record_value
+    }
+  } : {}
+}
+
+output "cloudfront_url_for_cloudflare" {
+  description = "CloudFront URL to use as CNAME target in Cloudflare DNS"
+  value       = var.use_custom_domain ? aws_cloudfront_distribution.frontend.domain_name : null
+}
+
 output "deployment_summary" {
   description = "Summary of the frontend deployment"
   value       = <<-EOT
@@ -299,6 +265,45 @@ output "deployment_summary" {
     CloudFront Distribution: ${aws_cloudfront_distribution.frontend.id}
     Region: ${var.aws_region}
 
+    %{if var.use_custom_domain}
+    ==========================================
+    MANUAL DNS CONFIGURATION REQUIRED
+    ==========================================
+
+    You're using Cloudflare for DNS. Follow these steps:
+
+    1. CERTIFICATE VALIDATION (do this first, before creating domain records):
+       Go to your Cloudflare DNS settings and add these CNAME records:
+       (See 'certificate_validation_records' output for the exact values)
+
+       Wait for the certificate to be validated in AWS ACM Console.
+
+    2. DOMAIN RECORDS (after certificate is validated):
+       Add these records in Cloudflare DNS:
+
+       - Type: CNAME
+         Name: @
+         Target: ${aws_cloudfront_distribution.frontend.domain_name}
+         Proxy status: DNS only (grey cloud)
+
+       - Type: CNAME
+         Name: www
+         Target: ${aws_cloudfront_distribution.frontend.domain_name}
+         Proxy status: DNS only (grey cloud)
+
+    ==========================================
+    Deploy your frontend:
+    ==========================================
+
+      cd web
+      pnpm build
+      aws s3 sync dist/ s3://${aws_s3_bucket.frontend.id}/ --delete
+      aws cloudfront create-invalidation --distribution-id ${aws_cloudfront_distribution.frontend.id} --paths "/*"
+
+    IMPORTANT: Update your backend CORS settings to include:
+      https://${var.domain_name}
+      https://www.${var.domain_name}
+    %{else}
     Deploy your frontend:
       cd web
       pnpm build
@@ -307,6 +312,7 @@ output "deployment_summary" {
 
     IMPORTANT: Update your backend CORS settings to include:
       https://${aws_cloudfront_distribution.frontend.domain_name}
+    %{endif}
 
   EOT
 }
