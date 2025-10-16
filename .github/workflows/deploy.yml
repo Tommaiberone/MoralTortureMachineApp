@@ -160,8 +160,8 @@ jobs:
           RESPONSE=$(curl -s --retry 3 --retry-delay 5 "$API_URL/get-dilemma" -w "%{http_code}" -o /tmp/response.txt)
           HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
 
-          # Accept 200 (success) or 500 (empty DB) as valid responses
-          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "500" ]; then
+          # Accept 200 (success), 404 (no dilemmas), or 500 (empty DB) as valid responses
+          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "404" ] && [ "$HTTP_CODE" != "500" ]; then
             echo "❌ Unexpected HTTP code: $HTTP_CODE"
             cat /tmp/response.txt
             exit 1
