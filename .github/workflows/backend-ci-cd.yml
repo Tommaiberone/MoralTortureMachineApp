@@ -1,24 +1,4 @@
-# Backend Deployment Workflow
-#
-# This workflow automatically deploys the FastAPI backend to AWS Lambda
-# using Terraform and uv for Python package management.
-#
-# REQUIRED SECRETS (add in GitHub Settings → Secrets and variables → Actions):
-#   - AWS_ACCESS_KEY_ID: Your AWS access key ID
-#   - AWS_SECRET_ACCESS_KEY: Your AWS secret access key
-#   - GROQ_API_KEY: (optional) API key for AI dilemma generation
-#
-# How to add secrets:
-#   1. Go to your GitHub repository
-#   2. Click Settings → Secrets and variables → Actions
-#   3. Click "New repository secret"
-#   4. Add each secret with the exact name shown above
-#
-# Troubleshooting:
-#   - "Credentials could not be loaded": Check that AWS secrets are added correctly
-#   - See backend/README.md for detailed troubleshooting steps
-
-name: Backend Deploy
+name: Backend CI/CD
 
 on:
   push:
@@ -26,13 +6,13 @@ on:
       - main
     paths:
       - 'backend/**'
-      - '.github/workflows/backend-deploy.yml'
+      - '.github/workflows/backend-ci-cd.yml'
   pull_request:
     branches:
       - main
     paths:
       - 'backend/**'
-      - '.github/workflows/backend-deploy.yml'
+      - '.github/workflows/backend-ci-cd.yml'
   workflow_dispatch:
     inputs:
       environment:
@@ -43,15 +23,22 @@ on:
         options:
           - production
           - staging
+      populate_dynamodb:
+        description: 'Populate DynamoDB with fresh data'
+        required: false
+        default: false
+        type: boolean
 
 env:
   AWS_REGION: eu-west-1
   TERRAFORM_VERSION: 1.9.0
   PYTHON_VERSION: '3.11'
+  DYNAMODB_TABLE_NAME: moral-torture-machine-dilemmas
 
 jobs:
+  # Job 1: Lint e Test del codice
   lint-and-test:
-    name: Lint and Test
+    name: Lint & Test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -88,13 +75,17 @@ jobs:
         continue-on-error: true
         run: |
           uv pip install --system ruff
-          ruff check backend_fastapi.py populate_dynamodb.py || true
+          ruff check backend_fastapi.py populate_dynamodb.py populate_dynamodb_multilang.py || true
 
       - name: Check Python syntax
         run: |
           python -m py_compile backend_fastapi.py
           python -m py_compile populate_dynamodb.py
+          if [ -f populate_dynamodb_multilang.py ]; then
+            python -m py_compile populate_dynamodb_multilang.py
+          fi
 
+  # Job 2: Terraform Plan (solo per PR)
   terraform-plan:
     name: Terraform Plan
     runs-on: ubuntu-latest
@@ -145,14 +136,12 @@ jobs:
       - name: Comment PR with Plan
         uses: actions/github-script@v7
         if: github.event_name == 'pull_request'
-        env:
-          PLAN: ${{ steps.plan.outputs.stdout }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
             const plan = fs.readFileSync('backend/terraform/plan.txt', 'utf8');
-            const output = `#### Terraform Plan
+            const output = `#### Terraform Backend Plan
 
             <details><summary>Show Plan</summary>
 
@@ -171,11 +160,12 @@ jobs:
               body: output
             });
 
+  # Job 3: Deploy Backend (Lambda + Terraform)
   deploy:
-    name: Deploy to AWS
+    name: Deploy Backend to AWS
     runs-on: ubuntu-latest
     needs: lint-and-test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     defaults:
       run:
         working-directory: ./backend
@@ -262,13 +252,6 @@ jobs:
           echo "api_url=$API_URL" >> $GITHUB_OUTPUT
           echo "API Endpoint: $API_URL"
 
-      - name: Populate DynamoDB
-        run: |
-          uv pip install --system boto3
-          python populate_dynamodb.py \
-            moral-torture-machine-dilemmas \
-            dilemmas.json
-
       - name: Test API Health
         run: |
           API_URL="${{ steps.api-endpoint.outputs.api_url }}"
@@ -280,12 +263,12 @@ jobs:
           # Test get-dilemma endpoint
           curl -f "$API_URL/get-dilemma" || exit 1
 
-          echo "API health check passed!"
+          echo "✅ API health check passed!"
 
       - name: Create deployment summary
         run: |
           cat >> $GITHUB_STEP_SUMMARY <<EOF
-          ## Deployment Successful
+          ## ✅ Backend Deployment Successful
 
           **Environment:** ${ENVIRONMENT:-production}
           **API Endpoint:** ${{ steps.api-endpoint.outputs.api_url }}
@@ -297,18 +280,164 @@ jobs:
           # Health check
           curl ${{ steps.api-endpoint.outputs.api_url }}/
 
-          # Get a dilemma
-          curl ${{ steps.api-endpoint.outputs.api_url }}/get-dilemma
+          # Get a dilemma (English)
+          curl ${{ steps.api-endpoint.outputs.api_url }}/get-dilemma?language=en
+
+          # Get a dilemma (Italian)
+          curl ${{ steps.api-endpoint.outputs.api_url }}/get-dilemma?language=it
 
           # View API docs
           open ${{ steps.api-endpoint.outputs.api_url }}/docs
           \`\`\`
-
-          ### Next Steps
-          - Update frontend API URL to: \`${{ steps.api-endpoint.outputs.api_url }}\`
-          - Monitor logs: \`aws logs tail /aws/lambda/moral-torture-machine-api --follow\`
           EOF
 
+  # Job 4: Populate DynamoDB (opzionale)
+  populate-dynamodb:
+    name: Populate DynamoDB
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: |
+      github.ref == 'refs/heads/main' &&
+      (github.event.inputs.populate_dynamodb == 'true' || contains(github.event.head_commit.message, '[populate-db]'))
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install boto3
+        run: pip install boto3
+
+      - name: Check dilemma files
+        working-directory: backend
+        run: |
+          echo "📋 Checking dilemma files..."
+
+          if [ -f "dilemmas_it.json" ] && [ -f "dilemmas.json" ]; then
+            echo "Found multilingual dilemma files"
+            echo "MULTILANG=true" >> $GITHUB_ENV
+
+            en_count=$(jq '. | length' dilemmas.json)
+            it_count=$(jq '. | length' dilemmas_it.json)
+
+            echo "✅ Found $en_count English dilemmas"
+            echo "✅ Found $it_count Italian dilemmas"
+          elif [ -f "dilemmas.json" ]; then
+            echo "Found single language dilemma file"
+            echo "MULTILANG=false" >> $GITHUB_ENV
+
+            count=$(jq '. | length' dilemmas.json)
+            echo "✅ Found $count dilemmas"
+          else
+            echo "❌ Error: No dilemma files found!"
+            exit 1
+          fi
+
+      - name: Backup current DynamoDB data
+        run: |
+          echo "💾 Creating backup of current DynamoDB data..."
+          timestamp=$(date +%Y%m%d-%H%M%S)
+          backup_name="backup-$timestamp"
+
+          aws dynamodb create-backup \
+            --table-name ${{ env.DYNAMODB_TABLE_NAME }} \
+            --backup-name "$backup_name" \
+            --region ${{ env.AWS_REGION }}
+
+          echo "✅ Backup created: $backup_name"
+
+      - name: Populate DynamoDB
+        working-directory: backend
+        run: |
+          echo "📊 Populating DynamoDB table: ${{ env.DYNAMODB_TABLE_NAME }}"
+
+          if [ "$MULTILANG" = "true" ]; then
+            echo "Using multilingual populate script"
+            python3 -u populate_dynamodb_multilang.py ${{ env.DYNAMODB_TABLE_NAME }} <<EOF
+          yes
+          EOF
+          else
+            echo "Using single language populate script"
+            python3 populate_dynamodb.py \
+              ${{ env.DYNAMODB_TABLE_NAME }} \
+              dilemmas.json
+          fi
+
+          echo "✅ DynamoDB populated successfully!"
+
+      - name: Verify population
+        run: |
+          echo "🔍 Verifying DynamoDB content..."
+
+          # Get total count
+          total_count=$(aws dynamodb describe-table \
+            --table-name ${{ env.DYNAMODB_TABLE_NAME }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Table.ItemCount' \
+            --output text)
+
+          echo "📊 Total items in table: $total_count"
+
+          if [ "$total_count" -eq 0 ]; then
+            echo "❌ Error: No items in DynamoDB table!"
+            exit 1
+          fi
+
+          echo "✅ DynamoDB verification passed!"
+
+      - name: Test API with populated data
+        needs: deploy
+        run: |
+          echo "🧪 Testing API with new data..."
+
+          # Get API URL from previous job
+          API_URL="${{ needs.deploy.outputs.api_url }}"
+
+          if [ -z "$API_URL" ]; then
+            # Fallback to hardcoded URL if needed
+            API_URL="https://wxe53u88o8.execute-api.eu-west-1.amazonaws.com"
+          fi
+
+          echo "Testing at: $API_URL"
+
+          echo "Testing English endpoint..."
+          response=$(curl -s "$API_URL/get-dilemma?language=en")
+          if echo "$response" | jq -e '._id' > /dev/null; then
+            echo "✅ English dilemmas working"
+          else
+            echo "❌ English dilemmas not working"
+            exit 1
+          fi
+
+          echo "Testing Italian endpoint..."
+          response=$(curl -s "$API_URL/get-dilemma?language=it")
+          if echo "$response" | jq -e '._id' > /dev/null; then
+            echo "✅ Italian dilemmas working"
+          else
+            echo "⚠️ Italian dilemmas not available (might be single language setup)"
+          fi
+
+          echo "✅ API tests completed!"
+
+      - name: DynamoDB Summary
+        run: |
+          echo "### ✅ DynamoDB Populated Successfully" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Table:** ${{ env.DYNAMODB_TABLE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Region:** ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+
+  # Job 5: Notifiche in caso di fallimento
   notify:
     name: Notify on Failure
     runs-on: ubuntu-latest
@@ -319,7 +448,7 @@ jobs:
       - name: Create failure summary
         run: |
           cat >> $GITHUB_STEP_SUMMARY <<EOF
-          ## Deployment Failed
+          ## ❌ Backend Deployment Failed
 
           **Branch:** ${{ github.ref_name }}
           **Commit:** ${{ github.sha }}
