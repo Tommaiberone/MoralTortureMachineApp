@@ -13,6 +13,7 @@ body {
   overflow-x: hidden;
   background-color: var(--creepy-void);
   image-rendering: pixelated;
+  filter: contrast(1.08) brightness(0.96);
 }
 
 #root {
