@@ -36,7 +36,9 @@ variable "cors_allowed_origins" {
     "https://tommaiberone.github.io",
     "http://localhost:3000",
     "https://d1vklv6uo7wyz2.cloudfront.net",
-    "http://localhost:5173"
+    "http://localhost:5173",
+    "https://moraltorturemachine.com",
+    "https://www.moraltorturemachine.com"
   ]
 }
 
