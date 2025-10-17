@@ -210,7 +210,7 @@ async def get_dilemma(language: str = "en"):
 @app.post("/generate-dilemma")
 async def generate_dilemma(language: str = "en"):
     """
-    Generate a new dilemma using Groq AI API
+    Generate a new dilemma using Groq AI API, inspired by existing dilemmas from DynamoDB
 
     Returns a newly generated ethical dilemma in the specified language
     """
@@ -221,40 +221,69 @@ async def generate_dilemma(language: str = "en"):
                 detail="API_KEY not configured"
             )
 
+        # Fetch sample dilemmas from DynamoDB to use as style/context examples
+        sample_dilemmas = []
+        try:
+            response = table.scan(
+                FilterExpression='attribute_exists(#lang) AND #lang = :language',
+                ExpressionAttributeNames={
+                    '#lang': 'language'
+                },
+                ExpressionAttributeValues={
+                    ':language': language
+                },
+                Limit=5  # Get up to 5 sample dilemmas
+            )
+            
+            sample_items = response.get('Items', [])
+            sample_dilemmas = [decimal_to_native(item) for item in sample_items]
+            logger.info(f"Retrieved {len(sample_dilemmas)} sample dilemmas for language: {language}")
+        except Exception as e:
+            logger.warning(f"Could not fetch sample dilemmas: {str(e)}")
+            sample_dilemmas = []
+
+        # Build the examples string from database dilemmas
+        examples_text = ""
+        if sample_dilemmas:
+            examples_text = "\n\nHere are some examples of the style and complexity I'm looking for:\n"
+            for i, dilemma in enumerate(sample_dilemmas[:3], 1):
+                examples_text += f"\nExample {i}:\n"
+                examples_text += f'{{"dilemma": "{dilemma.get("dilemma", "")[:100]}...", '
+                examples_text += f'"firstAnswer": "{dilemma.get("firstAnswer", "")}", '
+                examples_text += f'"secondAnswer": "{dilemma.get("secondAnswer", "")}", '
+                examples_text += f'"teaseOption1": "{dilemma.get("teaseOption1", "")}", '
+                examples_text += f'"teaseOption2": "{dilemma.get("teaseOption2", "")}"}}\n'
+
         # Define prompts for different languages
         if language == "it":
             prompt_content = (
-                'Genera un conciso dilemma etico (40-80 parole) con due opzioni difficili. '
+                'Genera un NUOVO e UNICO dilemma etico (40-80 parole) con due opzioni difficili. '
+                'IMPORTANTE: Crea un dilemma completamente nuovo e diverso da quelli che hai visto. '
+                'Non copiare o modificare gli esempi forniti - crea qualcosa di originale. '
                 'Ogni opzione dovrebbe presentare un punto di vista valido ma contrastante, incoraggiando la riflessione. '
                 'Aggiungi una leggera presa in giro per ogni opzione per rendere il dilemma più coinvolgente. '
                 'Assicurati equilibrio e complessità, evitando scelte semplificate. '
                 'Rispondi rigorosamente in formato JSON con la seguente struttura: '
                 '{"dilemma": "...", "firstAnswer": "...", "secondAnswer": "...", '
                 '"teaseOption1": "...", "teaseOption2": "..."} '
-                'Ecco un esempio di una buona risposta (solo il json, con la struttura corretta): '
-                '{"dilemma": "Un leader comunitario deve decidere se allocare risorse limitate per ricostruire le case dopo un disastro naturale o investire in programmi educativi a lungo termine per prevenire vulnerabilità future. Allocare risorse per la ricostruzione immediata potrebbe ripristinare le vite rapidamente ma potrebbe trascurare la preparazione futura. D\'altra parte, investire nell\'istruzione potrebbe rafforzare la resilienza della comunità ma ritardare gli sforzi di soccorso immediato.", '
-                '"firstAnswer": "Ricostruire le case", '
-                '"secondAnswer": "Investire nell\'istruzione", '
-                '"teaseOption1": "Dare priorità al presente rispetto al futuro? Scelta interessante!", '
-                '"teaseOption2": "Pianificare per il futuro, ma a quale costo?"}'
-                'FORMATTA LA RISPOSTA RIGOROSAMENTE NEL JSON CHE HO FORNITO! NIENT\'ALTRO CHE IL JSON DOVREBBE ESSERE NELLA TUA RISPOSTA'
+                f'{examples_text}'
+                'FORMATTA LA RISPOSTA RIGOROSAMENTE NEL JSON CHE HO FORNITO! NIENT\'ALTRO CHE IL JSON DOVREBBE ESSERE NELLA TUA RISPOSTA. '
+                'ASSICURATI CHE IL DILEMMA SIA COMPLETAMENTE NUOVO E NON UNA VARIAZIONE DEGLI ESEMPI!'
             )
         else:
             prompt_content = (
-                'Generate a concise ethical dilemma (40-80 words) with two challenging options. '
+                'Generate a NEW and UNIQUE ethical dilemma (40-80 words) with two challenging options. '
+                'IMPORTANT: Create a completely new and different dilemma from the ones you\'ve seen. '
+                'Do not copy or modify the provided examples - create something original. '
                 'Each option should present a valid but contrasting viewpoint, encouraging reflection. '
                 'Add a light tease for each option to make the dilemma more engaging. '
                 'Ensure balance and complexity, avoiding oversimplified choices. '
                 'Respond strictly in JSON format with the following structure: '
                 '{"dilemma": "...", "firstAnswer": "...", "secondAnswer": "...", '
                 '"teaseOption1": "...", "teaseOption2": "..."} '
-                'Here is an example of a good answer (just the json, with the correct structure): '
-                '{"dilemma": "A community leader must decide whether to allocate limited resources to rebuilding homes after a natural disaster or invest in long-term educational programs to prevent future vulnerabilities. Allocating resources to immediate rebuilding could restore lives quickly but might neglect future preparedness. On the other hand, investing in education could strengthen the community\'s resilience but delay immediate relief efforts.", '
-                '"firstAnswer": "Rebuild homes", '
-                '"secondAnswer": "Invest in education", '
-                '"teaseOption1": "Prioritizing now over later? Interesting choice!", '
-                '"teaseOption2": "Planning for the future, but at what cost?"}'
-                'FORMAT THE ANSWER STRICTLY IN THE JSON I PROVIDED! NOTHING BUT THE JSON SHOULD BE IN YOUR ANSWER'
+                f'{examples_text}'
+                'FORMAT THE ANSWER STRICTLY IN THE JSON I PROVIDED! NOTHING BUT THE JSON SHOULD BE IN YOUR ANSWER. '
+                'ENSURE THE DILEMMA IS COMPLETELY NEW AND NOT A VARIATION OF THE EXAMPLES!'
             )
 
         payload = {
