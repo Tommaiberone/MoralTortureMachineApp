@@ -266,10 +266,10 @@ terraform apply
 
 ### DynamoDB Population Fails
 
-Make sure `populate_dynamodb.py` and `dilemmas.json` exist in the parent directory:
+Make sure `populate_dynamodb_multilang.py` and `dilemmas_it.json` exist in the parent directory:
 
 ```bash
-ls -la ../populate_dynamodb.py ../dilemmas.json
+ls -la ../populate_dynamodb_multilang.py ../dilemmas_it.json
 ```
 
 ### State Lock Errors

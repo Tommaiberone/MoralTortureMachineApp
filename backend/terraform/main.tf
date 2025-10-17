@@ -255,7 +255,7 @@ resource "null_resource" "populate_dynamodb" {
   count = var.populate_db ? 1 : 0
 
   triggers = {
-    dilemmas_data = filemd5("${path.module}/../dilemmas.json")
+    dilemmas_data = filemd5("${path.module}/../dilemmas_it.json")
     table_name    = aws_dynamodb_table.dilemmas.name
   }
 
@@ -263,7 +263,7 @@ resource "null_resource" "populate_dynamodb" {
     command = <<-EOT
       cd ${path.module}/..
       python3 -m pip install -q boto3
-      python3 populate_dynamodb.py ${aws_dynamodb_table.dilemmas.name} dilemmas.json
+      python3 populate_dynamodb_multilang.py ${aws_dynamodb_table.dilemmas.name} dilemmas_it.json
     EOT
   }
 

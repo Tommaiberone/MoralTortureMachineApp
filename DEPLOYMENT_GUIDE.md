@@ -74,7 +74,7 @@ terraform apply -var="groq_api_key=la-tua-api-key"
 
 ```bash
 cd backend
-python3 populate_dynamodb.py moral-torture-machine-dilemmas dilemmas.json
+python3 populate_dynamodb_multilang.py moral-torture-machine-dilemmas dilemmas_it.json
 ```
 
 ### Passo 4: Deploy del Frontend
@@ -309,7 +309,7 @@ terraform apply
 aws dynamodb scan --table-name moral-torture-machine-dilemmas > backup.json
 
 # Ripristina (se necessario)
-python3 populate_dynamodb.py moral-torture-machine-dilemmas backup.json
+python3 populate_dynamodb_multilang.py moral-torture-machine-dilemmas backup.json
 ```
 
 ### Backup Terraform State

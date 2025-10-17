@@ -151,7 +151,7 @@ python -m uvicorn backend_fastapi:app --reload --port 8000
 ### Main Files
 - `backend_fastapi.py` - FastAPI application
 - `quick-deploy.sh` - One-command deployment (RECOMMENDED)
-- `populate_dynamodb.py` - Load dilemmas into DynamoDB
+- `populate_dynamodb_multilang.py` - Load dilemmas into DynamoDB
 - `test-api.sh` - Test API endpoints
 - `dilemmas.json` - Dilemma data
 - `requirements.txt` - Python dependencies
