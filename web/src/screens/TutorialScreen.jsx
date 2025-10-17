@@ -1,5 +1,5 @@
 // screens/TutorialScreen.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import './TutorialScreen.css';
@@ -8,8 +8,14 @@ const TutorialScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
-  const mode = location.state?.mode || 'evaluation'; // 'evaluation' or 'infinite'
+  const mode = location.state?.mode;
   const [currentStep, setCurrentStep] = useState(0);
+
+  useEffect(() => {
+    if (!mode) {
+      navigate('/');
+    }
+  }, [mode, navigate]);
 
   const evaluationTutorialSteps = [
     {
