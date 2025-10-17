@@ -3,6 +3,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import LanguageSelector from '../components/LanguageSelector';
+import AdSense from '../components/AdSense';
 import './HomeScreen.css';
 
 const HomeScreen = () => {
@@ -59,6 +60,13 @@ const HomeScreen = () => {
         <p className="home-warning">
           {t('home.warning_footer')}
         </p>
+
+        {/* Google AdSense - Banner inferiore */}
+        <AdSense
+          slot={import.meta.env.VITE_ADSENSE_SLOT_HOME}
+          format="auto"
+          responsive={true}
+        />
       </div>
   );
 };
