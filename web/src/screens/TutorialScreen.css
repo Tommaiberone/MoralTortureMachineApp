@@ -4,6 +4,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  animation: static-flicker 0.5s infinite;
 }
 
 .tutorial-card {
