@@ -11,12 +11,9 @@ import TutorialScreen from './screens/TutorialScreen';
 
 import './App.css';
 
-import LanguageSelector from './components/LanguageSelector';
-
 const App = () => {
   return (
     <Router>
-      <LanguageSelector />
       <Routes>
         {/* Home Screen */}
         <Route path="/" element={<HomeScreen />} />

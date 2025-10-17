@@ -2,6 +2,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import LanguageSelector from '../components/LanguageSelector';
 import './HomeScreen.css';
 
 const HomeScreen = () => {
@@ -23,6 +24,7 @@ const HomeScreen = () => {
 
   return (
     <div className="home-container">
+      <LanguageSelector />
       <h1 className="home-title">
         <span className="glitch-text">{t('home.title_moral')}</span><br />
         <span className="glitch-text">{t('home.title_torture')}</span><br />
