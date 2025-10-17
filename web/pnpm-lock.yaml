@@ -17,9 +17,6 @@ importers:
       i18next-http-backend:
         specifier: ^2.5.2
         version: 2.7.3
-      prop-types:
-        specifier: ^15.8.1
-        version: 15.8.1
       react:
         specifier: ^19.1.1
         version: 19.2.0

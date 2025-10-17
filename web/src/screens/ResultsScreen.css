@@ -55,6 +55,7 @@
   margin-bottom: 30px;
   color: var(--text-highlight);
   text-shadow: 2px 2px 0 var(--creepy-dead-red);
+  animation: glitch-text 6s infinite;
   text-transform: uppercase;
 }
 

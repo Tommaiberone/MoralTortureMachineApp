@@ -8,7 +8,7 @@
   width: 90%;
   max-width: 600px;
   margin: 0 auto;
-  animation: static-flicker 0.5s infinite, vhs-tracking 3s infinite, uncanny-breathe 8s infinite;
+  animation: static-flicker 0.5s infinite;
 }
 
 .home-title {
@@ -25,7 +25,7 @@
 
 .glitch-text {
   display: inline-block;
-  animation: glitch-text 4s infinite, chromatic-aberration 6s infinite;
+  animation: glitch-text 5s infinite;
 }
 
 .home-subtitle {
