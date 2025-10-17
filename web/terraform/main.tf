@@ -120,6 +120,14 @@ resource "aws_acm_certificate" "frontend" {
 # DNS records for domain pointing must also be created manually in Cloudflare:
 # - CNAME for @ (root) pointing to CloudFront domain (use DNS only, grey cloud)
 # - CNAME for www pointing to CloudFront domain (use DNS only, grey cloud)
+#
+# IMPORTANT: Cloudflare SSL/TLS Configuration
+# To prevent redirect loops and SSL errors, set Cloudflare SSL/TLS mode to:
+# - Full (Strict) - RECOMMENDED: Encrypts traffic and verifies CloudFront certificate
+# - Full - Works but less secure (doesn't verify certificate)
+# - NEVER use Flexible - Will cause redirect loops with CloudFront HTTPS redirect
+#
+# See CLOUDFRONT_CONFIGURATION_GUIDE.md for detailed setup instructions
 
 # CloudFront Distribution
 resource "aws_cloudfront_distribution" "frontend" {
@@ -278,18 +286,43 @@ output "deployment_summary" {
 
        Wait for the certificate to be validated in AWS ACM Console.
 
-    2. DOMAIN RECORDS (after certificate is validated):
+    2. CLOUDFLARE SSL/TLS CONFIGURATION (CRITICAL):
+       Go to Cloudflare Dashboard -> SSL/TLS -> Overview
+       Set encryption mode to: Full (Strict)
+
+       ⚠️  WARNING: Do NOT use "Flexible" mode - it will cause redirect loops!
+
+       Why Full (Strict)?
+       - Cloudflare -> CloudFront connection is encrypted
+       - CloudFront certificate is verified
+       - Prevents HTTP/HTTPS redirect loops
+       - Most secure option
+
+    3. DOMAIN RECORDS (after certificate is validated):
        Add these records in Cloudflare DNS:
 
        - Type: CNAME
          Name: @
          Target: ${aws_cloudfront_distribution.frontend.domain_name}
-         Proxy status: DNS only (grey cloud)
+         Proxy status: DNS only (grey cloud) ⚠️ Important!
 
        - Type: CNAME
          Name: www
          Target: ${aws_cloudfront_distribution.frontend.domain_name}
-         Proxy status: DNS only (grey cloud)
+         Proxy status: DNS only (grey cloud) ⚠️ Important!
+
+    ==========================================
+    CloudFront Configuration Checklist:
+    ==========================================
+
+    After deployment, verify in AWS Console:
+    □ CloudFront Status: Enabled
+    □ CloudFront State: Deployed (not InProgress)
+    □ Alternate Domain Names: ${var.domain_name}, www.${var.domain_name}
+    □ SSL Certificate: Attached and valid
+    □ ACM Certificate Status: Issued (in us-east-1 region)
+
+    See CLOUDFRONT_CONFIGURATION_GUIDE.md for detailed troubleshooting.
 
     ==========================================
     Deploy your frontend:
@@ -304,7 +337,10 @@ output "deployment_summary" {
       https://${var.domain_name}
       https://www.${var.domain_name}
     %{else}
+    ==========================================
     Deploy your frontend:
+    ==========================================
+
       cd web
       pnpm build
       aws s3 sync dist/ s3://${aws_s3_bucket.frontend.id}/ --delete
@@ -315,4 +351,20 @@ output "deployment_summary" {
     %{endif}
 
   EOT
+}
+
+# Additional validation outputs
+output "cloudfront_status" {
+  description = "CloudFront distribution status - should be 'Deployed'"
+  value       = aws_cloudfront_distribution.frontend.status
+}
+
+output "cloudfront_aliases" {
+  description = "Configured alternate domain names (CNAMEs) in CloudFront"
+  value       = aws_cloudfront_distribution.frontend.aliases
+}
+
+output "ssl_support_method" {
+  description = "SSL support method used by CloudFront"
+  value       = var.use_custom_domain ? "sni-only" : "cloudfront-default"
 }

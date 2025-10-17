@@ -2,11 +2,18 @@
 
 Configurazione Terraform per l'hosting del frontend su AWS S3 con CloudFront CDN.
 
+## Quick Links
+
+- **[CloudFront Configuration Guide](CLOUDFRONT_CONFIGURATION_GUIDE.md)** - Comprehensive guide for CloudFront setup, SSL/TLS configuration, and Cloudflare integration
+- **[Validation Script](validate-cloudfront.sh)** - Automated validation tool for checking deployment health
+
 ## Architettura
 
 - **S3 Bucket**: Storage per i file statici del frontend
 - **CloudFront**: CDN per la distribuzione globale con HTTPS
 - **Origin Access Control (OAC)**: Accesso sicuro al bucket S3
+- **ACM Certificate**: SSL/TLS certificate (when using custom domain)
+- **Cloudflare Integration**: DNS and additional CDN layer (optional)
 
 ## Setup Iniziale
 
@@ -125,44 +132,19 @@ terraform apply -var="bucket_name=my-custom-bucket"
 
 ## Dominio Personalizzato
 
-### Setup del Dominio
+### Setup del Dominio con Cloudflare (Recommended)
 
-Per usare un dominio personalizzato (es. moraltorturemachine.com):
+Per usare un dominio personalizzato (es. moraltorturemachine.com) con Cloudflare:
 
-#### 1. Registra il Dominio su Route53
+**IMPORTANT:** See [CLOUDFRONT_CONFIGURATION_GUIDE.md](CLOUDFRONT_CONFIGURATION_GUIDE.md) for complete setup instructions, including:
+- SSL/TLS configuration (must use "Full (Strict)" mode)
+- DNS CNAME setup
+- Certificate validation
+- Troubleshooting common issues
 
-Se hai già acquistato il dominio su Route53, vai al passo 2.
+#### Quick Setup Steps
 
-Altrimenti, registralo su Route53 o trasferiscilo:
-```bash
-# Verifica la disponibilità
-aws route53domains check-domain-availability --domain-name moraltorturemachine.com
-
-# Registra il dominio (se disponibile)
-# Oppure trasferisci il dominio esistente su Route53
-```
-
-#### 2. Crea la Hosted Zone (se non esiste)
-
-```bash
-# Verifica se esiste già
-aws route53 list-hosted-zones-by-name --dns-name moraltorturemachine.com
-
-# Se non esiste, creala
-aws route53 create-hosted-zone --name moraltorturemachine.com --caller-reference $(date +%s)
-```
-
-#### 3. Configura i Name Server
-
-Se il dominio NON è registrato su Route53:
-1. Ottieni i name server dalla hosted zone:
-   ```bash
-   aws route53 get-hosted-zone --id YOUR_ZONE_ID
-   ```
-2. Vai al tuo registrar (es. GoDaddy, Namecheap, etc.)
-3. Aggiorna i name server con quelli forniti da Route53
-
-#### 4. Abilita il Dominio in Terraform
+#### 1. Abilita il Dominio in Terraform
 
 Crea `terraform.tfvars`:
 ```hcl
@@ -177,7 +159,7 @@ terraform apply \
   -var="use_custom_domain=true"
 ```
 
-#### 5. Applica la Configurazione
+#### 2. Applica la Configurazione
 
 ```bash
 terraform apply
@@ -185,34 +167,49 @@ terraform apply
 
 Terraform creerà automaticamente:
 - ✅ Certificato SSL/TLS in AWS Certificate Manager (us-east-1)
-- ✅ Record DNS per la validazione del certificato
-- ✅ Record A per il dominio principale (moraltorturemachine.com)
-- ✅ Record A per www (www.moraltorturemachine.com)
-- ✅ Configurazione CloudFront con il certificato
+- ✅ CloudFront distribution with custom domain aliases
+- ✅ S3 bucket and origin access control
 
-#### 6. Attendi la Validazione del Certificato
+#### 3. Configure Cloudflare DNS
 
-La validazione del certificato può richiedere **5-30 minuti**.
+After running `terraform apply`:
 
-Monitora lo stato:
+1. **Add Certificate Validation Records**:
+   ```bash
+   terraform output certificate_validation_records
+   ```
+   Add the CNAME records shown to Cloudflare DNS (DNS only, grey cloud)
+
+2. **Set SSL/TLS Mode**:
+   - Go to Cloudflare Dashboard → SSL/TLS → Overview
+   - Set mode to: **Full (Strict)**
+   - ⚠️ NEVER use "Flexible" - it will cause redirect loops!
+
+3. **Add Domain CNAME Records** (after certificate validation):
+   ```bash
+   terraform output cloudfront_url_for_cloudflare
+   ```
+   Add to Cloudflare DNS:
+   - `@` → CNAME → (CloudFront domain) - DNS only
+   - `www` → CNAME → (CloudFront domain) - DNS only
+
+#### 4. Validate Deployment
+
+Run the validation script:
 ```bash
-# Controlla lo stato del certificato
+./validate-cloudfront.sh
+```
+
+Or manually verify:
+```bash
+# Check certificate status
 aws acm list-certificates --region us-east-1
 
-# Dettagli del certificato
-aws acm describe-certificate --certificate-arn YOUR_CERT_ARN --region us-east-1
-```
-
-#### 7. Verifica il Dominio
-
-```bash
-# Controlla la risoluzione DNS
-dig moraltorturemachine.com
-dig www.moraltorturemachine.com
-
-# Testa HTTPS
+# Test domain
 curl -I https://moraltorturemachine.com
 ```
+
+**For detailed troubleshooting, see [CLOUDFRONT_CONFIGURATION_GUIDE.md](CLOUDFRONT_CONFIGURATION_GUIDE.md)**
 
 ### Propagazione DNS
 
@@ -223,22 +220,31 @@ Dopo l'applicazione della configurazione:
 
 ### Troubleshooting Dominio
 
-**Certificato non validato:**
-```bash
-# Verifica i record DNS di validazione
-aws route53 list-resource-record-sets --hosted-zone-id YOUR_ZONE_ID
+For comprehensive troubleshooting, see [CLOUDFRONT_CONFIGURATION_GUIDE.md](CLOUDFRONT_CONFIGURATION_GUIDE.md)
 
-# Forza il refresh di Terraform
-terraform refresh
+**Quick Validation:**
+```bash
+# Run the automated validation script
+./validate-cloudfront.sh
 ```
 
-**Dominio non raggiungibile:**
-```bash
-# Verifica la propagazione DNS
-dig moraltorturemachine.com @8.8.8.8
+**Common Issues:**
 
-# Controlla CloudFront
-aws cloudfront get-distribution --id YOUR_DIST_ID
+1. **403 Forbidden Error**: Check that alternate domain names (CNAMEs) are configured in CloudFront
+2. **Redirect Loop**: Ensure Cloudflare SSL/TLS mode is set to "Full (Strict)", NOT "Flexible"
+3. **Certificate Pending**: Add validation CNAME records to Cloudflare DNS
+4. **Domain Not Resolving**: Ensure CNAME records in Cloudflare point to CloudFront domain
+
+**Manual Checks:**
+```bash
+# Check certificate status
+aws acm list-certificates --region us-east-1
+
+# Check CloudFront configuration
+aws cloudfront get-distribution --id $(terraform output -raw cloudfront_distribution_id)
+
+# Test DNS resolution
+dig moraltorturemachine.com
 ```
 
 ## CloudFront
