@@ -67,10 +67,7 @@ jobs:
       - name: Check Python syntax
         run: |
           python -m py_compile backend_fastapi.py
-          python -m py_compile populate_dynamodb.py
-          if [ -f populate_dynamodb_multilang.py ]; then
-            python -m py_compile populate_dynamodb_multilang.py
-          fi
+          python -m py_compile populate_dynamodb_multilang.py
 
   # Job 2: Deploy Backend
   backend-deploy:
@@ -324,13 +321,7 @@ jobs:
         working-directory: backend
         run: |
           echo "📊 Populating DynamoDB..."
-          if [ "$MULTILANG" = "true" ]; then
             python3 -u populate_dynamodb_multilang.py ${{ env.DYNAMODB_TABLE_NAME }} <<EOF
-          yes
-          EOF
-          else
-            python3 populate_dynamodb.py ${{ env.DYNAMODB_TABLE_NAME }} dilemmas.json
-          fi
           echo "✅ DynamoDB populated!"
       - name: Verify population
         run: |
