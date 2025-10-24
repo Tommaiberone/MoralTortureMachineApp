@@ -37,9 +37,6 @@ const HomeScreen = () => {
           className="home-button recommended-button"
           onClick={() => handleNavigation('evaluation', '/evaluation-dilemmas')}
         >
-          <div className="badge-container">
-            <span className="badge-text">{t('home.warning_badge')}</span>
-          </div>
           <div className="button-text">{t('home.eval_button')}</div>
           <div className="button-description">
             {t('home.eval_description')}
