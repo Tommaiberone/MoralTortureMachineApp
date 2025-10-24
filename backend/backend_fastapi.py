@@ -29,23 +29,57 @@ app.add_middleware(
         "http://localhost:5173"
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Accept"],
 )
 
 # Environment variables
-API_KEY = os.getenv("API_KEY", "")
 DYNAMODB_TABLE = os.getenv("DYNAMODB_TABLE", "moral-torture-machine-dilemmas")
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
+GROQ_API_KEY_SECRET_ID = os.getenv("GROQ_API_KEY_SECRET_ID", "")
 
-# Initialize DynamoDB
+# Initialize AWS clients
 dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
 table = dynamodb.Table(DYNAMODB_TABLE)
+secrets_client = boto3.client('secretsmanager', region_name=AWS_REGION)
 
-# Pydantic models
+# Cache for API key (retrieved once at cold start)
+_api_key_cache = None
+
+def get_groq_api_key() -> str:
+    """Retrieve Groq API key from AWS Secrets Manager with caching"""
+    global _api_key_cache
+
+    if _api_key_cache is not None:
+        return _api_key_cache
+
+    # Fallback to environment variable for local development
+    local_api_key = os.getenv("API_KEY")
+    if local_api_key:
+        logger.info("Using API key from environment variable (local development)")
+        _api_key_cache = local_api_key
+        return _api_key_cache
+
+    if not GROQ_API_KEY_SECRET_ID:
+        raise ValueError("GROQ_API_KEY_SECRET_ID not configured")
+
+    try:
+        logger.info(f"Retrieving API key from Secrets Manager: {GROQ_API_KEY_SECRET_ID}")
+        response = secrets_client.get_secret_value(SecretId=GROQ_API_KEY_SECRET_ID)
+        _api_key_cache = response['SecretString']
+        logger.info("Successfully retrieved API key from Secrets Manager")
+        return _api_key_cache
+    except Exception as e:
+        logger.error(f"Failed to retrieve API key from Secrets Manager: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="API key configuration error"
+        )
+
+# Pydantic models with input validation
 class VoteRequest(BaseModel):
-    id: str = Field(..., alias="_id", description="Dilemma ID")
-    vote: str = Field(..., description="Vote type: 'yes' or 'no'")
+    id: str = Field(..., alias="_id", description="Dilemma ID", min_length=1, max_length=100, pattern=r'^[a-zA-Z0-9_-]+$')
+    vote: str = Field(..., description="Vote type: 'yes' or 'no'", pattern=r'^(yes|no)$')
 
     model_config = {
         "populate_by_name": True
@@ -104,10 +138,31 @@ def decimal_to_native(obj):
     else:
         return obj
 
-# Middleware for request logging
+# Middleware for security headers
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Content-Security-Policy"] = "default-src 'self'"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+# Middleware for request logging with PII filtering
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    logger.info(f"Incoming request: {request.method} {request.url}")
+    # Sanitize URL by removing query parameters that might contain PII
+    sanitized_path = request.url.path
+    # Only log safe query parameters (language)
+    safe_params = []
+    for key, value in request.query_params.items():
+        if key in ['language']:
+            safe_params.append(f"{key}={value}")
+    sanitized_url = f"{sanitized_path}?{'&'.join(safe_params)}" if safe_params else sanitized_path
+
+    logger.info(f"Incoming request: {request.method} {sanitized_url}")
     response = await call_next(request)
     logger.info(f"Response status: {response.status_code}")
     return response
@@ -169,6 +224,9 @@ async def get_dilemma(language: str = "en"):
     Returns a random dilemma with all its attributes in the specified language
     """
     try:
+        # Validate language parameter
+        if not language or len(language) > 10 or not language.isalpha():
+            raise HTTPException(status_code=400, detail="Invalid language parameter")
         # Scan DynamoDB for all items with the specified language
         response = table.scan(
             FilterExpression='attribute_exists(#lang) AND #lang = :language',
@@ -215,11 +273,11 @@ async def generate_dilemma(language: str = "en"):
     Returns a newly generated ethical dilemma in the specified language
     """
     try:
-        if not API_KEY:
-            raise HTTPException(
-                status_code=500,
-                detail="API_KEY not configured"
-            )
+        # Validate language parameter
+        if not language or len(language) > 10 or not language.isalpha():
+            raise HTTPException(status_code=400, detail="Invalid language parameter")
+
+        api_key = get_groq_api_key()
 
         # Fetch sample dilemmas from DynamoDB to use as style/context examples
         sample_dilemmas = []
@@ -298,7 +356,7 @@ async def generate_dilemma(language: str = "en"):
 
         api_url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
-            "Authorization": f"Bearer {API_KEY}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
 
@@ -335,11 +393,17 @@ async def analyze_results(request: AnalyzeResultsRequest, language: str = "en"):
     Returns an AI-generated analysis of the user's moral choices in the specified language
     """
     try:
-        if not API_KEY:
-            raise HTTPException(
-                status_code=500,
-                detail="API_KEY not configured"
-            )
+        # Validate language parameter
+        if not language or len(language) > 10 or not language.isalpha():
+            raise HTTPException(status_code=400, detail="Invalid language parameter")
+
+        # Validate request data
+        if not request.answers or len(request.answers) == 0:
+            raise HTTPException(status_code=400, detail="No answers provided")
+        if len(request.answers) > 100:
+            raise HTTPException(status_code=400, detail="Too many answers provided")
+
+        api_key = get_groq_api_key()
 
         # Aggregate the answers to compute average values
         aggregated = {}
@@ -414,7 +478,7 @@ async def analyze_results(request: AnalyzeResultsRequest, language: str = "en"):
 
         api_url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
-            "Authorization": f"Bearer {API_KEY}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
 

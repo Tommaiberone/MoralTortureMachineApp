@@ -42,6 +42,28 @@ resource "aws_dynamodb_table" "dilemmas" {
   }
 }
 
+# Secrets Manager Secret for Groq API Key
+resource "aws_secretsmanager_secret" "groq_api_key" {
+  name        = "${var.stack_name}-groq-api-key"
+  description = "Groq API Key for AI-generated dilemmas"
+
+  recovery_window_in_days = 7
+
+  tags = {
+    Name        = "Moral Torture Machine Groq API Key"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
+
+# Note: The secret value must be set manually or via GitHub Actions
+# This avoids storing sensitive data in Terraform state
+resource "aws_secretsmanager_secret_version" "groq_api_key" {
+  count         = var.groq_api_key != "SET_THIS_LATER" && var.groq_api_key != "" ? 1 : 0
+  secret_id     = aws_secretsmanager_secret.groq_api_key.id
+  secret_string = var.groq_api_key
+}
+
 # IAM Role for Lambda
 resource "aws_iam_role" "lambda_role" {
   name = "${var.stack_name}-lambda-role"
@@ -91,6 +113,24 @@ resource "aws_iam_role_policy" "dynamodb_policy" {
   })
 }
 
+# Secrets Manager access policy
+resource "aws_iam_role_policy" "secrets_manager_policy" {
+  name = "secrets-manager-access"
+  role = aws_iam_role.lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ]
+      Resource = aws_secretsmanager_secret.groq_api_key.arn
+    }]
+  })
+}
+
 # Null resource to build Lambda package
 resource "null_resource" "lambda_package" {
   triggers = {
@@ -135,8 +175,8 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE = aws_dynamodb_table.dilemmas.name
-      API_KEY        = var.groq_api_key
+      DYNAMODB_TABLE         = aws_dynamodb_table.dilemmas.name
+      GROQ_API_KEY_SECRET_ID = aws_secretsmanager_secret.groq_api_key.id
     }
   }
 
@@ -202,11 +242,17 @@ resource "aws_apigatewayv2_route" "default" {
   target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
 }
 
-# API Gateway Stage
+# API Gateway Stage with throttling
 resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.api.id
   name        = "$default"
   auto_deploy = true
+
+  # Rate limiting at the stage level
+  default_route_settings {
+    throttling_burst_limit = 100  # Maximum concurrent requests
+    throttling_rate_limit  = 50   # Requests per second
+  }
 
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api_logs.arn

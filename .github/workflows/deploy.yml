@@ -160,6 +160,21 @@ jobs:
 
           echo "📦 Lambda package size: $(du -h lambda_function.zip)"
 
+      - name: Create/Update Secrets Manager Secret
+        run: |
+          SECRET_NAME="moral-torture-machine-${{ needs.setup.outputs.environment }}-groq-api-key"
+
+          # Check if secret exists
+          if aws secretsmanager describe-secret --secret-id "$SECRET_NAME" --region ${{ env.AWS_REGION }} 2>/dev/null; then
+            echo "Secret exists, updating..."
+            aws secretsmanager put-secret-value \
+              --secret-id "$SECRET_NAME" \
+              --secret-string "${{ secrets.GROQ_API_KEY }}" \
+              --region ${{ env.AWS_REGION }}
+          else
+            echo "Secret does not exist, will be created by Terraform"
+          fi
+
       - name: Terraform Init & Apply
         working-directory: ./backend/terraform
         env:

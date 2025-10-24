@@ -22,7 +22,8 @@ const InfiniteDilemmasScreen = () => {
   const [choiceMade, setChoiceMade] = useState(false);
   const [creepyMessage, setCreepyMessage] = useState("");
 
-  const backendUrl = "https://wxe53u88o8.execute-api.eu-west-1.amazonaws.com/generate-dilemma";
+  const API_URL = import.meta.env.VITE_API_URL;
+  const backendUrl = `${API_URL}/generate-dilemma`;
 
   const fetchDilemmaData = async () => {
     let response;

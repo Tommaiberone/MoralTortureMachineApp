@@ -48,6 +48,17 @@ output "api_log_group" {
   value       = aws_cloudwatch_log_group.api_logs.name
 }
 
+output "secrets_manager_secret_arn" {
+  description = "ARN of the Secrets Manager secret for Groq API key"
+  value       = aws_secretsmanager_secret.groq_api_key.arn
+  sensitive   = true
+}
+
+output "secrets_manager_secret_name" {
+  description = "Name of the Secrets Manager secret for Groq API key"
+  value       = aws_secretsmanager_secret.groq_api_key.name
+}
+
 output "test_commands" {
   description = "Commands to test your API"
   value = {
@@ -69,7 +80,16 @@ output "deployment_summary" {
     API URL: ${aws_apigatewayv2_api.api.api_endpoint}
     DynamoDB Table: ${aws_dynamodb_table.dilemmas.name}
     Lambda Function: ${aws_lambda_function.api.function_name}
+    Secrets Manager: ${aws_secretsmanager_secret.groq_api_key.name}
     Region: ${var.aws_region}
+
+    Security Features Enabled:
+      ✓ API key stored in AWS Secrets Manager
+      ✓ Rate limiting: 50 requests/second, 100 burst
+      ✓ CORS restricted to specific origins
+      ✓ Input validation on all endpoints
+      ✓ Security headers enabled
+      ✓ PII filtering in CloudWatch logs
 
     Test your API:
       curl ${aws_apigatewayv2_api.api.api_endpoint}
@@ -79,8 +99,11 @@ output "deployment_summary" {
     View logs:
       aws logs tail ${aws_cloudwatch_log_group.lambda_logs.name} --follow --region ${var.aws_region}
 
-    Update API Key (if needed):
-      terraform apply -var="groq_api_key=your-actual-key"
+    Update API Key:
+      aws secretsmanager put-secret-value \
+        --secret-id ${aws_secretsmanager_secret.groq_api_key.name} \
+        --secret-string "your-new-key" \
+        --region ${var.aws_region}
 
     Cost estimate: ~$0-5/month for moderate usage
 

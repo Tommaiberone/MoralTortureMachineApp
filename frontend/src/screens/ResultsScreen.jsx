@@ -52,7 +52,8 @@ const ResultsScreen = () => {
       setLoadingAnalysis(true);
       try {
         const currentLanguage = i18n.language;
-        const backendUrl = "https://wxe53u88o8.execute-api.eu-west-1.amazonaws.com/analyze-results";
+        const API_URL = import.meta.env.VITE_API_URL;
+        const backendUrl = `${API_URL}/analyze-results`;
         const response = await fetch(`${backendUrl}?language=${currentLanguage}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

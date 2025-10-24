@@ -28,8 +28,9 @@ const EvaluationDilemmasScreen = () => {
     }
   }, [currentDilemmaCount]);
 
-  const backendUrl = "https://wxe53u88o8.execute-api.eu-west-1.amazonaws.com/get-dilemma";
-  const voteUrl = "https://wxe53u88o8.execute-api.eu-west-1.amazonaws.com/vote";
+  const API_URL = import.meta.env.VITE_API_URL;
+  const backendUrl = `${API_URL}/get-dilemma`;
+  const voteUrl = `${API_URL}/vote`;
 
   const fetchDilemmaData = async () => {
     let response;
