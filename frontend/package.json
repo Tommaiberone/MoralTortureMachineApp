@@ -4,11 +4,15 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "vite --mode dev",
+    "dev:prod": "vite --mode prod",
+    "build": "vite build --mode prod",
+    "build:dev": "vite build --mode dev",
+    "build:prod": "vite build --mode prod",
     "lint": "eslint .",
     "preview": "vite preview",
-    "deploy": "./deploy.sh"
+    "preview:dev": "vite preview --mode dev",
+    "preview:prod": "vite preview --mode prod"
   },
   "dependencies": {
     "react": "^19.1.1",

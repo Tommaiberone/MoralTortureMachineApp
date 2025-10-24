@@ -1,16 +1,22 @@
-# Esegue l'intero processo di deploy per backend e frontend
-# a ogni push sul branch 'main'.
-name: Deploy Full Stack on Main Push
+# Deploy backend and frontend to dev or prod environment based on branch
+name: Deploy Full Stack
 
-# Trigger: Esegui SOLO quando viene fatto un push sul branch 'main'.
+# Trigger: Deploy to dev on develop branch, prod on main branch
 on:
   push:
     branches:
-      - main
-  # Aggiunto workflow_dispatch per poterlo avviare manualmente se necessario,
-  # mantenendo la logica originale per i parametri opzionali.
+      - main      # Production
+      - develop   # Development
   workflow_dispatch:
     inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
       populate_dynamodb:
         description: 'Populate DynamoDB with fresh data'
         required: false
@@ -28,14 +34,39 @@ env:
   NODE_VERSION: '20'
   TERRAFORM_VERSION: 1.9.0
   TF_VERSION_FRONTEND: '1.9.5'
-  DYNAMODB_TABLE_NAME: moral-torture-machine-dilemmas
 
 jobs:
+  # Job 0: Determine environment based on branch or input
+  setup:
+    name: Setup Environment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      dynamodb_table: ${{ steps.set-env.outputs.dynamodb_table }}
+
+    steps:
+      - name: Determine environment
+        id: set-env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ENV="${{ github.event.inputs.environment }}"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            ENV="prod"
+          elif [ "${{ github.ref }}" = "refs/heads/develop" ]; then
+            ENV="dev"
+          else
+            ENV="dev"
+          fi
+
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "dynamodb_table=moral-torture-machine-dilemmas-$ENV" >> $GITHUB_OUTPUT
+          echo "🎯 Deploying to: $ENV"
+
   # Job 1: Lint e Test Backend
   backend-lint-test:
     name: Backend Lint & Test
     runs-on: ubuntu-latest
-    # RIMOSSO: Condizione 'if'. Questo job si eseguirà sempre.
+    needs: setup
     defaults:
       run:
         working-directory: ./backend
@@ -71,10 +102,9 @@ jobs:
 
   # Job 2: Deploy Backend
   backend-deploy:
-    name: Deploy Backend
+    name: Deploy Backend (${{ needs.setup.outputs.environment }})
     runs-on: ubuntu-latest
-    needs: backend-lint-test
-    # RIMOSSO: Condizione 'if'. Questo job si eseguirà sempre dopo il lint/test.
+    needs: [setup, backend-lint-test]
     defaults:
       run:
         working-directory: ./backend
@@ -85,6 +115,9 @@ jobs:
 
     outputs:
       api_url: ${{ steps.api-endpoint.outputs.api_url }}
+
+    environment:
+      name: ${{ needs.setup.outputs.environment }}
 
     steps:
       - name: Checkout code
@@ -129,10 +162,17 @@ jobs:
 
       - name: Terraform Init & Apply
         working-directory: ./backend/terraform
+        env:
+          TF_VAR_groq_api_key: ${{ secrets.GROQ_API_KEY }}
         run: |
           terraform init
+
+          # Select or create workspace
+          terraform workspace select ${{ needs.setup.outputs.environment }} || terraform workspace new ${{ needs.setup.outputs.environment }}
+
+          # Apply with environment-specific tfvars
           terraform apply -auto-approve \
-            -var="groq_api_key=${{ secrets.GROQ_API_KEY }}"
+            -var-file="${{ needs.setup.outputs.environment }}.tfvars"
 
       - name: Get API Endpoint
         id: api-endpoint
@@ -168,12 +208,12 @@ jobs:
 
   # Job 3: Deploy Frontend Infrastructure
   frontend-infrastructure:
-    name: Frontend Infrastructure
+    name: Frontend Infrastructure (${{ needs.setup.outputs.environment }})
     runs-on: ubuntu-latest
-    # RIMOSSO: Condizione 'if'. Questo job si eseguirà sempre.
+    needs: setup
     defaults:
       run:
-        working-directory: web/terraform
+        working-directory: frontend/terraform
 
     permissions:
       contents: read
@@ -183,6 +223,9 @@ jobs:
       bucket_name: ${{ steps.outputs.outputs.bucket_name }}
       distribution_id: ${{ steps.outputs.outputs.distribution_id }}
       frontend_url: ${{ steps.outputs.outputs.frontend_url }}
+
+    environment:
+      name: ${{ needs.setup.outputs.environment }}
 
     steps:
       - name: Checkout code
@@ -203,7 +246,13 @@ jobs:
       - name: Terraform Init & Apply
         run: |
           terraform init
-          terraform apply -auto-approve
+
+          # Select or create workspace
+          terraform workspace select ${{ needs.setup.outputs.environment }} || terraform workspace new ${{ needs.setup.outputs.environment }}
+
+          # Apply with environment-specific tfvars
+          terraform apply -auto-approve \
+            -var-file="${{ needs.setup.outputs.environment }}.tfvars"
 
       - name: Get Terraform Outputs
         id: outputs
@@ -214,17 +263,19 @@ jobs:
 
   # Job 4: Build e Deploy Frontend
   frontend-deploy:
-    name: Build & Deploy Frontend
+    name: Build & Deploy Frontend (${{ needs.setup.outputs.environment }})
     runs-on: ubuntu-latest
-    needs: frontend-infrastructure
-    # RIMOSSO: Condizione 'if'. Si eseguirà sempre dopo il deploy dell'infrastruttura.
+    needs: [setup, frontend-infrastructure]
     defaults:
       run:
-        working-directory: web
+        working-directory: frontend
 
     permissions:
       contents: read
       id-token: write
+
+    environment:
+      name: ${{ needs.setup.outputs.environment }}
 
     steps:
       - name: Checkout code
@@ -240,13 +291,13 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
-          cache-dependency-path: web/pnpm-lock.yaml
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
       - name: Build frontend
-        run: pnpm build
+        run: pnpm build --mode ${{ needs.setup.outputs.environment }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -268,16 +319,16 @@ jobs:
 
   # Job 5: Populate DynamoDB (opzionale)
   populate-dynamodb:
-    name: Populate DynamoDB
+    name: Populate DynamoDB (${{ needs.setup.outputs.environment }})
     runs-on: ubuntu-latest
-    needs: backend-deploy
-    # MANTENUTO: Questa condizione è utile per non popolare il DB a ogni commit,
-    # che potrebbe essere un'operazione lenta o indesiderata.
-    # Si attiva solo con un messaggio di commit specifico o con trigger manuale.
+    needs: [setup, backend-deploy]
     if: |
       needs.backend-deploy.result == 'success' &&
       (contains(github.event.head_commit.message, '[populate-db]') ||
        (github.event_name == 'workflow_dispatch' && github.event.inputs.populate_dynamodb == 'true'))
+
+    environment:
+      name: ${{ needs.setup.outputs.environment }}
 
     steps:
       # ... (steps del job populate-dynamodb rimangono invariati)
@@ -315,17 +366,17 @@ jobs:
       - name: Backup DynamoDB
         run: |
           timestamp=$(date +%Y%m%d-%H%M%S)
-          aws dynamodb create-backup --table-name ${{ env.DYNAMODB_TABLE_NAME }} --backup-name "backup-$timestamp" --region ${{ env.AWS_REGION }}
+          aws dynamodb create-backup --table-name ${{ needs.setup.outputs.dynamodb_table }} --backup-name "backup-$timestamp" --region ${{ env.AWS_REGION }}
           echo "💾 Backup created: backup-$timestamp"
       - name: Populate DynamoDB
         working-directory: backend
         run: |
           echo "📊 Populating DynamoDB..."
-            python3 -u populate_dynamodb_multilang.py ${{ env.DYNAMODB_TABLE_NAME }} <<EOF
+            python3 -u populate_dynamodb_multilang.py ${{ needs.setup.outputs.dynamodb_table }} <<EOF
           echo "✅ DynamoDB populated!"
       - name: Verify population
         run: |
-          total=$(aws dynamodb describe-table --table-name ${{ env.DYNAMODB_TABLE_NAME }} --region ${{ env.AWS_REGION }} --query 'Table.ItemCount' --output text)
+          total=$(aws dynamodb describe-table --table-name ${{ needs.setup.outputs.dynamodb_table }} --region ${{ env.AWS_REGION }} --query 'Table.ItemCount' --output text)
           echo "📊 Total items: $total"
           if [ "$total" -eq 0 ]; then
             echo "❌ No items in table!"
@@ -336,7 +387,7 @@ jobs:
   deployment-summary:
     name: Deployment Summary
     runs-on: ubuntu-latest
-    needs: [backend-deploy, frontend-deploy]
+    needs: [setup, backend-deploy, frontend-deploy]
     if: always() # Esegui sempre per dare un feedback
 
     steps:
@@ -345,10 +396,13 @@ jobs:
           cat >> $GITHUB_STEP_SUMMARY <<EOF
           ## 🚀 Deployment Summary for commit ${{ github.sha }}
 
+          **Environment:** ${{ needs.setup.outputs.environment }}
+
           ### Backend
           $(if [ "${{ needs.backend-deploy.result }}" == "success" ]; then
             echo "✅ **Deployed successfully**"
             echo "**API Endpoint:** \`${{ needs.backend-deploy.outputs.api_url }}\`"
+            echo "**DynamoDB Table:** \`${{ needs.setup.outputs.dynamodb_table }}\`"
           else
             echo "❌ **Failed**"
           fi)
@@ -357,6 +411,7 @@ jobs:
           $(if [ "${{ needs.frontend-deploy.result }}" == "success" ]; then
             echo "✅ **Deployed successfully**"
             echo "**Frontend URL:** \`${{ needs.frontend-infrastructure.outputs.frontend_url }}\`"
+            echo "**S3 Bucket:** \`${{ needs.frontend-infrastructure.outputs.bucket_name }}\`"
           else
             echo "❌ **Failed**"
           fi)

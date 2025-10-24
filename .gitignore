@@ -40,6 +40,11 @@ yarn-error.*
 # local env files
 .env*.local
 .env
+# Allow dev/prod env templates
+!backend/.env.dev
+!backend/.env.prod
+!frontend/.env.dev
+!frontend/.env.prod
 
 # typescript
 *.tsbuildinfo
@@ -88,11 +93,15 @@ dist/
 **/*.tfstate
 **/*.tfstate.*
 **/.terraform.lock.hcl
-**/*.tfvars
-**/*.tfvars.json
 **/crash.log
 **/crash.*.log
 **/override.tf
 **/override.tf.json
 **/*_override.tf
 **/*_override.tf.json
+
+# Terraform variables - allow dev/prod tfvars, ignore others
+**/*.tfvars
+!**/dev.tfvars
+!**/prod.tfvars
+**/*.tfvars.json

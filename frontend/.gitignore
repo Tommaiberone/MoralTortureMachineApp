@@ -15,7 +15,10 @@ dist-ssr
 # Environment variables
 .env
 .env.local
-.env.production
+# Allow dev/prod env templates
+!.env.dev
+!.env.prod
+!.env.example
 
 # Editor directories and files
 .vscode/*
