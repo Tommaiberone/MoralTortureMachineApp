@@ -114,17 +114,6 @@ const ResultsScreen = () => {
           </ResponsiveContainer>
         </div>
 
-        <div className="results-summary">
-          {labels.map((label, index) => (
-            <div key={index} className="results-summary-item">
-              <span className="results-summary-label">{label}:</span>
-              <span className="results-summary-value">
-                {(aggregated[label] / answers.length).toFixed(2)}
-              </span>
-            </div>
-          ))}
-        </div>
-
         <div className="results-ai-analysis">
           <h2 className="results-ai-title">{t('results.verdict')}</h2>
           {loadingAnalysis ? (
