@@ -164,15 +164,17 @@ jobs:
         working-directory: ./backend/terraform
         env:
           TF_VAR_groq_api_key: ${{ secrets.GROQ_API_KEY }}
+          TF_VAR_environment: ${{ needs.setup.outputs.environment }}
+          TF_VAR_stack_name: moral-torture-machine-${{ needs.setup.outputs.environment }}
+          TF_VAR_table_name: ${{ needs.setup.outputs.dynamodb_table }}
         run: |
           terraform init
 
           # Select or create workspace
           terraform workspace select ${{ needs.setup.outputs.environment }} || terraform workspace new ${{ needs.setup.outputs.environment }}
 
-          # Apply with environment-specific tfvars
-          terraform apply -auto-approve \
-            -var-file="${{ needs.setup.outputs.environment }}.tfvars"
+          # Apply with environment variables
+          terraform apply -auto-approve
 
       - name: Get API Endpoint
         id: api-endpoint
@@ -244,15 +246,20 @@ jobs:
           terraform_version: ${{ env.TF_VERSION_FRONTEND }}
 
       - name: Terraform Init & Apply
+        env:
+          TF_VAR_environment: ${{ needs.setup.outputs.environment }}
+          TF_VAR_stack_name: moral-torture-machine-${{ needs.setup.outputs.environment }}
+          TF_VAR_bucket_name: moral-torture-machine-frontend-${{ needs.setup.outputs.environment }}
+          TF_VAR_domain_name: ${{ needs.setup.outputs.environment == 'prod' && 'moraltorturemachine.com' || '' }}
+          TF_VAR_use_custom_domain: ${{ needs.setup.outputs.environment == 'prod' && 'true' || 'false' }}
         run: |
           terraform init
 
           # Select or create workspace
           terraform workspace select ${{ needs.setup.outputs.environment }} || terraform workspace new ${{ needs.setup.outputs.environment }}
 
-          # Apply with environment-specific tfvars
-          terraform apply -auto-approve \
-            -var-file="${{ needs.setup.outputs.environment }}.tfvars"
+          # Apply with environment variables
+          terraform apply -auto-approve
 
       - name: Get Terraform Outputs
         id: outputs
