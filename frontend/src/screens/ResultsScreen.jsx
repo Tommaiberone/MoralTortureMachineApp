@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend } from 'recharts';
 import { useTranslation } from 'react-i18next';
-import AdSense from '../components/AdSense';
 import './ResultsScreen.css';
 
 const ResultsScreen = () => {
@@ -169,13 +168,6 @@ const ResultsScreen = () => {
             </button>
           </div>
         </div>
-
-        {/* Google AdSense - Banner inferiore */}
-        <AdSense
-          slot={import.meta.env.VITE_ADSENSE_SLOT_RESULTS}
-          format="auto"
-          responsive={true}
-        />
     </div>
   );
 };

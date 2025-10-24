@@ -40,7 +40,6 @@ MoralTortureMachineApp/
 - **Results Visualization**: View your moral profile with radar charts
 - **Dark/Light Mode**: Toggle between themes
 - **Responsive Design**: Works on all screen sizes
-- **Google AdSense Integration**: Monetization support (see [ADSENSE_SETUP.md](ADSENSE_SETUP.md))
 
 ## Tech Stack
 
@@ -251,22 +250,6 @@ pnpm build
 ```
 
 The built files will be in `web/dist/` and can be deployed to any static hosting service (Netlify, Vercel, GitHub Pages, etc.)
-
-## Google AdSense Configuration
-
-To enable ads in your web application:
-
-1. Follow the detailed setup guide in [ADSENSE_SETUP.md](ADSENSE_SETUP.md)
-2. Create a `.env` file in the `web/` directory with your AdSense credentials
-3. Configure environment variables on your hosting platform (Vercel/Netlify)
-
-**Quick start:**
-```bash
-cp web/.env.example web/.env
-# Edit .env with your Publisher ID and slot IDs
-```
-
-For GDPR compliance and privacy requirements, see the Privacy section in [ADSENSE_SETUP.md](ADSENSE_SETUP.md).
 
 ## Deployment
 
