@@ -223,6 +223,11 @@ jobs:
 
           echo "✅ API health check passed! HTTP Code: $HTTP_CODE"
 
+      - name: Cleanup Lambda package
+        run: |
+          rm -f lambda_function.zip lambda_deployment
+          echo "🧹 Cleaned up temporary Lambda files"
+
   # Job 3: Deploy Frontend Infrastructure
   frontend-infrastructure:
     name: Frontend Infrastructure (${{ needs.setup.outputs.environment }})
