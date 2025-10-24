@@ -248,8 +248,8 @@ jobs:
       - name: Terraform Init & Apply
         env:
           TF_VAR_environment: ${{ needs.setup.outputs.environment }}
-          TF_VAR_stack_name: moral-torture-machine-${{ needs.setup.outputs.environment }}
-          TF_VAR_bucket_name: moral-torture-machine-frontend-${{ needs.setup.outputs.environment }}
+          TF_VAR_stack_name: ${{ needs.setup.outputs.environment == 'prod' && 'moral-torture-machine' || format('moral-torture-machine-{0}', needs.setup.outputs.environment) }}
+          TF_VAR_bucket_name: ${{ needs.setup.outputs.environment == 'prod' && 'moral-torture-machine-frontend' || format('moral-torture-machine-frontend-{0}', needs.setup.outputs.environment) }}
           TF_VAR_domain_name: ${{ needs.setup.outputs.environment == 'prod' && 'moraltorturemachine.com' || '' }}
           TF_VAR_use_custom_domain: ${{ needs.setup.outputs.environment == 'prod' && 'true' || 'false' }}
         run: |
