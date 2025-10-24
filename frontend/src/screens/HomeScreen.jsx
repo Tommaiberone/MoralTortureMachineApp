@@ -48,7 +48,7 @@ const HomeScreen = () => {
 
         <button
           className="home-button arcade-button"
-          onClick={() => handleNavigation('infinite', '/infinite-dilemmas')}
+          onClick={() => handleNavigation('passThePhone', '/pass-the-phone')}
         >
           <div className="button-text">{t('home.infinite_button')}</div>
           <div className="button-description">

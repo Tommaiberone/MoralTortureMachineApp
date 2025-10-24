@@ -7,8 +7,8 @@
     "warning_badge": "! WARNING !",
     "eval_button": "TEST YOUR MORALITY",
     "eval_description": "FACE MORAL DILEMMAS. YOUR CONSCIENCE WILL BE JUDGED.",
-    "infinite_button": "ENDLESS TORMENT MODE",
-    "infinite_description": "AN INFINITE STREAM OF ETHICAL NIGHTMARES. NO ESCAPE.",
+    "infinite_button": "PASS THE PHONE MODE",
+    "infinite_description": "MORAL DILEMMAS TO SHARE WITH FRIENDS. PASS THE PHONE AND DISCOVER THEIR CHOICES.",
     "warning_footer": "[ THIS WILL EXPOSE YOUR DARKEST BOUNDARIES ]"
   },
   "evaluation": {
@@ -22,13 +22,14 @@
     "failed_fetch": "Failed to fetch the dilemma. Please try again.",
     "failed_vote": "Failed to record your vote. Please try again."
   },
-  "infinite": {
-    "escape_button": "ESCAPE",
-    "title": "[ ENDLESS TORMENT ]",
-    "subtitle": "YOUR CHOICES HAVE CONSEQUENCES",
-    "summon_dilemma": "[ SUMMON DILEMMA ]",
-    "your_moral_nightmare": "[ YOUR MORAL NIGHTMARE ]",
-    "summon_next": "[ SUMMON NEXT ]",
+  "passThePhone": {
+    "escape_button": "EXIT",
+    "title": "[ PASS THE PHONE ]",
+    "subtitle": "SHARE DILEMMAS WITH FRIENDS",
+    "get_dilemma": "[ GET DILEMMA ]",
+    "loading": "[ LOADING... ]",
+    "your_moral_nightmare": "[ YOUR MORAL DILEMMA ]",
+    "get_next": "[ NEXT DILEMMA ]",
     "malfunction": "⚠ The machine has malfunctioned. Your soul remains unjudged... for now."
   },
   "results": {
@@ -59,13 +60,13 @@
     "evaluation_step3_desc": "AFTER YOUR CHOICE, SEE HOW OTHERS RESPONDED. COMPARE YOUR MORAL REASONING WITH THE COMMUNITY.",
     "evaluation_step4_title": "[ DISCOVER PROFILE ]",
     "evaluation_step4_desc": "AFTER 5 DILEMMAS, VIEW YOUR MORAL PROFILE. SEE WHICH VALUES GUIDE YOUR DECISION-MAKING.",
-    "infinite_step1_title": "[ ENDLESS MODE ]",
-    "infinite_step1_desc": "ENDLESS AI-GENERATED MORAL DILEMMAS. EACH ONE UNIQUE. CHALLENGES YOUR ETHICS IN COMPLEX SITUATIONS.",
-    "infinite_step2_title": "[ GENERATE ]",
-    "infinite_step2_desc": "SUMMON NEW ETHICAL SCENARIOS POWERED BY AI. EACH ONE DIFFERENT. EACH ONE DARKER.",
-    "infinite_step3_title": "[ CHOOSE PATH ]",
-    "infinite_step3_desc": "SELECT BETWEEN TWO MORALLY CHALLENGING OPTIONS. RECEIVE RESPONSE THAT REFLECTS ON YOUR DECISION.",
+    "infinite_step1_title": "[ PASS THE PHONE MODE ]",
+    "infinite_step1_desc": "MORAL DILEMMAS TO SHARE WITH FRIENDS. DISCOVER HOW THEY REACT TO COMPLEX ETHICAL CHOICES.",
+    "infinite_step2_title": "[ GET DILEMMAS ]",
+    "infinite_step2_desc": "LOAD NEW DILEMMAS FROM THE DATABASE. EACH TIME A DIFFERENT DILEMMA TO CHALLENGE YOUR MORALITY.",
+    "infinite_step3_title": "[ CHOOSE AND SHARE ]",
+    "infinite_step3_desc": "SELECT BETWEEN TWO MORALLY CHALLENGING OPTIONS. RECEIVE RESPONSE THAT REFLECTS ON YOUR DECISION. PASS THE PHONE!",
     "infinite_step4_title": "[ NO LIMIT ]",
-    "infinite_step4_desc": "KEEP GENERATING DILEMMAS. EXPLORE ETHICAL PERSPECTIVES. AS LONG AS YOU CAN ENDURE."
+    "infinite_step4_desc": "KEEP EXPLORING DILEMMAS. SHARE WITH FRIENDS. DISCOVER THEIR ETHICAL PERSPECTIVES."
   }
 }

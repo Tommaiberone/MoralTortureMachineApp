@@ -7,8 +7,8 @@
     "warning_badge": "! ATTENZIONE !",
     "eval_button": "METTI ALLA PROVA LA TUA MORALITÀ",
     "eval_description": "AFFRONTA DILEMMI MORALI. LA TUA COSCIENZA SARÀ GIUDICATA.",
-    "infinite_button": "MODALITÀ TORMENTO INFINITO",
-    "infinite_description": "UN FLUSSO INFINITO DI INCUBI ETICI. SENZA VIA DI FUGA.",
+    "infinite_button": "MODALITÀ PASSA IL TELEFONO",
+    "infinite_description": "DILEMMI MORALI DA CONDIVIDERE CON GLI AMICI. PASSA IL TELEFONO E SCOPRI LE LORO SCELTE.",
     "warning_footer": "[ QUESTO SVELERÀ I TUOI CONFINI PIÙ OSCURI ]"
   },
   "evaluation": {
@@ -22,13 +22,14 @@
     "failed_fetch": "Impossibile recuperare il dilemma. Per favore riprova.",
     "failed_vote": "Impossibile registrare il tuo voto. Per favore riprova."
   },
-  "infinite": {
-    "escape_button": "FUGA",
-    "title": "[ TORMENTO SENZA FINE ]",
-    "subtitle": "LE TUE SCELTE HANNO CONSEGUENZE",
-    "summon_dilemma": "[ EVOCA DILEMMA ]",
-    "your_moral_nightmare": "[ IL TUO INCUBO MORALE ]",
-    "summon_next": "[ EVOCA SUCCESSIVO ]",
+  "passThePhone": {
+    "escape_button": "ESCI",
+    "title": "[ PASSA IL TELEFONO ]",
+    "subtitle": "CONDIVIDI I DILEMMI CON GLI AMICI",
+    "get_dilemma": "[ OTTIENI DILEMMA ]",
+    "loading": "[ CARICAMENTO... ]",
+    "your_moral_nightmare": "[ IL TUO DILEMMA MORALE ]",
+    "get_next": "[ PROSSIMO DILEMMA ]",
     "malfunction": "⚠ La macchina ha avuto un malfunzionamento. La tua anima rimane non giudicata... per ora."
   },
   "results": {
@@ -59,13 +60,13 @@
     "evaluation_step3_desc": "DOPO LA TUA SCELTA, GUARDA COME HANNO RISPOSTO GLI ALTRI. CONFRONTA IL TUO RAGIONAMENTO MORALE CON LA COMUNITÀ.",
     "evaluation_step4_title": "[ SCOPRI IL TUO PROFILO ]",
     "evaluation_step4_desc": "DOPO 5 DILEMMI, VISUALIZZA IL TUO PROFILO MORALE. SCOPRI QUALI VALORI GUIDANO LE TUE DECISIONI.",
-    "infinite_step1_title": "[ MODALITÀ INFINITA ]",
-    "infinite_step1_desc": "DILEMMI MORALI INFINITI GENERATI DALL'IA. OGNUNO UNICO. SFIDANO LA TUA ETICA IN SITUAZIONI COMPLESSE.",
-    "infinite_step2_title": "[ GENERA ]",
-    "infinite_step2_desc": "EVOCA NUOVI SCENARI ETICI POTENZIATI DALL'IA. OGNUNO DIVERSO. OGNUNO PIÙ OSCURO.",
-    "infinite_step3_title": "[ SCEGLI IL TUO PERCORSO ]",
-    "infinite_step3_desc": "SELEZIONA TRA DUE OPZIONI MORALMENTE IMPEGNATIVE. RICEVI UNA RISPOSTA CHE RIFLETTE SULLA TUA DECISIONE.",
+    "infinite_step1_title": "[ MODALITÀ PASSA IL TELEFONO ]",
+    "infinite_step1_desc": "DILEMMI MORALI DA CONDIVIDERE CON GLI AMICI. SCOPRI COME REAGISCONO ALLE SCELTE ETICHE COMPLESSE.",
+    "infinite_step2_title": "[ OTTIENI DILEMMI ]",
+    "infinite_step2_desc": "CARICA NUOVI DILEMMI DAL DATABASE. OGNI VOLTA UN DILEMMA DIVERSO PER SFIDARE LA TUA MORALITÀ.",
+    "infinite_step3_title": "[ SCEGLI E CONDIVIDI ]",
+    "infinite_step3_desc": "SELEZIONA TRA DUE OPZIONI MORALMENTE IMPEGNATIVE. RICEVI UNA RISPOSTA CHE RIFLETTE SULLA TUA DECISIONE. PASSA IL TELEFONO!",
     "infinite_step4_title": "[ NESSUN LIMITE ]",
-    "infinite_step4_desc": "CONTINUA A GENERARE DILEMMI. ESPLORA PROSPETTIVE ETICHE. FINCHÉ RIESCI A SOPPORTARE."
+    "infinite_step4_desc": "CONTINUA A ESPLORARE DILEMMI. CONDIVIDI CON GLI AMICI. SCOPRI LE LORO PROSPETTIVE ETICHE."
   }
 }
