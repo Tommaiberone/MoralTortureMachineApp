@@ -44,6 +44,21 @@ const ResultsScreen = () => {
     fullMark: Math.max(...Object.values(aggregated).map(v => v / answers.length)) * 1.2,
   }));
 
+  useEffect(() => {
+    // Block browser back button
+    const preventBackNavigation = (e) => {
+      window.history.pushState(null, '', window.location.href);
+    };
+
+    // Add a dummy entry to history
+    window.history.pushState(null, '', window.location.href);
+    window.addEventListener('popstate', preventBackNavigation);
+
+    return () => {
+      window.removeEventListener('popstate', preventBackNavigation);
+    };
+  }, []);
+
   // Fetch AI analysis when component mounts
   useEffect(() => {
     const fetchAiAnalysis = async () => {
@@ -84,7 +99,7 @@ const ResultsScreen = () => {
     <div className="results-scroll-container">
         <button
           className="results-go-back-button"
-          onClick={() => navigate(-1)}
+          onClick={() => navigate('/')}
         >
           <span className="arrow">←</span>
           <span>{t('results.back_button')}</span>

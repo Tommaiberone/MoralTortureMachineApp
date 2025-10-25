@@ -17,6 +17,21 @@ const TutorialScreen = () => {
     }
   }, [mode, navigate]);
 
+  useEffect(() => {
+    // Block browser back button
+    const preventBackNavigation = (e) => {
+      window.history.pushState(null, '', window.location.href);
+    };
+
+    // Add a dummy entry to history
+    window.history.pushState(null, '', window.location.href);
+    window.addEventListener('popstate', preventBackNavigation);
+
+    return () => {
+      window.removeEventListener('popstate', preventBackNavigation);
+    };
+  }, []);
+
   const evaluationTutorialSteps = [
     {
       title: t('tutorial.evaluation_step1_title'),

@@ -28,6 +28,21 @@ const EvaluationDilemmasScreen = () => {
     }
   }, [currentDilemmaCount]);
 
+  useEffect(() => {
+    // Block browser back button
+    const preventBackNavigation = (e) => {
+      window.history.pushState(null, '', window.location.href);
+    };
+
+    // Add a dummy entry to history
+    window.history.pushState(null, '', window.location.href);
+    window.addEventListener('popstate', preventBackNavigation);
+
+    return () => {
+      window.removeEventListener('popstate', preventBackNavigation);
+    };
+  }, []);
+
   const API_URL = import.meta.env.VITE_API_URL;
   const backendUrl = `${API_URL}/get-dilemma`;
   const voteUrl = `${API_URL}/vote`;
@@ -182,7 +197,7 @@ const EvaluationDilemmasScreen = () => {
     <div className="evaluation-scroll-container">
       <button
         className="evaluation-go-back-button"
-        onClick={() => navigate(-1)}
+        onClick={() => navigate('/')}
       >
         <span className="arrow">←</span>
         <span>{t('evaluation.back_button')}</span>
@@ -248,8 +263,8 @@ const EvaluationDilemmasScreen = () => {
                         cx="50%"
                         cy="50%"
                         labelLine={false}
-                        label={({ name, percent }) =>
-                          `${name}: ${(percent * 100).toFixed(0)}%`
+                        label={({ percent }) =>
+                          `${(percent * 100).toFixed(0)}%`
                         }
                         outerRadius={window.innerWidth < 480 ? 60 : 80}
                         fill="#8884d8"
