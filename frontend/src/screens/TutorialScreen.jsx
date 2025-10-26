@@ -71,11 +71,6 @@ const TutorialScreen = () => {
       description: t('tutorial.infinite_step3_desc'),
       icon: "[?]",
     },
-    {
-      title: t('tutorial.infinite_step4_title'),
-      description: t('tutorial.infinite_step4_desc'),
-      icon: "[∞]",
-    },
   ];
 
   const tutorialSteps = mode === 'evaluation' ? evaluationTutorialSteps : infiniteTutorialSteps;
