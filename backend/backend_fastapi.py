@@ -35,12 +35,14 @@ app.add_middleware(
 
 # Environment variables
 DYNAMODB_TABLE = os.getenv("DYNAMODB_TABLE", "moral-torture-machine-dilemmas")
+ANALYTICS_TABLE = os.getenv("ANALYTICS_TABLE", "moral-torture-machine-user-analytics")
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
 GROQ_API_KEY_SECRET_ID = os.getenv("GROQ_API_KEY_SECRET_ID", "")
 
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
 table = dynamodb.Table(DYNAMODB_TABLE)
+analytics_table = dynamodb.Table(ANALYTICS_TABLE)
 secrets_client = boto3.client('secretsmanager', region_name=AWS_REGION)
 
 # Cache for API key (retrieved once at cold start)
@@ -75,6 +77,84 @@ def get_groq_api_key() -> str:
             status_code=500,
             detail="API key configuration error"
         )
+
+def track_analytics_event(
+    session_id: str,
+    action_type: str,
+    action_data: Optional[Dict] = None,
+    language: str = "en",
+    user_agent: Optional[str] = None,
+    ip_address: Optional[str] = None
+) -> None:
+    """
+    Track user analytics event to DynamoDB
+
+    Args:
+        session_id: Unique session identifier (from client or generated)
+        action_type: Type of action (e.g., 'dilemma_fetched', 'vote_cast', 'results_analyzed')
+        action_data: Additional data about the action
+        language: User's selected language
+        user_agent: User's browser/client information
+        ip_address: User's IP address (hashed for privacy)
+    """
+    try:
+        import time
+        import hashlib
+
+        timestamp = int(time.time() * 1000)  # Milliseconds since epoch
+
+        # TTL: 90 days from now (in seconds)
+        expiration_time = int(time.time()) + (90 * 24 * 60 * 60)
+
+        # Hash IP address for privacy
+        hashed_ip = None
+        if ip_address:
+            hashed_ip = hashlib.sha256(ip_address.encode()).hexdigest()[:16]
+
+        event_data = {
+            'sessionId': session_id,
+            'timestamp': timestamp,
+            'actionType': action_type,
+            'language': language,
+            'expirationTime': expiration_time
+        }
+
+        # Add optional fields
+        if action_data:
+            event_data['actionData'] = json.dumps(action_data)
+
+        if user_agent:
+            event_data['userAgent'] = user_agent[:200]  # Limit length
+
+        if hashed_ip:
+            event_data['hashedIp'] = hashed_ip
+
+        # Write to DynamoDB asynchronously (fire and forget)
+        analytics_table.put_item(Item=event_data)
+
+        logger.info(f"Analytics event tracked: {action_type} for session {session_id[:8]}...")
+
+    except Exception as e:
+        # Don't fail the request if analytics tracking fails
+        logger.error(f"Failed to track analytics event: {str(e)}")
+
+def extract_session_id(request: Request) -> str:
+    """
+    Extract or generate session ID from request headers
+    """
+    import uuid
+
+    # Try to get session ID from custom header
+    session_id = request.headers.get("X-Session-Id")
+
+    if not session_id:
+        # Generate a new session ID based on user characteristics
+        # This is a fallback and won't track across requests
+        user_agent = request.headers.get("User-Agent", "")
+        client_ip = request.client.host if request.client else ""
+        session_id = str(uuid.uuid4())
+
+    return session_id
 
 # Pydantic models with input validation
 class VoteRequest(BaseModel):
@@ -173,7 +253,7 @@ async def root():
     return {"status": "ok", "message": "Moral Torture Machine API"}
 
 @app.post("/vote")
-async def vote(vote_request: VoteRequest):
+async def vote(vote_request: VoteRequest, request: Request):
     """
     Record a vote for a dilemma
 
@@ -207,6 +287,19 @@ async def vote(vote_request: VoteRequest):
 
         logger.info(f"Successfully incremented {count_attribute} for dilemma_id: {dilemma_id}")
 
+        # Track analytics event
+        session_id = extract_session_id(request)
+        track_analytics_event(
+            session_id=session_id,
+            action_type="vote_cast",
+            action_data={
+                "dilemma_id": dilemma_id,
+                "vote_type": vote_type
+            },
+            user_agent=request.headers.get("User-Agent"),
+            ip_address=request.client.host if request.client else None
+        )
+
         return {
             "message": f"Successfully recorded your '{vote_type}' vote.",
             "updated": decimal_to_native(response.get('Attributes', {}))
@@ -217,7 +310,7 @@ async def vote(vote_request: VoteRequest):
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 @app.get("/get-dilemma", response_model=DilemmaResponse, response_model_by_alias=True)
-async def get_dilemma(language: str = "en"):
+async def get_dilemma(request: Request, language: str = "en"):
     """
     Get a random dilemma from DynamoDB
 
@@ -237,9 +330,9 @@ async def get_dilemma(language: str = "en"):
                 ':language': language
             }
         )
-        
+
         items = response.get('Items', [])
-        
+
         if not items:
             logger.warning(f"No dilemmas found for language: {language}")
             raise HTTPException(status_code=404, detail=f"No dilemmas found for language: {language}")
@@ -257,6 +350,20 @@ async def get_dilemma(language: str = "en"):
 
         logger.info(f"Retrieved dilemma: {dilemma.get('_id')} in language: {language}")
 
+        # Track analytics event
+        session_id = extract_session_id(request)
+        track_analytics_event(
+            session_id=session_id,
+            action_type="dilemma_fetched",
+            action_data={
+                "dilemma_id": dilemma.get('_id'),
+                "source": "database"
+            },
+            language=language,
+            user_agent=request.headers.get("User-Agent"),
+            ip_address=request.client.host if request.client else None
+        )
+
         return dilemma
 
     except HTTPException:
@@ -266,7 +373,7 @@ async def get_dilemma(language: str = "en"):
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 @app.post("/generate-dilemma")
-async def generate_dilemma(language: str = "en"):
+async def generate_dilemma(request: Request, language: str = "en"):
     """
     Generate a new dilemma using Groq AI API, inspired by existing dilemmas from DynamoDB
 
@@ -361,17 +468,32 @@ async def generate_dilemma(language: str = "en"):
         }
 
         logger.info("Sending request to Groq API")
-        response = requests.post(api_url, headers=headers, json=payload, timeout=30)
+        api_response = requests.post(api_url, headers=headers, json=payload, timeout=30)
 
-        if response.status_code != 200:
-            logger.error(f"Groq API error: {response.status_code} - {response.text}")
+        if api_response.status_code != 200:
+            logger.error(f"Groq API error: {api_response.status_code} - {api_response.text}")
             raise HTTPException(
-                status_code=response.status_code,
-                detail=f"Error from external API: {response.status_code}"
+                status_code=api_response.status_code,
+                detail=f"Error from external API: {api_response.status_code}"
             )
 
         logger.info("Successfully generated dilemma from Groq API")
-        return response.json()
+
+        # Track analytics event
+        session_id = extract_session_id(request)
+        track_analytics_event(
+            session_id=session_id,
+            action_type="dilemma_generated",
+            action_data={
+                "source": "ai_generated",
+                "model": "llama-3.3-70b-versatile"
+            },
+            language=language,
+            user_agent=request.headers.get("User-Agent"),
+            ip_address=request.client.host if request.client else None
+        )
+
+        return api_response.json()
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Request error in /generate-dilemma: {str(e)}")
@@ -386,7 +508,7 @@ async def generate_dilemma(language: str = "en"):
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 @app.post("/analyze-results")
-async def analyze_results(request: AnalyzeResultsRequest, language: str = "en"):
+async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Request, language: str = "en"):
     """
     Analyze user's moral profile and generate a summary using Groq AI API
 
@@ -398,21 +520,21 @@ async def analyze_results(request: AnalyzeResultsRequest, language: str = "en"):
             raise HTTPException(status_code=400, detail="Invalid language parameter")
 
         # Validate request data
-        if not request.answers or len(request.answers) == 0:
+        if not analyze_request.answers or len(analyze_request.answers) == 0:
             raise HTTPException(status_code=400, detail="No answers provided")
-        if len(request.answers) > 100:
+        if len(analyze_request.answers) > 100:
             raise HTTPException(status_code=400, detail="Too many answers provided")
 
         api_key = get_groq_api_key()
 
         # Aggregate the answers to compute average values
         aggregated = {}
-        for answer in request.answers:
+        for answer in analyze_request.answers:
             for key, value in answer.items():
                 aggregated[key] = aggregated.get(key, 0) + value
 
         # Calculate averages
-        num_answers = len(request.answers)
+        num_answers = len(analyze_request.answers)
         averages = {key: round(value / num_answers, 2) for key, value in aggregated.items()}
 
         # Create a summary of the moral profile
@@ -421,9 +543,9 @@ async def analyze_results(request: AnalyzeResultsRequest, language: str = "en"):
         # Create detailed summary of dilemmas and choices if available
         if language == "it":
             dilemmas_summary = ""
-            if request.dilemmasWithChoices and len(request.dilemmasWithChoices) > 0:
+            if analyze_request.dilemmasWithChoices and len(analyze_request.dilemmasWithChoices) > 0:
                 dilemmas_summary = "\n\nEcco i dilemmi specifici che hanno affrontato e le loro scelte:\n"
-                for i, d in enumerate(request.dilemmasWithChoices, 1):
+                for i, d in enumerate(analyze_request.dilemmasWithChoices, 1):
                     dilemmas_summary += f"\n{i}. Dilemma: {d.dilemma}\n"
                     dilemmas_summary += f"   Opzioni: '{d.firstAnswer}' oppure '{d.secondAnswer}'\n"
                     dilemmas_summary += f"   Hanno scelto: '{d.chosenAnswer}'\n"
@@ -444,9 +566,9 @@ async def analyze_results(request: AnalyzeResultsRequest, language: str = "en"):
             )
         else:
             dilemmas_summary = ""
-            if request.dilemmasWithChoices and len(request.dilemmasWithChoices) > 0:
+            if analyze_request.dilemmasWithChoices and len(analyze_request.dilemmasWithChoices) > 0:
                 dilemmas_summary = "\n\nHere are the specific dilemmas they faced and their choices:\n"
-                for i, d in enumerate(request.dilemmasWithChoices, 1):
+                for i, d in enumerate(analyze_request.dilemmasWithChoices, 1):
                     dilemmas_summary += f"\n{i}. Dilemma: {d.dilemma}\n"
                     dilemmas_summary += f"   Options: '{d.firstAnswer}' or '{d.secondAnswer}'\n"
                     dilemmas_summary += f"   They chose: '{d.chosenAnswer}'\n"
@@ -496,6 +618,21 @@ async def analyze_results(request: AnalyzeResultsRequest, language: str = "en"):
         analysis_text = result['choices'][0]['message']['content']
 
         logger.info("Successfully generated analysis from Groq API")
+
+        # Track analytics event
+        session_id = extract_session_id(request)
+        track_analytics_event(
+            session_id=session_id,
+            action_type="results_analyzed",
+            action_data={
+                "num_dilemmas": len(analyze_request.answers),
+                "averages": averages
+            },
+            language=language,
+            user_agent=request.headers.get("User-Agent"),
+            ip_address=request.client.host if request.client else None
+        )
+
         return {
             "analysis": analysis_text,
             "averages": averages

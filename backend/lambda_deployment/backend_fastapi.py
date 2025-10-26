@@ -3,11 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 from pydantic import BaseModel, Field
 import boto3
-from boto3.dynamodb.conditions import Key
 import requests
 import os
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict
 from decimal import Decimal
 import json
 
@@ -30,23 +29,137 @@ app.add_middleware(
         "http://localhost:5173"
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Accept"],
 )
 
 # Environment variables
-API_KEY = os.getenv("API_KEY", "")
 DYNAMODB_TABLE = os.getenv("DYNAMODB_TABLE", "moral-torture-machine-dilemmas")
+ANALYTICS_TABLE = os.getenv("ANALYTICS_TABLE", "moral-torture-machine-user-analytics")
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
+GROQ_API_KEY_SECRET_ID = os.getenv("GROQ_API_KEY_SECRET_ID", "")
 
-# Initialize DynamoDB
+# Initialize AWS clients
 dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
 table = dynamodb.Table(DYNAMODB_TABLE)
+analytics_table = dynamodb.Table(ANALYTICS_TABLE)
+secrets_client = boto3.client('secretsmanager', region_name=AWS_REGION)
 
-# Pydantic models
+# Cache for API key (retrieved once at cold start)
+_api_key_cache = None
+
+def get_groq_api_key() -> str:
+    """Retrieve Groq API key from AWS Secrets Manager with caching"""
+    global _api_key_cache
+
+    if _api_key_cache is not None:
+        return _api_key_cache
+
+    # Fallback to environment variable for local development
+    local_api_key = os.getenv("API_KEY")
+    if local_api_key:
+        logger.info("Using API key from environment variable (local development)")
+        _api_key_cache = local_api_key
+        return _api_key_cache
+
+    if not GROQ_API_KEY_SECRET_ID:
+        raise ValueError("GROQ_API_KEY_SECRET_ID not configured")
+
+    try:
+        logger.info(f"Retrieving API key from Secrets Manager: {GROQ_API_KEY_SECRET_ID}")
+        response = secrets_client.get_secret_value(SecretId=GROQ_API_KEY_SECRET_ID)
+        _api_key_cache = response['SecretString']
+        logger.info("Successfully retrieved API key from Secrets Manager")
+        return _api_key_cache
+    except Exception as e:
+        logger.error(f"Failed to retrieve API key from Secrets Manager: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="API key configuration error"
+        )
+
+def track_analytics_event(
+    session_id: str,
+    action_type: str,
+    action_data: Optional[Dict] = None,
+    language: str = "en",
+    user_agent: Optional[str] = None,
+    ip_address: Optional[str] = None
+) -> None:
+    """
+    Track user analytics event to DynamoDB
+
+    Args:
+        session_id: Unique session identifier (from client or generated)
+        action_type: Type of action (e.g., 'dilemma_fetched', 'vote_cast', 'results_analyzed')
+        action_data: Additional data about the action
+        language: User's selected language
+        user_agent: User's browser/client information
+        ip_address: User's IP address (hashed for privacy)
+    """
+    try:
+        import time
+        import hashlib
+
+        timestamp = int(time.time() * 1000)  # Milliseconds since epoch
+
+        # TTL: 90 days from now (in seconds)
+        expiration_time = int(time.time()) + (90 * 24 * 60 * 60)
+
+        # Hash IP address for privacy
+        hashed_ip = None
+        if ip_address:
+            hashed_ip = hashlib.sha256(ip_address.encode()).hexdigest()[:16]
+
+        event_data = {
+            'sessionId': session_id,
+            'timestamp': timestamp,
+            'actionType': action_type,
+            'language': language,
+            'expirationTime': expiration_time
+        }
+
+        # Add optional fields
+        if action_data:
+            event_data['actionData'] = json.dumps(action_data)
+
+        if user_agent:
+            event_data['userAgent'] = user_agent[:200]  # Limit length
+
+        if hashed_ip:
+            event_data['hashedIp'] = hashed_ip
+
+        # Write to DynamoDB asynchronously (fire and forget)
+        analytics_table.put_item(Item=event_data)
+
+        logger.info(f"Analytics event tracked: {action_type} for session {session_id[:8]}...")
+
+    except Exception as e:
+        # Don't fail the request if analytics tracking fails
+        logger.error(f"Failed to track analytics event: {str(e)}")
+
+def extract_session_id(request: Request) -> str:
+    """
+    Extract or generate session ID from request headers
+    """
+    import uuid
+
+    # Try to get session ID from custom header
+    session_id = request.headers.get("X-Session-Id")
+
+    if not session_id:
+        # Generate a new session ID based on user characteristics
+        # This is a fallback and won't track across requests
+        user_agent = request.headers.get("User-Agent", "")
+        client_ip = request.client.host if request.client else ""
+        session_id = str(uuid.uuid4())
+
+    return session_id
+
+# Pydantic models with input validation
 class VoteRequest(BaseModel):
-    id: str = Field(..., alias="_id", description="Dilemma ID")
-    vote: str = Field(..., description="Vote type: 'yes' or 'no'")
+    id: str = Field(..., alias="_id", description="Dilemma ID", min_length=1, max_length=100, pattern=r'^[a-zA-Z0-9_-]+$')
+    vote: str = Field(..., description="Vote type: 'yes' or 'no'", pattern=r'^(yes|no)$')
 
     model_config = {
         "populate_by_name": True
@@ -105,10 +218,31 @@ def decimal_to_native(obj):
     else:
         return obj
 
-# Middleware for request logging
+# Middleware for security headers
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Content-Security-Policy"] = "default-src 'self'"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+# Middleware for request logging with PII filtering
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    logger.info(f"Incoming request: {request.method} {request.url}")
+    # Sanitize URL by removing query parameters that might contain PII
+    sanitized_path = request.url.path
+    # Only log safe query parameters (language)
+    safe_params = []
+    for key, value in request.query_params.items():
+        if key in ['language']:
+            safe_params.append(f"{key}={value}")
+    sanitized_url = f"{sanitized_path}?{'&'.join(safe_params)}" if safe_params else sanitized_path
+
+    logger.info(f"Incoming request: {request.method} {sanitized_url}")
     response = await call_next(request)
     logger.info(f"Response status: {response.status_code}")
     return response
@@ -119,7 +253,7 @@ async def root():
     return {"status": "ok", "message": "Moral Torture Machine API"}
 
 @app.post("/vote")
-async def vote(vote_request: VoteRequest):
+async def vote(vote_request: VoteRequest, request: Request):
     """
     Record a vote for a dilemma
 
@@ -153,6 +287,19 @@ async def vote(vote_request: VoteRequest):
 
         logger.info(f"Successfully incremented {count_attribute} for dilemma_id: {dilemma_id}")
 
+        # Track analytics event
+        session_id = extract_session_id(request)
+        track_analytics_event(
+            session_id=session_id,
+            action_type="vote_cast",
+            action_data={
+                "dilemma_id": dilemma_id,
+                "vote_type": vote_type
+            },
+            user_agent=request.headers.get("User-Agent"),
+            ip_address=request.client.host if request.client else None
+        )
+
         return {
             "message": f"Successfully recorded your '{vote_type}' vote.",
             "updated": decimal_to_native(response.get('Attributes', {}))
@@ -163,13 +310,16 @@ async def vote(vote_request: VoteRequest):
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 @app.get("/get-dilemma", response_model=DilemmaResponse, response_model_by_alias=True)
-async def get_dilemma(language: str = "en"):
+async def get_dilemma(request: Request, language: str = "en"):
     """
     Get a random dilemma from DynamoDB
 
     Returns a random dilemma with all its attributes in the specified language
     """
     try:
+        # Validate language parameter
+        if not language or len(language) > 10 or not language.isalpha():
+            raise HTTPException(status_code=400, detail="Invalid language parameter")
         # Scan DynamoDB for all items with the specified language
         response = table.scan(
             FilterExpression='attribute_exists(#lang) AND #lang = :language',
@@ -180,9 +330,9 @@ async def get_dilemma(language: str = "en"):
                 ':language': language
             }
         )
-        
+
         items = response.get('Items', [])
-        
+
         if not items:
             logger.warning(f"No dilemmas found for language: {language}")
             raise HTTPException(status_code=404, detail=f"No dilemmas found for language: {language}")
@@ -200,6 +350,20 @@ async def get_dilemma(language: str = "en"):
 
         logger.info(f"Retrieved dilemma: {dilemma.get('_id')} in language: {language}")
 
+        # Track analytics event
+        session_id = extract_session_id(request)
+        track_analytics_event(
+            session_id=session_id,
+            action_type="dilemma_fetched",
+            action_data={
+                "dilemma_id": dilemma.get('_id'),
+                "source": "database"
+            },
+            language=language,
+            user_agent=request.headers.get("User-Agent"),
+            ip_address=request.client.host if request.client else None
+        )
+
         return dilemma
 
     except HTTPException:
@@ -209,53 +373,82 @@ async def get_dilemma(language: str = "en"):
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 @app.post("/generate-dilemma")
-async def generate_dilemma(language: str = "en"):
+async def generate_dilemma(request: Request, language: str = "en"):
     """
-    Generate a new dilemma using Groq AI API
+    Generate a new dilemma using Groq AI API, inspired by existing dilemmas from DynamoDB
 
     Returns a newly generated ethical dilemma in the specified language
     """
     try:
-        if not API_KEY:
-            raise HTTPException(
-                status_code=500,
-                detail="API_KEY not configured"
+        # Validate language parameter
+        if not language or len(language) > 10 or not language.isalpha():
+            raise HTTPException(status_code=400, detail="Invalid language parameter")
+
+        api_key = get_groq_api_key()
+
+        # Fetch sample dilemmas from DynamoDB to use as style/context examples
+        sample_dilemmas = []
+        try:
+            response = table.scan(
+                FilterExpression='attribute_exists(#lang) AND #lang = :language',
+                ExpressionAttributeNames={
+                    '#lang': 'language'
+                },
+                ExpressionAttributeValues={
+                    ':language': language
+                },
+                Limit=5  # Get up to 5 sample dilemmas
             )
+            
+            sample_items = response.get('Items', [])
+            sample_dilemmas = [decimal_to_native(item) for item in sample_items]
+            logger.info(f"Retrieved {len(sample_dilemmas)} sample dilemmas for language: {language}")
+        except Exception as e:
+            logger.warning(f"Could not fetch sample dilemmas: {str(e)}")
+            sample_dilemmas = []
+
+        # Build the examples string from database dilemmas
+        examples_text = ""
+        if sample_dilemmas:
+            examples_text = "\n\nHere are some examples of the style and complexity I'm looking for:\n"
+            for i, dilemma in enumerate(sample_dilemmas[:3], 1):
+                examples_text += f"\nExample {i}:\n"
+                examples_text += f'{{"dilemma": "{dilemma.get("dilemma", "")[:100]}...", '
+                examples_text += f'"firstAnswer": "{dilemma.get("firstAnswer", "")}", '
+                examples_text += f'"secondAnswer": "{dilemma.get("secondAnswer", "")}", '
+                examples_text += f'"teaseOption1": "{dilemma.get("teaseOption1", "")}", '
+                examples_text += f'"teaseOption2": "{dilemma.get("teaseOption2", "")}"}}\n'
 
         # Define prompts for different languages
         if language == "it":
             prompt_content = (
-                'Genera un conciso dilemma etico (40-80 parole) con due opzioni difficili. '
+                'Genera un NUOVO e UNICO dilemma etico (40-80 parole) con due opzioni difficili. '
+                'IMPORTANTE: Crea un dilemma completamente nuovo e diverso da quelli che hai visto. '
+                'Non copiare o modificare gli esempi forniti - crea qualcosa di originale. '
                 'Ogni opzione dovrebbe presentare un punto di vista valido ma contrastante, incoraggiando la riflessione. '
                 'Aggiungi una leggera presa in giro per ogni opzione per rendere il dilemma più coinvolgente. '
                 'Assicurati equilibrio e complessità, evitando scelte semplificate. '
                 'Rispondi rigorosamente in formato JSON con la seguente struttura: '
                 '{"dilemma": "...", "firstAnswer": "...", "secondAnswer": "...", '
                 '"teaseOption1": "...", "teaseOption2": "..."} '
-                'Ecco un esempio di una buona risposta (solo il json, con la struttura corretta): '
-                '{"dilemma": "Un leader comunitario deve decidere se allocare risorse limitate per ricostruire le case dopo un disastro naturale o investire in programmi educativi a lungo termine per prevenire vulnerabilità future. Allocare risorse per la ricostruzione immediata potrebbe ripristinare le vite rapidamente ma potrebbe trascurare la preparazione futura. D\'altra parte, investire nell\'istruzione potrebbe rafforzare la resilienza della comunità ma ritardare gli sforzi di soccorso immediato.", '
-                '"firstAnswer": "Ricostruire le case", '
-                '"secondAnswer": "Investire nell\'istruzione", '
-                '"teaseOption1": "Dare priorità al presente rispetto al futuro? Scelta interessante!", '
-                '"teaseOption2": "Pianificare per il futuro, ma a quale costo?"}'
-                'FORMATTA LA RISPOSTA RIGOROSAMENTE NEL JSON CHE HO FORNITO! NIENT\'ALTRO CHE IL JSON DOVREBBE ESSERE NELLA TUA RISPOSTA'
+                f'{examples_text}'
+                'FORMATTA LA RISPOSTA RIGOROSAMENTE NEL JSON CHE HO FORNITO! NIENT\'ALTRO CHE IL JSON DOVREBBE ESSERE NELLA TUA RISPOSTA. '
+                'ASSICURATI CHE IL DILEMMA SIA COMPLETAMENTE NUOVO E NON UNA VARIAZIONE DEGLI ESEMPI!'
             )
         else:
             prompt_content = (
-                'Generate a concise ethical dilemma (40-80 words) with two challenging options. '
+                'Generate a NEW and UNIQUE ethical dilemma (40-80 words) with two challenging options. '
+                'IMPORTANT: Create a completely new and different dilemma from the ones you\'ve seen. '
+                'Do not copy or modify the provided examples - create something original. '
                 'Each option should present a valid but contrasting viewpoint, encouraging reflection. '
                 'Add a light tease for each option to make the dilemma more engaging. '
                 'Ensure balance and complexity, avoiding oversimplified choices. '
                 'Respond strictly in JSON format with the following structure: '
                 '{"dilemma": "...", "firstAnswer": "...", "secondAnswer": "...", '
                 '"teaseOption1": "...", "teaseOption2": "..."} '
-                'Here is an example of a good answer (just the json, with the correct structure): '
-                '{"dilemma": "A community leader must decide whether to allocate limited resources to rebuilding homes after a natural disaster or invest in long-term educational programs to prevent future vulnerabilities. Allocating resources to immediate rebuilding could restore lives quickly but might neglect future preparedness. On the other hand, investing in education could strengthen the community\'s resilience but delay immediate relief efforts.", '
-                '"firstAnswer": "Rebuild homes", '
-                '"secondAnswer": "Invest in education", '
-                '"teaseOption1": "Prioritizing now over later? Interesting choice!", '
-                '"teaseOption2": "Planning for the future, but at what cost?"}'
-                'FORMAT THE ANSWER STRICTLY IN THE JSON I PROVIDED! NOTHING BUT THE JSON SHOULD BE IN YOUR ANSWER'
+                f'{examples_text}'
+                'FORMAT THE ANSWER STRICTLY IN THE JSON I PROVIDED! NOTHING BUT THE JSON SHOULD BE IN YOUR ANSWER. '
+                'ENSURE THE DILEMMA IS COMPLETELY NEW AND NOT A VARIATION OF THE EXAMPLES!'
             )
 
         payload = {
@@ -270,22 +463,37 @@ async def generate_dilemma(language: str = "en"):
 
         api_url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
-            "Authorization": f"Bearer {API_KEY}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
 
-        logger.info(f"Sending request to Groq API")
-        response = requests.post(api_url, headers=headers, json=payload, timeout=30)
+        logger.info("Sending request to Groq API")
+        api_response = requests.post(api_url, headers=headers, json=payload, timeout=30)
 
-        if response.status_code != 200:
-            logger.error(f"Groq API error: {response.status_code} - {response.text}")
+        if api_response.status_code != 200:
+            logger.error(f"Groq API error: {api_response.status_code} - {api_response.text}")
             raise HTTPException(
-                status_code=response.status_code,
-                detail=f"Error from external API: {response.status_code}"
+                status_code=api_response.status_code,
+                detail=f"Error from external API: {api_response.status_code}"
             )
 
         logger.info("Successfully generated dilemma from Groq API")
-        return response.json()
+
+        # Track analytics event
+        session_id = extract_session_id(request)
+        track_analytics_event(
+            session_id=session_id,
+            action_type="dilemma_generated",
+            action_data={
+                "source": "ai_generated",
+                "model": "llama-3.3-70b-versatile"
+            },
+            language=language,
+            user_agent=request.headers.get("User-Agent"),
+            ip_address=request.client.host if request.client else None
+        )
+
+        return api_response.json()
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Request error in /generate-dilemma: {str(e)}")
@@ -300,27 +508,33 @@ async def generate_dilemma(language: str = "en"):
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 @app.post("/analyze-results")
-async def analyze_results(request: AnalyzeResultsRequest, language: str = "en"):
+async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Request, language: str = "en"):
     """
     Analyze user's moral profile and generate a summary using Groq AI API
 
     Returns an AI-generated analysis of the user's moral choices in the specified language
     """
     try:
-        if not API_KEY:
-            raise HTTPException(
-                status_code=500,
-                detail="API_KEY not configured"
-            )
+        # Validate language parameter
+        if not language or len(language) > 10 or not language.isalpha():
+            raise HTTPException(status_code=400, detail="Invalid language parameter")
+
+        # Validate request data
+        if not analyze_request.answers or len(analyze_request.answers) == 0:
+            raise HTTPException(status_code=400, detail="No answers provided")
+        if len(analyze_request.answers) > 100:
+            raise HTTPException(status_code=400, detail="Too many answers provided")
+
+        api_key = get_groq_api_key()
 
         # Aggregate the answers to compute average values
         aggregated = {}
-        for answer in request.answers:
+        for answer in analyze_request.answers:
             for key, value in answer.items():
                 aggregated[key] = aggregated.get(key, 0) + value
 
         # Calculate averages
-        num_answers = len(request.answers)
+        num_answers = len(analyze_request.answers)
         averages = {key: round(value / num_answers, 2) for key, value in aggregated.items()}
 
         # Create a summary of the moral profile
@@ -329,9 +543,9 @@ async def analyze_results(request: AnalyzeResultsRequest, language: str = "en"):
         # Create detailed summary of dilemmas and choices if available
         if language == "it":
             dilemmas_summary = ""
-            if request.dilemmasWithChoices and len(request.dilemmasWithChoices) > 0:
+            if analyze_request.dilemmasWithChoices and len(analyze_request.dilemmasWithChoices) > 0:
                 dilemmas_summary = "\n\nEcco i dilemmi specifici che hanno affrontato e le loro scelte:\n"
-                for i, d in enumerate(request.dilemmasWithChoices, 1):
+                for i, d in enumerate(analyze_request.dilemmasWithChoices, 1):
                     dilemmas_summary += f"\n{i}. Dilemma: {d.dilemma}\n"
                     dilemmas_summary += f"   Opzioni: '{d.firstAnswer}' oppure '{d.secondAnswer}'\n"
                     dilemmas_summary += f"   Hanno scelto: '{d.chosenAnswer}'\n"
@@ -352,9 +566,9 @@ async def analyze_results(request: AnalyzeResultsRequest, language: str = "en"):
             )
         else:
             dilemmas_summary = ""
-            if request.dilemmasWithChoices and len(request.dilemmasWithChoices) > 0:
+            if analyze_request.dilemmasWithChoices and len(analyze_request.dilemmasWithChoices) > 0:
                 dilemmas_summary = "\n\nHere are the specific dilemmas they faced and their choices:\n"
-                for i, d in enumerate(request.dilemmasWithChoices, 1):
+                for i, d in enumerate(analyze_request.dilemmasWithChoices, 1):
                     dilemmas_summary += f"\n{i}. Dilemma: {d.dilemma}\n"
                     dilemmas_summary += f"   Options: '{d.firstAnswer}' or '{d.secondAnswer}'\n"
                     dilemmas_summary += f"   They chose: '{d.chosenAnswer}'\n"
@@ -386,11 +600,11 @@ async def analyze_results(request: AnalyzeResultsRequest, language: str = "en"):
 
         api_url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
-            "Authorization": f"Bearer {API_KEY}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
 
-        logger.info(f"Sending request to Groq API for results analysis")
+        logger.info("Sending request to Groq API for results analysis")
         response = requests.post(api_url, headers=headers, json=payload, timeout=30)
 
         if response.status_code != 200:
@@ -404,6 +618,21 @@ async def analyze_results(request: AnalyzeResultsRequest, language: str = "en"):
         analysis_text = result['choices'][0]['message']['content']
 
         logger.info("Successfully generated analysis from Groq API")
+
+        # Track analytics event
+        session_id = extract_session_id(request)
+        track_analytics_event(
+            session_id=session_id,
+            action_type="results_analyzed",
+            action_data={
+                "num_dilemmas": len(analyze_request.answers),
+                "averages": averages
+            },
+            language=language,
+            user_agent=request.headers.get("User-Agent"),
+            ip_address=request.client.host if request.client else None
+        )
+
         return {
             "analysis": analysis_text,
             "averages": averages
