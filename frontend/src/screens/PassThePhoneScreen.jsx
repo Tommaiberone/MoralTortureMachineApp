@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from 'react-i18next';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
+import { getApiHeaders } from '../utils/session';
+import { getSeenDilemmas, markDilemmaAsSeen } from '../utils/seenDilemmas';
 import "./PassThePhoneScreen.css";
 
 const PassThePhoneScreen = () => {
@@ -37,11 +39,16 @@ const PassThePhoneScreen = () => {
     let response;
     let retries = 5;
     const currentLanguage = i18n.language;
+
+    // Get list of already seen dilemmas for this language
+    const seenDilemmas = getSeenDilemmas(currentLanguage);
+    const excludeParam = seenDilemmas.length > 0 ? `&exclude=${seenDilemmas.join(',')}` : '';
+
     while (retries > 0) {
       try {
-        response = await fetch(`${backendUrl}?language=${currentLanguage}`, {
+        response = await fetch(`${backendUrl}?language=${currentLanguage}${excludeParam}`, {
           method: "GET",
-          headers: { "Content-Type": "application/json" },
+          headers: getApiHeaders(),
         });
 
         if (!response.ok) {
@@ -49,6 +56,10 @@ const PassThePhoneScreen = () => {
         }
 
         const result = await response.json();
+
+        // Mark this dilemma as seen
+        markDilemmaAsSeen(result._id, currentLanguage);
+
         return result;
       } catch (error) {
         console.error("Error during fetch or parsing:", error);
@@ -101,9 +112,7 @@ const PassThePhoneScreen = () => {
     try {
       const response = await fetch(voteUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: getApiHeaders(),
         body: JSON.stringify(votePayload),
       });
 

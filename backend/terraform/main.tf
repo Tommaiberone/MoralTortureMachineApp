@@ -161,7 +161,8 @@ resource "aws_iam_role_policy" "dynamodb_policy" {
           "dynamodb:GetItem",
           "dynamodb:UpdateItem",
           "dynamodb:Scan",
-          "dynamodb:Query"
+          "dynamodb:Query",
+          "dynamodb:DescribeTable"
         ]
         Resource = aws_dynamodb_table.dilemmas.arn
       },
@@ -171,7 +172,8 @@ resource "aws_iam_role_policy" "dynamodb_policy" {
           "dynamodb:PutItem",
           "dynamodb:GetItem",
           "dynamodb:Query",
-          "dynamodb:Scan"
+          "dynamodb:Scan",
+          "dynamodb:DescribeTable"
         ]
         Resource = [
           aws_dynamodb_table.user_analytics.arn,

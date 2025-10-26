@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .test-result {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #444;
+            border-radius: 5px;
+            background: #2a2a2a;
+        }
+        .success { border-color: #4CAF50; }
+        .error { border-color: #f44336; }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:hover { background: #45a049; }
+        pre {
+            background: #1a1a1a;
+            padding: 10px;
+            overflow-x: auto;
+            border-radius: 4px;
+        }
+        .status { font-weight: bold; }
+        .success-status { color: #4CAF50; }
+        .error-status { color: #f44336; }
+    </style>
+</head>
+<body>
+    <h1>Frontend API Test</h1>
+    <p>Testing: <code id="api-url"></code></p>
+
+    <div>
+        <button onclick="testHealthCheck()">Test Health Check</button>
+        <button onclick="testGetDilemma()">Test Get Dilemma</button>
+        <button onclick="testGetDilemmaWithExclude()">Test With Exclude</button>
+        <button onclick="testVote()">Test Vote</button>
+        <button onclick="clearLocalStorage()">Clear LocalStorage</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        const API_URL = 'https://yd7dwzpwz5.execute-api.eu-west-1.amazonaws.com';
+        document.getElementById('api-url').textContent = API_URL;
+
+        // Simulate frontend session utility
+        function getSessionId() {
+            let sessionId = sessionStorage.getItem('mtm_session_id');
+            if (!sessionId) {
+                sessionId = crypto.randomUUID();
+                sessionStorage.setItem('mtm_session_id', sessionId);
+            }
+            return sessionId;
+        }
+
+        function getApiHeaders() {
+            return {
+                'Content-Type': 'application/json',
+                'X-Session-Id': getSessionId()
+            };
+        }
+
+        // Simulate seenDilemmas utility
+        function getSeenDilemmas(language) {
+            try {
+                const data = localStorage.getItem('mtm_seen_dilemmas');
+                if (!data) return [];
+                const seenDilemmasMap = JSON.parse(data);
+                return seenDilemmasMap[language] || [];
+            } catch (error) {
+                console.error('Error reading seen dilemmas:', error);
+                return [];
+            }
+        }
+
+        function markDilemmaAsSeen(dilemmaId, language) {
+            try {
+                const data = localStorage.getItem('mtm_seen_dilemmas');
+                const seenDilemmasMap = data ? JSON.parse(data) : {};
+                if (!seenDilemmasMap[language]) {
+                    seenDilemmasMap[language] = [];
+                }
+                if (!seenDilemmasMap[language].includes(dilemmaId)) {
+                    seenDilemmasMap[language].push(dilemmaId);
+                    localStorage.setItem('mtm_seen_dilemmas', JSON.stringify(seenDilemmasMap));
+                }
+            } catch (error) {
+                console.error('Error marking dilemma as seen:', error);
+            }
+        }
+
+        function addResult(title, success, data) {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `test-result ${success ? 'success' : 'error'}`;
+
+            const statusClass = success ? 'success-status' : 'error-status';
+            const statusText = success ? '✅ SUCCESS' : '❌ FAILED';
+
+            div.innerHTML = `
+                <h3>${title}</h3>
+                <p class="status ${statusClass}">${statusText}</p>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            `;
+
+            results.insertBefore(div, results.firstChild);
+        }
+
+        async function testHealthCheck() {
+            try {
+                const response = await fetch(`${API_URL}/`, {
+                    method: 'GET',
+                    headers: getApiHeaders()
+                });
+                const data = await response.json();
+                addResult('Health Check', response.ok, { status: response.status, data });
+            } catch (error) {
+                addResult('Health Check', false, { error: error.message });
+            }
+        }
+
+        async function testGetDilemma() {
+            try {
+                const language = 'en';
+                const seenDilemmas = getSeenDilemmas(language);
+                const excludeParam = seenDilemmas.length > 0 ? `&exclude=${seenDilemmas.join(',')}` : '';
+
+                const url = `${API_URL}/get-dilemma?language=${language}${excludeParam}`;
+                console.log('Fetching:', url);
+
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: getApiHeaders()
+                });
+
+                const data = await response.json();
+
+                // Mark as seen
+                markDilemmaAsSeen(data._id, language);
+
+                addResult('Get Dilemma', response.ok, {
+                    status: response.status,
+                    url,
+                    excludedCount: seenDilemmas.length,
+                    dilemmaId: data._id,
+                    dilemma: data.dilemma.substring(0, 100) + '...'
+                });
+            } catch (error) {
+                addResult('Get Dilemma', false, { error: error.message });
+            }
+        }
+
+        async function testGetDilemmaWithExclude() {
+            try {
+                const language = 'en';
+                const seenDilemmas = getSeenDilemmas(language);
+
+                addResult('Current Seen Dilemmas', true, {
+                    count: seenDilemmas.length,
+                    ids: seenDilemmas
+                });
+
+                if (seenDilemmas.length === 0) {
+                    addResult('Get Dilemma With Exclude', false, {
+                        message: 'No seen dilemmas yet. Click "Test Get Dilemma" first.'
+                    });
+                    return;
+                }
+
+                const excludeParam = `&exclude=${seenDilemmas.join(',')}`;
+                const url = `${API_URL}/get-dilemma?language=${language}${excludeParam}`;
+
+                console.log('Fetching with exclude:', url);
+
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: getApiHeaders()
+                });
+
+                const data = await response.json();
+
+                const wasExcluded = !seenDilemmas.includes(data._id);
+
+                addResult('Get Dilemma With Exclude', response.ok && wasExcluded, {
+                    status: response.status,
+                    url,
+                    excludedIds: seenDilemmas,
+                    receivedId: data._id,
+                    wasExcludedCorrectly: wasExcluded
+                });
+            } catch (error) {
+                addResult('Get Dilemma With Exclude', false, { error: error.message });
+            }
+        }
+
+        async function testVote() {
+            try {
+                // First get a dilemma
+                const getDilemmaResponse = await fetch(`${API_URL}/get-dilemma?language=en`, {
+                    method: 'GET',
+                    headers: getApiHeaders()
+                });
+                const dilemma = await getDilemmaResponse.json();
+
+                // Vote on it
+                const votePayload = {
+                    _id: dilemma._id,
+                    vote: 'yes'
+                };
+
+                const response = await fetch(`${API_URL}/vote`, {
+                    method: 'POST',
+                    headers: getApiHeaders(),
+                    body: JSON.stringify(votePayload)
+                });
+
+                const data = await response.json();
+
+                addResult('Vote', response.ok, {
+                    status: response.status,
+                    dilemmaId: dilemma._id,
+                    response: data
+                });
+            } catch (error) {
+                addResult('Vote', false, { error: error.message });
+            }
+        }
+
+        function clearLocalStorage() {
+            localStorage.removeItem('mtm_seen_dilemmas');
+            sessionStorage.removeItem('mtm_session_id');
+            addResult('Clear LocalStorage', true, { message: 'LocalStorage and SessionStorage cleared' });
+        }
+
+        // Show session ID on load
+        window.onload = () => {
+            const seenDilemmas = getSeenDilemmas('en');
+            addResult('Initial State', true, {
+                sessionId: getSessionId(),
+                seenDilemmasEN: seenDilemmas.length,
+                seenDilemmasIT: getSeenDilemmas('it').length
+            });
+        };
+    </script>
+</body>
+</html>
