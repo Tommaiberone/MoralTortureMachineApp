@@ -377,14 +377,14 @@ jobs:
         working-directory: backend
         run: |
           echo "📋 Checking dilemma files..."
-          if [ -f "dilemmas_it.json" ] && [ -f "dilemmas.json" ]; then
+          if [ -f "dilemmas_it.json" ] && [ -f "dilemmas_en.json" ]; then
             echo "MULTILANG=true" >> $GITHUB_ENV
-            en_count=$(jq '. | length' dilemmas.json)
+            en_count=$(jq '. | length' dilemmas_en.json)
             it_count=$(jq '. | length' dilemmas_it.json)
             echo "✅ Found $en_count English + $it_count Italian dilemmas"
-          elif [ -f "dilemmas.json" ]; then
+          elif [ -f "dilemmas_en.json" ]; then
             echo "MULTILANG=false" >> $GITHUB_ENV
-            count=$(jq '. | length' dilemmas.json)
+            count=$(jq '. | length' dilemmas_en.json)
             echo "✅ Found $count dilemmas"
           else
             echo "❌ No dilemma files found!"

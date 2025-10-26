@@ -67,7 +67,7 @@ See [GITHUB_ACTIONS_GUIDE.md](../GITHUB_ACTIONS_GUIDE.md) for detailed documenta
 backend/
 ├── backend_fastapi.py                 # Main API code
 ├── populate_dynamodb_multilang.py     # DB population script
-├── dilemmas.json                      # English dilemmas
+├── dilemmas_en.json                      # English dilemmas
 ├── dilemmas_it.json                   # Italian dilemmas
 ├── requirements.txt                   # Python dependencies
 ├── lambda_deployment/                 # Lambda build directory
@@ -153,7 +153,7 @@ python -m uvicorn backend_fastapi:app --reload --port 8000
 - `quick-deploy.sh` - One-command deployment (RECOMMENDED)
 - `populate_dynamodb_multilang.py` - Load dilemmas into DynamoDB
 - `test-api.sh` - Test API endpoints
-- `dilemmas.json` - Dilemma data
+- `dilemmas_en.json` - Dilemma data
 - `requirements.txt` - Python dependencies
 - `.env.example` - Environment variables template
 

@@ -25,7 +25,7 @@ MoralTortureMachineApp/
 │
 ├── shared/                # Shared backend files
 │   ├── backend.py         # Backend API server
-│   ├── dilemmas.json      # Dilemma database
+│   ├── dilemmas_en.json      # Dilemma database
 │   └── populateDB.py      # Database population script
 │
 ├── package.json           # Root package.json with workspace scripts

@@ -2,7 +2,7 @@
 """
 Populate DynamoDB with multilingual dilemmas
 
-This script loads dilemmas from both dilemmas.json (English) and dilemmas_it.json (Italian)
+This script loads dilemmas from both dilemmas_en.json (English) and dilemmas_it.json (Italian)
 and stores them in DynamoDB with language-specific IDs.
 """
 
@@ -10,6 +10,31 @@ import boto3
 import json
 import os
 from decimal import Decimal
+
+def clear_dynamodb_table(table_name):
+    """
+    Clear all items from the specified DynamoDB table.
+
+    Args:
+        table_name: Name of the DynamoDB table
+    """
+    dynamodb = boto3.resource('dynamodb', region_name=os.getenv('AWS_REGION', 'eu-west-1'))
+    table = dynamodb.Table(table_name)
+
+    print(f"\n{'='*60}")
+    print(f"⚠️  Clearing all items from table '{table_name}'...")
+    print(f"{'='*60}")
+
+    # Scan and delete all items
+    scan = table.scan()
+    with table.batch_writer() as batch:
+        for item in scan['Items']:
+            batch.delete_item(Key={'_id': item['_id']})
+            print(f"  ✗ Deleted: {item['_id']}")
+
+    print(f"\n✅ Successfully cleared table '{table_name}'.")
+
+
 
 def convert_to_decimal(obj):
     """Convert float values to Decimal for DynamoDB"""
@@ -34,7 +59,7 @@ def populate_multilang_dynamodb(table_name='moral-torture-machine-dilemmas'):
     table = dynamodb.Table(table_name)
 
     languages = {
-        'en': 'dilemmas.json',
+        'en': 'dilemmas_en.json',
         'it': 'dilemmas_it.json'
     }
 
@@ -91,13 +116,14 @@ if __name__ == '__main__':
     try:
         # Confirm before proceeding
         print(f"⚠️  This will populate table '{table_name}' with multilingual dilemmas.")
-        print("   Existing items with the same IDs will be overwritten.")
-        
-        response = input("\nProceed? (yes/no): ").strip().lower()
+        print("   Existing items will be deleted.")
+
+        response = input("\n⚠️⚠️⚠️ Are you sure you want to proceed? (yes/no): ").strip().lower()
         if response != 'yes':
             print("Aborted.")
             sys.exit(0)
 
+        clear_dynamodb_table(table_name)
         populate_multilang_dynamodb(table_name)
     except FileNotFoundError as e:
         print(f"❌ Error: Required JSON file not found - {e}")
