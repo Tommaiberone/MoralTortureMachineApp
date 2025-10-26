@@ -16,7 +16,6 @@
     "title": "[ ETHICAL DILEMMAS ]",
     "get_dilemma": "[ GET DILEMMA ]",
     "loading": "[ LOADING ]",
-    "retrieved_dilemma": "[ RETRIEVED DILEMMA ]",
     "get_new_dilemma": "[ GET NEW DILEMMA ]",
     "view_results": "[ VIEW RESULTS ]",
     "failed_fetch": "Failed to fetch the dilemma. Please try again.",

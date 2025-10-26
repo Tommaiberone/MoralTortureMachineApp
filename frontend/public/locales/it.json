@@ -16,7 +16,6 @@
     "title": "[ DILEMMI ETICI ]",
     "get_dilemma": "[ OTTIENI DILEMMA ]",
     "loading": "[ CARICAMENTO ]",
-    "retrieved_dilemma": "[ DILEMMA RECUPERATO ]",
     "get_new_dilemma": "[ OTTIENI NUOVO DILEMMA ]",
     "view_results": "[ VEDI RISULTATI ]",
     "failed_fetch": "Impossibile recuperare il dilemma. Per favore riprova.",

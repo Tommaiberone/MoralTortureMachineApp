@@ -225,9 +225,6 @@ const EvaluationDilemmasScreen = () => {
           </div>
         ) : (
           <div>
-            <p className="evaluation-generated-text-label">
-              {t('evaluation.retrieved_dilemma')}
-            </p>
             <p className="evaluation-generated-text">
               {dilemma.dilemma}
             </p>
