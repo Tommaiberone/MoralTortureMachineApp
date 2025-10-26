@@ -28,6 +28,16 @@ output "dynamodb_table_arn" {
   value       = aws_dynamodb_table.dilemmas.arn
 }
 
+output "analytics_table_name" {
+  description = "Name of the User Analytics DynamoDB table"
+  value       = aws_dynamodb_table.user_analytics.name
+}
+
+output "analytics_table_arn" {
+  description = "ARN of the User Analytics DynamoDB table"
+  value       = aws_dynamodb_table.user_analytics.arn
+}
+
 output "aws_region" {
   description = "AWS region where resources are deployed"
   value       = var.aws_region
@@ -78,7 +88,8 @@ output "deployment_summary" {
     ==========================================
 
     API URL: ${aws_apigatewayv2_api.api.api_endpoint}
-    DynamoDB Table: ${aws_dynamodb_table.dilemmas.name}
+    DynamoDB Dilemmas Table: ${aws_dynamodb_table.dilemmas.name}
+    DynamoDB Analytics Table: ${aws_dynamodb_table.user_analytics.name}
     Lambda Function: ${aws_lambda_function.api.function_name}
     Secrets Manager: ${aws_secretsmanager_secret.groq_api_key.name}
     Region: ${var.aws_region}

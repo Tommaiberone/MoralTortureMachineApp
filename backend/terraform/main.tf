@@ -24,7 +24,7 @@ provider "aws" {
 # Data source to get current AWS account
 data "aws_caller_identity" "current" {}
 
-# DynamoDB Table
+# DynamoDB Table for Dilemmas
 resource "aws_dynamodb_table" "dilemmas" {
   name         = var.table_name
   billing_mode = "PAY_PER_REQUEST"
@@ -39,6 +39,50 @@ resource "aws_dynamodb_table" "dilemmas" {
     Name        = "Moral Torture Machine Dilemmas"
     Environment = var.environment
     ManagedBy   = "Terraform"
+  }
+}
+
+# DynamoDB Table for User Analytics
+resource "aws_dynamodb_table" "user_analytics" {
+  name         = "${var.stack_name}-user-analytics"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "sessionId"
+  range_key    = "timestamp"
+
+  attribute {
+    name = "sessionId"
+    type = "S"
+  }
+
+  attribute {
+    name = "timestamp"
+    type = "N"
+  }
+
+  attribute {
+    name = "actionType"
+    type = "S"
+  }
+
+  # Global Secondary Index to query by action type across all sessions
+  global_secondary_index {
+    name            = "ActionTypeIndex"
+    hash_key        = "actionType"
+    range_key       = "timestamp"
+    projection_type = "ALL"
+  }
+
+  # Enable TTL to automatically delete old events after 90 days
+  ttl {
+    attribute_name = "expirationTime"
+    enabled        = true
+  }
+
+  tags = {
+    Name        = "Moral Torture Machine User Analytics"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+    Purpose     = "Track user behavior and interactions for analytics"
   }
 }
 
@@ -99,17 +143,32 @@ resource "aws_iam_role_policy" "dynamodb_policy" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "dynamodb:PutItem",
-        "dynamodb:GetItem",
-        "dynamodb:UpdateItem",
-        "dynamodb:Scan",
-        "dynamodb:Query"
-      ]
-      Resource = aws_dynamodb_table.dilemmas.arn
-    }]
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:Scan",
+          "dynamodb:Query"
+        ]
+        Resource = aws_dynamodb_table.dilemmas.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:Query",
+          "dynamodb:Scan"
+        ]
+        Resource = [
+          aws_dynamodb_table.user_analytics.arn,
+          "${aws_dynamodb_table.user_analytics.arn}/index/*"
+        ]
+      }
+    ]
   })
 }
 
@@ -175,8 +234,9 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE         = aws_dynamodb_table.dilemmas.name
-      GROQ_API_KEY_SECRET_ID = aws_secretsmanager_secret.groq_api_key.id
+      DYNAMODB_TABLE           = aws_dynamodb_table.dilemmas.name
+      ANALYTICS_TABLE          = aws_dynamodb_table.user_analytics.name
+      GROQ_API_KEY_SECRET_ID   = aws_secretsmanager_secret.groq_api_key.id
     }
   }
 
