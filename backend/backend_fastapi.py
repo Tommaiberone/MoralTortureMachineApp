@@ -352,16 +352,29 @@ async def vote(vote_request: VoteRequest, request: Request):
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 @app.get("/get-dilemma", response_model=DilemmaResponse, response_model_by_alias=True)
-async def get_dilemma(request: Request, language: str = "en"):
+async def get_dilemma(request: Request, language: str = "en", exclude: str = ""):
     """
-    Get a random dilemma from DynamoDB
+    Get a random dilemma from DynamoDB, excluding already seen dilemmas
 
-    Returns a random dilemma with all its attributes in the specified language
+    Returns a random dilemma with all its attributes in the specified language.
+
+    - **language**: Language code (e.g., 'en', 'it')
+    - **exclude**: Comma-separated list of dilemma IDs to exclude (e.g., 'id1,id2,id3')
     """
     try:
         # Validate language parameter
         if not language or len(language) > 10 or not language.isalpha():
             raise HTTPException(status_code=400, detail="Invalid language parameter")
+
+        # Parse excluded IDs
+        excluded_ids = set()
+        if exclude:
+            # Split by comma and clean up
+            excluded_ids = set(id.strip() for id in exclude.split(',') if id.strip())
+            # Limit to prevent abuse
+            if len(excluded_ids) > 1000:
+                raise HTTPException(status_code=400, detail="Too many excluded IDs")
+
         # Scan DynamoDB for all items with the specified language
         response = table.scan(
             FilterExpression='attribute_exists(#lang) AND #lang = :language',
@@ -379,9 +392,17 @@ async def get_dilemma(request: Request, language: str = "en"):
             logger.warning(f"No dilemmas found for language: {language}")
             raise HTTPException(status_code=404, detail=f"No dilemmas found for language: {language}")
 
+        # Filter out excluded dilemmas
+        available_items = [item for item in items if item.get('_id') not in excluded_ids]
+
+        # If all dilemmas have been seen, reset and use all dilemmas
+        if not available_items:
+            logger.info(f"All dilemmas seen for language {language}, resetting pool")
+            available_items = items
+
         # Select a random dilemma
         import random
-        dilemma = random.choice(items)
+        dilemma = random.choice(available_items)
 
         # Convert Decimal types to native Python types
         dilemma = decimal_to_native(dilemma)

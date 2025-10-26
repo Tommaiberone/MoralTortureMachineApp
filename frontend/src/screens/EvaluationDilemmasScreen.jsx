@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
 import { useTranslation } from 'react-i18next';
 import { getApiHeaders } from '../utils/session';
+import { getSeenDilemmas, markDilemmaAsSeen } from '../utils/seenDilemmas';
 import "./EvaluationDilemmasScreen.css";
 
 const MAX_DILEMMAS = 7;
@@ -52,9 +53,14 @@ const EvaluationDilemmasScreen = () => {
     let response;
     let retries = 5;
     const currentLanguage = i18n.language;
+
+    // Get list of already seen dilemmas for this language
+    const seenDilemmas = getSeenDilemmas(currentLanguage);
+    const excludeParam = seenDilemmas.length > 0 ? `&exclude=${seenDilemmas.join(',')}` : '';
+
     while (retries > 0) {
       try {
-        response = await fetch(`${backendUrl}?language=${currentLanguage}`, {
+        response = await fetch(`${backendUrl}?language=${currentLanguage}${excludeParam}`, {
           method: "GET",
           headers: getApiHeaders(),
         });
@@ -64,6 +70,10 @@ const EvaluationDilemmasScreen = () => {
         }
 
         const result = await response.json();
+
+        // Mark this dilemma as seen
+        markDilemmaAsSeen(result._id, currentLanguage);
+
         return result;
       } catch (error) {
         console.error("Error during fetch or parsing:", error);
