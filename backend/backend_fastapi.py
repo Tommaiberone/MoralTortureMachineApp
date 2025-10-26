@@ -30,8 +30,8 @@ app.add_middleware(
         "http://localhost:5173"
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "Accept"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Accept", "X-Session-Id"],
 )
 
 # Environment variables
