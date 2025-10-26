@@ -40,6 +40,7 @@
     "verdict": "[ IL VERDETTO DELLA MACCHINA ]",
     "analyzing": "Analizzando la tua anima...",
     "analysis_error": "La coscienza della macchina vacilla... Impossibile analizzare la tua anima in questo momento.",
+    "rate_limit_error": "⚠ La macchina ha analizzato troppe anime oggi. I suoi circuiti hanno bisogno di riposo. Riprova tra qualche minuto, o visualizza il grafico del tuo profilo morale qui sopra.",
     "share_title": "Condividi i tuoi risultati",
     "share_text": "Sono stato giudicato dalla Moral Torture Machine! Questo è il verdetto:",
     "share_challenge": "Se sei coraggioso, prova anche tu:",

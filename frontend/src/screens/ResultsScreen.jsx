@@ -84,7 +84,15 @@ const ResultsScreen = () => {
         }
 
         const result = await response.json();
-        setAiAnalysis(result.analysis);
+
+        // Check if it's a rate limit error
+        if (response.status === 429) {
+          setAiAnalysis(t('results.rate_limit_error'));
+        } else if (!response.ok) {
+          setAiAnalysis(t('results.analysis_error'));
+        } else {
+          setAiAnalysis(result.analysis);
+        }
       } catch (error) {
         console.error("Error fetching AI analysis:", error);
         setAiAnalysis(t('results.analysis_error'));
@@ -114,10 +122,12 @@ const ResultsScreen = () => {
               <PolarGrid />
               <PolarAngleAxis
                 dataKey="subject"
+                tick={{ fontSize: 12 }}
               />
               <PolarRadiusAxis
                 angle={90}
                 domain={[0, 'auto']}
+                tick={{ fontSize: 10 }}
               />
               <Radar
                 name={t('results.moral_profile')}
@@ -126,7 +136,7 @@ const ResultsScreen = () => {
                 fill="var(--horror-blood-red)"
                 fillOpacity={0.8}
               />
-              <Legend />
+              <Legend wrapperStyle={{ fontSize: '12px' }} />
             </RadarChart>
           </ResponsiveContainer>
         </div>

@@ -494,7 +494,7 @@ async def generate_dilemma(request: Request, language: str = "en"):
             )
 
         payload = {
-            "model": "llama-3.3-70b-versatile",
+            "model": "llama-3.1-8b-instant",
             "messages": [
                 {
                     "role": "user",
@@ -528,7 +528,7 @@ async def generate_dilemma(request: Request, language: str = "en"):
             action_type="dilemma_generated",
             action_data={
                 "source": "ai_generated",
-                "model": "llama-3.3-70b-versatile"
+                "model": "llama-3.1-8b-instant"
             },
             language=language,
             user_agent=request.headers.get("User-Agent"),
@@ -631,7 +631,7 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
             )
 
         payload = {
-            "model": "llama-3.3-70b-versatile",
+            "model": "llama-3.1-8b-instant",
             "messages": [
                 {
                     "role": "user",
