@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend } from 'recharts';
 import { useTranslation } from 'react-i18next';
+import { getApiHeaders } from '../utils/session';
 import './ResultsScreen.css';
 
 const ResultsScreen = () => {
@@ -71,7 +72,7 @@ const ResultsScreen = () => {
         const backendUrl = `${API_URL}/analyze-results`;
         const response = await fetch(`${backendUrl}?language=${currentLanguage}`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: getApiHeaders(),
           body: JSON.stringify({
             answers,
             dilemmasWithChoices: dilemmasWithChoices || []

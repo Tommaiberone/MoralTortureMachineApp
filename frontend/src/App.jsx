@@ -9,28 +9,33 @@ import EvaluationDilemmasScreen from './screens/EvaluationDilemmasScreen';
 import ResultsScreen from './screens/ResultsScreen';
 import TutorialScreen from './screens/TutorialScreen';
 
+// Import Error Boundary
+import ErrorBoundary from './components/ErrorBoundary';
+
 import './App.css';
 
 const App = () => {
   return (
-    <Router>
-      <Routes>
-        {/* Home Screen */}
-        <Route path="/" element={<HomeScreen />} />
+    <ErrorBoundary>
+      <Router>
+        <Routes>
+          {/* Home Screen */}
+          <Route path="/" element={<HomeScreen />} />
 
-        {/* Tutorial Screen */}
-        <Route path="/tutorial" element={<TutorialScreen />} />
+          {/* Tutorial Screen */}
+          <Route path="/tutorial" element={<TutorialScreen />} />
 
-        {/* Pass The Phone Screen */}
-        <Route path="/pass-the-phone" element={<PassThePhoneScreen />} />
+          {/* Pass The Phone Screen */}
+          <Route path="/pass-the-phone" element={<PassThePhoneScreen />} />
 
-        {/* New Get Dilemma Screen */}
-        <Route path="/evaluation-dilemmas" element={<EvaluationDilemmasScreen />} />
+          {/* New Get Dilemma Screen */}
+          <Route path="/evaluation-dilemmas" element={<EvaluationDilemmasScreen />} />
 
-        {/* Results Screen */}
-        <Route path="/results" element={<ResultsScreen />} />
-      </Routes>
-    </Router>
+          {/* Results Screen */}
+          <Route path="/results" element={<ResultsScreen />} />
+        </Routes>
+      </Router>
+    </ErrorBoundary>
   );
 };
 

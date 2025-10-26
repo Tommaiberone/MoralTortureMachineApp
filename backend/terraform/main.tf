@@ -35,6 +35,11 @@ resource "aws_dynamodb_table" "dilemmas" {
     type = "S"
   }
 
+  # Enable Point-in-Time Recovery for automatic backups
+  point_in_time_recovery {
+    enabled = true
+  }
+
   tags = {
     Name        = "Moral Torture Machine Dilemmas"
     Environment = var.environment
@@ -76,6 +81,11 @@ resource "aws_dynamodb_table" "user_analytics" {
   ttl {
     attribute_name = "expirationTime"
     enabled        = true
+  }
+
+  # Enable Point-in-Time Recovery for automatic backups
+  point_in_time_recovery {
+    enabled = true
   }
 
   tags = {

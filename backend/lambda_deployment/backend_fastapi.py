@@ -6,6 +6,7 @@ import boto3
 import requests
 import os
 import logging
+import time
 from typing import Optional, Dict
 from decimal import Decimal
 import json
@@ -251,6 +252,47 @@ async def log_requests(request: Request, call_next):
 async def root():
     """Health check endpoint"""
     return {"status": "ok", "message": "Moral Torture Machine API"}
+
+@app.get("/health")
+async def health_check():
+    """
+    Comprehensive health check endpoint
+    Verifies connectivity to critical dependencies
+    """
+    health_status = {
+        "status": "healthy",
+        "timestamp": int(time.time()),
+        "checks": {}
+    }
+
+    # Check DynamoDB connectivity
+    try:
+        table.meta.client.describe_table(TableName=DYNAMODB_TABLE)
+        health_status["checks"]["dynamodb_dilemmas"] = "ok"
+    except Exception as e:
+        health_status["checks"]["dynamodb_dilemmas"] = f"error: {str(e)}"
+        health_status["status"] = "unhealthy"
+
+    # Check Analytics Table connectivity
+    try:
+        analytics_table.meta.client.describe_table(TableName=ANALYTICS_TABLE)
+        health_status["checks"]["dynamodb_analytics"] = "ok"
+    except Exception as e:
+        health_status["checks"]["dynamodb_analytics"] = f"error: {str(e)}"
+        health_status["status"] = "degraded"
+
+    # Check Secrets Manager connectivity
+    try:
+        secrets_client.describe_secret(SecretId=GROQ_API_KEY_SECRET_ID)
+        health_status["checks"]["secrets_manager"] = "ok"
+    except Exception as e:
+        health_status["checks"]["secrets_manager"] = f"error: {str(e)}"
+        health_status["status"] = "degraded"
+
+    # Set appropriate HTTP status code
+    status_code = 200 if health_status["status"] == "healthy" else 503
+
+    return health_status
 
 @app.post("/vote")
 async def vote(vote_request: VoteRequest, request: Request):

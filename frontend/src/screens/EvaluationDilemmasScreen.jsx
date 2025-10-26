@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
 import { useTranslation } from 'react-i18next';
+import { getApiHeaders } from '../utils/session';
 import "./EvaluationDilemmasScreen.css";
 
 const MAX_DILEMMAS = 7;
@@ -55,7 +56,7 @@ const EvaluationDilemmasScreen = () => {
       try {
         response = await fetch(`${backendUrl}?language=${currentLanguage}`, {
           method: "GET",
-          headers: { "Content-Type": "application/json" },
+          headers: getApiHeaders(),
         });
 
         if (!response.ok) {
@@ -113,9 +114,7 @@ const EvaluationDilemmasScreen = () => {
     try {
       const response = await fetch(voteUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: getApiHeaders(),
         body: JSON.stringify(votePayload),
       });
 
