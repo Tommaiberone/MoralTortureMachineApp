@@ -26,7 +26,7 @@ data "aws_caller_identity" "current" {}
 
 # DynamoDB Table for Dilemmas
 resource "aws_dynamodb_table" "dilemmas" {
-  name         = var.table_name
+  name         = "${var.environment}-${var.stack_name}-dilemmas"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "_id"
 
@@ -49,7 +49,7 @@ resource "aws_dynamodb_table" "dilemmas" {
 
 # DynamoDB Table for User Analytics
 resource "aws_dynamodb_table" "user_analytics" {
-  name         = "${var.stack_name}-user-analytics"
+  name         = "${var.environment}-${var.stack_name}-user-analytics"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "sessionId"
   range_key    = "timestamp"
@@ -98,7 +98,7 @@ resource "aws_dynamodb_table" "user_analytics" {
 
 # Secrets Manager Secret for Groq API Key
 resource "aws_secretsmanager_secret" "groq_api_key" {
-  name        = "${var.stack_name}-groq-api-key"
+  name        = "${var.environment}-${var.stack_name}-groq-api-key"
   description = "Groq API Key for AI-generated dilemmas"
 
   recovery_window_in_days = 7
@@ -120,7 +120,7 @@ resource "aws_secretsmanager_secret_version" "groq_api_key" {
 
 # IAM Role for Lambda
 resource "aws_iam_role" "lambda_role" {
-  name = "${var.stack_name}-lambda-role"
+  name = "${var.environment}-${var.stack_name}-lambda-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -234,7 +234,7 @@ data "archive_file" "lambda_zip" {
 # Lambda Function
 resource "aws_lambda_function" "api" {
   filename         = data.archive_file.lambda_zip.output_path
-  function_name    = "${var.stack_name}-api"
+  function_name    = "${var.environment}-${var.stack_name}-api"
   role            = aws_iam_role.lambda_role.arn
   handler         = "backend_fastapi.handler"
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
@@ -277,7 +277,7 @@ resource "aws_cloudwatch_log_group" "lambda_logs" {
 
 # API Gateway HTTP API
 resource "aws_apigatewayv2_api" "api" {
-  name          = "${var.stack_name}-api"
+  name          = "${var.environment}-${var.stack_name}-api"
   protocol_type = "HTTP"
 
   cors_configuration {
@@ -347,7 +347,7 @@ resource "aws_apigatewayv2_stage" "default" {
 
 # CloudWatch Log Group for API Gateway
 resource "aws_cloudwatch_log_group" "api_logs" {
-  name              = "/aws/apigateway/${var.stack_name}-api"
+  name              = "/aws/apigateway/${var.environment}-${var.stack_name}-api"
   retention_in_days = var.log_retention_days
 
   tags = {

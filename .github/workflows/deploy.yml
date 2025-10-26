@@ -59,7 +59,6 @@ jobs:
           fi
 
           echo "environment=$ENV" >> $GITHUB_OUTPUT
-          echo "dynamodb_table=moral-torture-machine-dilemmas-$ENV" >> $GITHUB_OUTPUT
           echo "🎯 Deploying to: $ENV"
 
   # Job 1: Lint e Test Backend
@@ -162,7 +161,7 @@ jobs:
 
       - name: Create/Update Secrets Manager Secret
         run: |
-          SECRET_NAME="moral-torture-machine-${{ needs.setup.outputs.environment }}-groq-api-key"
+          SECRET_NAME="${{ needs.setup.outputs.environment }}-moral-torture-machine-groq-api-key"
 
           # Check if secret exists
           if aws secretsmanager describe-secret --secret-id "$SECRET_NAME" --region ${{ env.AWS_REGION }} 2>/dev/null; then
@@ -180,8 +179,7 @@ jobs:
         env:
           TF_VAR_groq_api_key: ${{ secrets.GROQ_API_KEY }}
           TF_VAR_environment: ${{ needs.setup.outputs.environment }}
-          TF_VAR_stack_name: moral-torture-machine-${{ needs.setup.outputs.environment }}
-          TF_VAR_table_name: ${{ needs.setup.outputs.dynamodb_table }}
+          TF_VAR_stack_name: moral-torture-machine
         run: |
           terraform init
 
@@ -268,8 +266,7 @@ jobs:
       - name: Terraform Init & Apply
         env:
           TF_VAR_environment: ${{ needs.setup.outputs.environment }}
-          TF_VAR_stack_name: ${{ needs.setup.outputs.environment == 'prod' && 'moral-torture-machine' || format('moral-torture-machine-{0}', needs.setup.outputs.environment) }}
-          TF_VAR_bucket_name: ${{ needs.setup.outputs.environment == 'prod' && 'moral-torture-machine-frontend' || format('moral-torture-machine-frontend-{0}', needs.setup.outputs.environment) }}
+          TF_VAR_stack_name: moral-torture-machine
           TF_VAR_domain_name: ${{ needs.setup.outputs.environment == 'prod' && 'moraltorturemachine.com' || '' }}
           TF_VAR_use_custom_domain: ${{ needs.setup.outputs.environment == 'prod' && 'true' || 'false' }}
         run: |
@@ -393,17 +390,20 @@ jobs:
       - name: Backup DynamoDB
         run: |
           timestamp=$(date +%Y%m%d-%H%M%S)
-          aws dynamodb create-backup --table-name ${{ needs.setup.outputs.dynamodb_table }} --backup-name "backup-$timestamp" --region ${{ env.AWS_REGION }}
+          TABLE_NAME="${{ needs.setup.outputs.environment }}-moral-torture-machine-dilemmas"
+          aws dynamodb create-backup --table-name $TABLE_NAME --backup-name "backup-$timestamp" --region ${{ env.AWS_REGION }}
           echo "💾 Backup created: backup-$timestamp"
       - name: Populate DynamoDB
         working-directory: backend
         run: |
           echo "📊 Populating DynamoDB..."
-            python3 -u populate_dynamodb_multilang.py ${{ needs.setup.outputs.dynamodb_table }} <<EOF
+          TABLE_NAME="${{ needs.setup.outputs.environment }}-moral-torture-machine-dilemmas"
+          python3 -u populate_dynamodb_multilang.py $TABLE_NAME <<EOF
           echo "✅ DynamoDB populated!"
       - name: Verify population
         run: |
-          total=$(aws dynamodb describe-table --table-name ${{ needs.setup.outputs.dynamodb_table }} --region ${{ env.AWS_REGION }} --query 'Table.ItemCount' --output text)
+          TABLE_NAME="${{ needs.setup.outputs.environment }}-moral-torture-machine-dilemmas"
+          total=$(aws dynamodb describe-table --table-name $TABLE_NAME --region ${{ env.AWS_REGION }} --query 'Table.ItemCount' --output text)
           echo "📊 Total items: $total"
           if [ "$total" -eq 0 ]; then
             echo "❌ No items in table!"

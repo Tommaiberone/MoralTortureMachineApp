@@ -5,21 +5,15 @@ variable "aws_region" {
 }
 
 variable "stack_name" {
-  description = "Name of the stack (used as prefix for all resources)"
+  description = "Base name of the stack (used as prefix for all resources, without environment suffix)"
   type        = string
   default     = "moral-torture-machine"
 }
 
-variable "table_name" {
-  description = "Name of the DynamoDB table"
-  type        = string
-  default     = "moral-torture-machine-dilemmas"
-}
-
 variable "environment" {
-  description = "Environment name (e.g., dev, staging, prod)"
+  description = "Environment name (dev or prod) - used in all resource names"
   type        = string
-  default     = "production"
+  default     = "prod"
 }
 
 variable "groq_api_key" {

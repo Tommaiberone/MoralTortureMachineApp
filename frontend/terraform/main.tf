@@ -21,7 +21,7 @@ provider "aws" {
 
 # S3 Bucket per il frontend
 resource "aws_s3_bucket" "frontend" {
-  bucket = var.bucket_name
+  bucket = "${var.environment}-${var.stack_name}-frontend"
 
   tags = {
     Name        = "Moral Torture Machine Frontend"
@@ -85,8 +85,8 @@ resource "aws_s3_bucket_policy" "frontend" {
 
 # Origin Access Control per CloudFront
 resource "aws_cloudfront_origin_access_control" "frontend" {
-  name                              = "${var.stack_name}-oac"
-  description                       = "OAC for Moral Torture Machine Frontend"
+  name                              = "${var.environment}-${var.stack_name}-oac"
+  description                       = "OAC for Moral Torture Machine Frontend (${var.environment})"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"

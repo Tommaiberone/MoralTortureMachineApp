@@ -5,21 +5,15 @@ variable "aws_region" {
 }
 
 variable "stack_name" {
-  description = "Name of the stack (used as prefix for all resources)"
+  description = "Base name of the stack (used as prefix for all resources, without environment suffix)"
   type        = string
   default     = "moral-torture-machine"
 }
 
-variable "bucket_name" {
-  description = "Name of the S3 bucket for frontend hosting"
-  type        = string
-  default     = "moral-torture-machine-frontend"
-}
-
 variable "environment" {
-  description = "Environment name (e.g., dev, staging, prod)"
+  description = "Environment name (dev or prod) - used in all resource names"
   type        = string
-  default     = "production"
+  default     = "prod"
 }
 
 variable "domain_name" {

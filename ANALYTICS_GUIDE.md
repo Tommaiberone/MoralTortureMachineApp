@@ -7,7 +7,7 @@ The Moral Torture Machine application now tracks comprehensive user behavior ana
 ## Analytics Table Schema
 
 ### Table Name
-`moral-torture-machine-user-analytics`
+`moral-torture-machine-prod-user-analytics`
 
 ### Primary Keys
 - **Hash Key (Partition Key)**: `sessionId` (String) - Unique session identifier
@@ -62,7 +62,7 @@ aws configure
 
 ```bash
 aws dynamodb query \
-  --table-name moral-torture-machine-user-analytics \
+  --table-name moral-torture-machine-prod-user-analytics \
   --key-condition-expression "sessionId = :sid" \
   --expression-attribute-values '{":sid":{"S":"your-session-id"}}' \
   --region eu-west-1
@@ -72,7 +72,7 @@ aws dynamodb query \
 
 ```bash
 aws dynamodb scan \
-  --table-name moral-torture-machine-user-analytics \
+  --table-name moral-torture-machine-prod-user-analytics \
   --select COUNT \
   --filter-expression "actionType = :type" \
   --expression-attribute-values '{":type":{"S":"vote_cast"}}' \
@@ -83,7 +83,7 @@ aws dynamodb scan \
 
 ```bash
 aws dynamodb query \
-  --table-name moral-torture-machine-user-analytics \
+  --table-name moral-torture-machine-prod-user-analytics \
   --index-name ActionTypeIndex \
   --key-condition-expression "actionType = :type" \
   --expression-attribute-values '{":type":{"S":"vote_cast"}}' \
@@ -98,7 +98,7 @@ CURRENT_TIME=$(date +%s)
 ONE_HOUR_AGO=$((($CURRENT_TIME - 3600) * 1000))
 
 aws dynamodb query \
-  --table-name moral-torture-machine-user-analytics \
+  --table-name moral-torture-machine-prod-user-analytics \
   --key-condition-expression "sessionId = :sid AND #ts > :start" \
   --expression-attribute-names '{"#ts":"timestamp"}' \
   --expression-attribute-values "{\":sid\":{\"S\":\"your-session-id\"},\":start\":{\"N\":\"$ONE_HOUR_AGO\"}}" \
@@ -109,7 +109,7 @@ aws dynamodb query \
 
 ```bash
 aws dynamodb scan \
-  --table-name moral-torture-machine-user-analytics \
+  --table-name moral-torture-machine-prod-user-analytics \
   --region eu-west-1 \
   --output json > analytics_export.json
 ```
@@ -133,7 +133,7 @@ import pandas as pd
 
 # Initialize DynamoDB client
 dynamodb = boto3.resource('dynamodb', region_name='eu-west-1')
-table = dynamodb.Table('moral-torture-machine-user-analytics')
+table = dynamodb.Table('moral-torture-machine-prod-user-analytics')
 
 # Scan all events
 response = table.scan()
@@ -202,7 +202,7 @@ import boto3
 from collections import defaultdict
 
 dynamodb = boto3.resource('dynamodb', region_name='eu-west-1')
-table = dynamodb.Table('moral-torture-machine-user-analytics')
+table = dynamodb.Table('moral-torture-machine-prod-user-analytics')
 
 # Scan all events
 response = table.scan()
@@ -243,7 +243,7 @@ To delete a user's data manually:
 ```bash
 # Delete all events for a specific session
 aws dynamodb query \
-  --table-name moral-torture-machine-user-analytics \
+  --table-name moral-torture-machine-prod-user-analytics \
   --key-condition-expression "sessionId = :sid" \
   --expression-attribute-values '{":sid":{"S":"session-to-delete"}}' \
   --region eu-west-1 \
@@ -251,7 +251,7 @@ aws dynamodb query \
   jq -r '.Items[] | [.sessionId.S, .timestamp.N] | @tsv' | \
   while IFS=$'\t' read -r sid ts; do
     aws dynamodb delete-item \
-      --table-name moral-torture-machine-user-analytics \
+      --table-name moral-torture-machine-prod-user-analytics \
       --key "{\"sessionId\":{\"S\":\"$sid\"},\"timestamp\":{\"N\":\"$ts\"}}" \
       --region eu-west-1
   done
@@ -279,7 +279,7 @@ Monitor table metrics in CloudWatch:
 aws cloudwatch get-metric-statistics \
   --namespace AWS/DynamoDB \
   --metric-name ConsumedWriteCapacityUnits \
-  --dimensions Name=TableName,Value=moral-torture-machine-user-analytics \
+  --dimensions Name=TableName,Value=moral-torture-machine-prod-user-analytics \
   --start-time $(date -u -d '1 day ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 3600 \
@@ -313,7 +313,7 @@ fetch('https://your-api/get-dilemma', {
 ```bash
 # Get recent events
 aws dynamodb scan \
-  --table-name moral-torture-machine-user-analytics \
+  --table-name moral-torture-machine-prod-user-analytics \
   --limit 10 \
   --region eu-west-1
 ```
@@ -331,7 +331,7 @@ import boto3
 import time
 
 dynamodb = boto3.resource('dynamodb', region_name='eu-west-1')
-table = dynamodb.Table('moral-torture-machine-user-analytics')
+table = dynamodb.Table('moral-torture-machine-prod-user-analytics')
 
 # Insert test event
 table.put_item(Item={
