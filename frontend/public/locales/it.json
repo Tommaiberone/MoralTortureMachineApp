@@ -16,7 +16,7 @@
     "title": "[ DILEMMI ETICI ]",
     "get_dilemma": "[ OTTIENI DILEMMA ]",
     "loading": "[ CARICAMENTO ]",
-    "get_new_dilemma": "[ OTTIENI NUOVO DILEMMA ]",
+    "get_new_dilemma": "[ PROSSIMO DILEMMA ]",
     "view_results": "[ VEDI RISULTATI ]",
     "failed_fetch": "Impossibile recuperare il dilemma. Per favore riprova.",
     "failed_vote": "Impossibile registrare il tuo voto. Per favore riprova."
