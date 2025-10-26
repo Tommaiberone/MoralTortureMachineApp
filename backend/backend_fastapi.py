@@ -40,6 +40,25 @@ ANALYTICS_TABLE = os.getenv("ANALYTICS_TABLE", "moral-torture-machine-user-analy
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
 GROQ_API_KEY_SECRET_ID = os.getenv("GROQ_API_KEY_SECRET_ID", "")
 
+# Model fallback strategy - ordered by rate limits (highest TPD first)
+MODEL_FALLBACK_CHAIN = [
+    "llama-3.1-8b-instant",                          # 500K TPD, 6K TPM - Fast and high limits
+    "meta-llama/llama-4-scout-17b-16e-instruct",     # 500K TPD, 30K TPM - Highest TPM
+    "meta-llama/llama-4-maverick-17b-128e-instruct", # 500K TPD, 6K TPM
+    "allam-2-7b",                                    # 500K TPD, 6K TPM
+    "qwen/qwen3-32b",                                # 500K TPD, 6K TPM, 60 RPM
+    "moonshotai/kimi-k2-instruct",                   # 300K TPD, 10K TPM, 60 RPM
+    "moonshotai/kimi-k2-instruct-0905",              # 300K TPD, 10K TPM, 60 RPM
+    "openai/gpt-oss-120b",                           # 200K TPD, 8K TPM
+    "openai/gpt-oss-20b",                            # 200K TPD, 8K TPM
+    "llama-3.3-70b-versatile",                       # 100K TPD, 12K TPM - Original, lower TPD
+    "groq/compound",                                 # No TPD limit, 70K TPM
+    "groq/compound-mini",                            # No TPD limit, 70K TPM
+    "meta-llama/llama-guard-4-12b",                  # 500K TPD, 15K TPM
+    "meta-llama/llama-prompt-guard-2-86m",           # 500K TPD, 15K TPM
+    "meta-llama/llama-prompt-guard-2-22m",           # 500K TPD, 15K TPM
+]
+
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
 table = dynamodb.Table(DYNAMODB_TABLE)
@@ -203,6 +222,77 @@ class DilemmaWithChoice(BaseModel):
 class AnalyzeResultsRequest(BaseModel):
     answers: list[Dict[str, float]] = Field(..., description="List of moral category scores from user's answers")
     dilemmasWithChoices: Optional[list[DilemmaWithChoice]] = Field(default=[], description="List of dilemmas with user's choices")
+
+# Helper function to call Groq API with model fallback
+def call_groq_api_with_fallback(payload: dict, api_key: str, operation: str = "API call") -> dict:
+    """
+    Call Groq API with automatic model fallback on rate limits.
+    Tries each model in MODEL_FALLBACK_CHAIN until one succeeds.
+
+    Args:
+        payload: The API request payload (will be modified with different models)
+        api_key: Groq API key
+        operation: Description of the operation for logging
+
+    Returns:
+        API response JSON
+
+    Raises:
+        HTTPException: If all models fail
+    """
+    api_url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    errors = []
+
+    for model_index, model_name in enumerate(MODEL_FALLBACK_CHAIN):
+        payload["model"] = model_name
+
+        try:
+            logger.info(f"{operation}: Trying model {model_index + 1}/{len(MODEL_FALLBACK_CHAIN)}: {model_name}")
+            response = requests.post(api_url, headers=headers, json=payload, timeout=30)
+
+            # Success - return immediately
+            if response.status_code == 200:
+                logger.info(f"{operation}: Success with model {model_name}")
+                return response.json()
+
+            # Rate limit - try next model
+            if response.status_code == 429:
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get('error', {}).get('message', 'Rate limit exceeded')
+                    logger.warning(f"{operation}: Rate limit on {model_name}: {error_msg}")
+                    errors.append(f"{model_name}: {error_msg[:100]}")
+                except:
+                    logger.warning(f"{operation}: Rate limit on {model_name}")
+                    errors.append(f"{model_name}: Rate limit exceeded")
+                continue
+
+            # Other error - try next model
+            logger.warning(f"{operation}: Model {model_name} failed with status {response.status_code}")
+            errors.append(f"{model_name}: HTTP {response.status_code}")
+            continue
+
+        except requests.exceptions.Timeout:
+            logger.warning(f"{operation}: Timeout on model {model_name}")
+            errors.append(f"{model_name}: Timeout")
+            continue
+        except Exception as e:
+            logger.warning(f"{operation}: Exception on model {model_name}: {str(e)}")
+            errors.append(f"{model_name}: {str(e)[:50]}")
+            continue
+
+    # All models failed
+    logger.error(f"{operation}: All {len(MODEL_FALLBACK_CHAIN)} models failed")
+    error_summary = "; ".join(errors[:5])  # Show first 5 errors
+    raise HTTPException(
+        status_code=429,
+        detail=f"All AI models are currently rate-limited. Please try again in a few minutes. ({error_summary})"
+    )
 
 # Helper function to convert Decimal to native types
 def decimal_to_native(obj):
@@ -515,7 +605,7 @@ async def generate_dilemma(request: Request, language: str = "en"):
             )
 
         payload = {
-            "model": "llama-3.1-8b-instant",
+            "model": "llama-3.1-8b-instant",  # Will be overridden by fallback function
             "messages": [
                 {
                     "role": "user",
@@ -524,21 +614,12 @@ async def generate_dilemma(request: Request, language: str = "en"):
             ],
         }
 
-        api_url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
-
-        logger.info("Sending request to Groq API")
-        api_response = requests.post(api_url, headers=headers, json=payload, timeout=30)
-
-        if api_response.status_code != 200:
-            logger.error(f"Groq API error: {api_response.status_code} - {api_response.text}")
-            raise HTTPException(
-                status_code=api_response.status_code,
-                detail=f"Error from external API: {api_response.status_code}"
-            )
+        logger.info("Sending request to Groq API with fallback chain")
+        api_response_json = call_groq_api_with_fallback(
+            payload=payload,
+            api_key=api_key,
+            operation="Generate dilemma"
+        )
 
         logger.info("Successfully generated dilemma from Groq API")
 
@@ -549,14 +630,14 @@ async def generate_dilemma(request: Request, language: str = "en"):
             action_type="dilemma_generated",
             action_data={
                 "source": "ai_generated",
-                "model": "llama-3.1-8b-instant"
+                "model": api_response_json.get("model", "unknown")
             },
             language=language,
             user_agent=request.headers.get("User-Agent"),
             ip_address=request.client.host if request.client else None
         )
 
-        return api_response.json()
+        return api_response_json
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Request error in /generate-dilemma: {str(e)}")
@@ -652,7 +733,7 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
             )
 
         payload = {
-            "model": "llama-3.1-8b-instant",
+            "model": "llama-3.1-8b-instant",  # Will be overridden by fallback function
             "messages": [
                 {
                     "role": "user",
@@ -661,23 +742,13 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
             ],
         }
 
-        api_url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        logger.info("Sending request to Groq API for results analysis with fallback chain")
+        result = call_groq_api_with_fallback(
+            payload=payload,
+            api_key=api_key,
+            operation="Analyze results"
+        )
 
-        logger.info("Sending request to Groq API for results analysis")
-        response = requests.post(api_url, headers=headers, json=payload, timeout=30)
-
-        if response.status_code != 200:
-            logger.error(f"Groq API error: {response.status_code} - {response.text}")
-            raise HTTPException(
-                status_code=response.status_code,
-                detail=f"Error from external API: {response.status_code}"
-            )
-
-        result = response.json()
         analysis_text = result['choices'][0]['message']['content']
 
         logger.info("Successfully generated analysis from Groq API")
