@@ -3,6 +3,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import LanguageSelector from '../components/LanguageSelector';
+import SEO from '../components/SEO';
 import './HomeScreen.css';
 
 const HomeScreen = () => {
@@ -24,6 +25,12 @@ const HomeScreen = () => {
 
   return (
     <div className="home-container">
+      <SEO
+        title={t('home.title_moral') + ' ' + t('home.title_torture') + ' ' + t('home.title_machine')}
+        description={t('home.subtitle')}
+        keywords="moral philosophy, ethics, ethical dilemmas, trolley problem, moral compass, AI analysis, philosophy game, moral framework, decision making, ethical test"
+        url="/"
+      />
       <LanguageSelector />
       <h1 className="home-title">
         <span className="glitch-text">{t('home.title_moral')}</span><br />

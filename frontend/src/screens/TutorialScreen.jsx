@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import SEO from '../components/SEO';
 import './TutorialScreen.css';
 
 const TutorialScreen = () => {
@@ -104,6 +105,13 @@ const TutorialScreen = () => {
 
   return (
     <div className="tutorial-container">
+        <SEO
+          title="Tutorial - Learn How to Navigate Ethical Dilemmas"
+          description="Learn how to navigate the Moral Torture Machine. Understand how to make ethical decisions and explore your moral framework through our interactive tutorial."
+          keywords="tutorial, ethical dilemmas tutorial, moral philosophy guide, how to play, decision making guide"
+          url="/tutorial"
+          noindex={true}
+        />
         <div className="tutorial-card">
           <div className="tutorial-icon">{currentTutorial.icon}</div>
           <h1 className="tutorial-title">{currentTutorial.title}</h1>

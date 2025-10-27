@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
 import { getApiHeaders } from '../utils/session';
 import { getSeenDilemmas, markDilemmaAsSeen } from '../utils/seenDilemmas';
+import SEO from '../components/SEO';
 import "./PassThePhoneScreen.css";
 
 const PassThePhoneScreen = () => {
@@ -158,6 +159,12 @@ const PassThePhoneScreen = () => {
 
   return (
     <div className="passthephone-scroll-container">
+        <SEO
+          title="Arcade Mode - Infinite Ethical Dilemmas"
+          description="Test your moral philosophy with infinite ethical dilemmas. Play the arcade mode with friends, pass the phone, and explore complex moral choices together in an interactive experience."
+          keywords="arcade mode, pass the phone, infinite dilemmas, multiplayer ethics, group moral game, party game, ethical decision making, moral philosophy game"
+          url="/pass-the-phone"
+        />
         <button
           className="passthephone-go-back-button"
           onClick={() => navigate('/')}

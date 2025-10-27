@@ -5,6 +5,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
 import { useTranslation } from 'react-i18next';
 import { getApiHeaders } from '../utils/session';
 import { getSeenDilemmas, markDilemmaAsSeen } from '../utils/seenDilemmas';
+import SEO from '../components/SEO';
 import "./EvaluationDilemmasScreen.css";
 
 const MAX_DILEMMAS = 7;
@@ -204,6 +205,12 @@ const EvaluationDilemmasScreen = () => {
 
   return (
     <div className="evaluation-scroll-container">
+      <SEO
+        title="Moral Evaluation - Discover Your Ethical Framework"
+        description="Take a comprehensive moral evaluation through 7 carefully selected ethical dilemmas. Receive AI-powered analysis of your moral compass and philosophical framework based on your decisions."
+        keywords="moral evaluation, ethical assessment, moral compass test, philosophy test, trolley problem, moral framework analysis, AI ethics analysis, personality test, moral reasoning test"
+        url="/evaluation-dilemmas"
+      />
       <button
         className="evaluation-go-back-button"
         onClick={() => navigate('/')}

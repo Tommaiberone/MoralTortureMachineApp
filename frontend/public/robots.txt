@@ -1,0 +1,34 @@
+# Robots.txt for Moral Torture Machine
+# https://moraltorturemachine.com/robots.txt
+
+User-agent: *
+Allow: /
+Allow: /pass-the-phone
+Allow: /evaluation-dilemmas
+
+# Don't index dynamic results or tutorial pages
+Disallow: /results
+Disallow: /tutorial
+
+# Sitemap location
+Sitemap: https://moraltorturemachine.com/sitemap.xml
+
+# Crawl-delay (optional, helps prevent server overload)
+Crawl-delay: 1
+
+# Additional directives for specific bots
+User-agent: Googlebot
+Allow: /
+
+User-agent: Googlebot-Image
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+# Block bad bots (optional)
+User-agent: AhrefsBot
+Crawl-delay: 5
+
+User-agent: SemrushBot
+Crawl-delay: 5

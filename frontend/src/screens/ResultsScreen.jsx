@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend } from 'recharts';
 import { useTranslation } from 'react-i18next';
 import { getApiHeaders } from '../utils/session';
+import SEO from '../components/SEO';
 import './ResultsScreen.css';
 
 const ResultsScreen = () => {
@@ -106,6 +107,13 @@ const ResultsScreen = () => {
 
   return (
     <div className="results-scroll-container">
+        <SEO
+          title="Your Moral Profile - AI Analysis Results"
+          description="View your personalized moral profile analysis. Discover your ethical framework through AI-powered insights based on your responses to moral dilemmas and ethical challenges."
+          keywords="moral profile, ethical analysis results, AI moral analysis, personality results, moral framework analysis, ethics test results, philosophical profile"
+          url="/results"
+          noindex={true}
+        />
         <button
           className="results-go-back-button"
           onClick={() => navigate('/')}
