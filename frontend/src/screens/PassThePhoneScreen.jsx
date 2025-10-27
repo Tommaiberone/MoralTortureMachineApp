@@ -166,7 +166,7 @@ const PassThePhoneScreen = () => {
           url="/pass-the-phone"
         />
         <button
-          className="passthephone-go-back-button"
+          className="nav-back-button passthephone-go-back-button"
           onClick={() => navigate('/')}
         >
           <span className="arrow">[&lt;]</span>
@@ -174,21 +174,21 @@ const PassThePhoneScreen = () => {
         </button>
 
         <div className="passthephone-header">
-          <h1 className="passthephone-title">
+          <h1 className="screen-title passthephone-title">
             {t('passThePhone.title')}
           </h1>
-          <p className="passthephone-subtitle">
+          <p className="screen-subtitle passthephone-subtitle">
             {t('passThePhone.subtitle')}
           </p>
         </div>
 
-        <div className="passthephone-card">
+        <div className="card-default passthephone-card">
           {!dilemma ? (
             <div className="passthephone-button-container">
               <button
                 onClick={fetchDilemma}
                 disabled={loading}
-                className="passthephone-button"
+                className="btn-primary passthephone-button"
               >
                 {loading ? t('passThePhone.loading') : t('passThePhone.get_dilemma')}
               </button>
@@ -203,21 +203,21 @@ const PassThePhoneScreen = () => {
               <p className="passthephone-generated-text-label">
                 {t('passThePhone.your_moral_nightmare')}
               </p>
-              <p className="passthephone-generated-text">
+              <p className="text-box-default passthephone-generated-text">
                 {dilemma.dilemma}
               </p>
 
               {!choiceMade ? (
                 <div className="passthephone-response-buttons">
                   <button
-                    className="passthephone-yes-button"
+                    className="btn-yes passthephone-yes-button"
                     onClick={() => handleChoice("first")}
                     disabled={voting}
                   >
                     {dilemma.firstAnswer}
                   </button>
                   <button
-                    className="passthephone-no-button"
+                    className="btn-no passthephone-no-button"
                     onClick={() => handleChoice("second")}
                     disabled={voting}
                   >
@@ -256,7 +256,7 @@ const PassThePhoneScreen = () => {
                   <button
                     onClick={fetchDilemma}
                     disabled={loading}
-                    className="passthephone-button passthephone-generate-new-button"
+                    className="btn-primary passthephone-button passthephone-generate-new-button"
                   >
                     {loading ? t('passThePhone.loading') : t('passThePhone.get_next')}
                   </button>

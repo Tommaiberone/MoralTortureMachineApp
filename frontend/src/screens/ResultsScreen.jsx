@@ -19,9 +19,9 @@ const ResultsScreen = () => {
     return (
       <div className="results-gradient-background">
         <div className="results-container">
-          <h1 className="results-title">{t('results.no_results')}</h1>
+          <h1 className="screen-title results-title">{t('results.no_results')}</h1>
           <button
-            className="results-back-button"
+            className="btn-primary results-back-button"
             onClick={() => navigate('/')}
           >
             {t('results.home_button')}
@@ -115,14 +115,14 @@ const ResultsScreen = () => {
           noindex={true}
         />
         <button
-          className="results-go-back-button"
+          className="nav-back-button results-go-back-button"
           onClick={() => navigate('/')}
         >
           <span className="arrow">←</span>
           <span>{t('results.back_button')}</span>
         </button>
 
-        <h1 className="results-title">{t('results.title')}</h1>
+        <h1 className="screen-title results-title">{t('results.title')}</h1>
 
         <div className="results-chart-container">
           <ResponsiveContainer width="100%" height="100%">

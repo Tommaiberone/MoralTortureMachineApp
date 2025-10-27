@@ -1,0 +1,447 @@
+/* =================================================================
+   SHARED COMPONENT STYLES
+   Common styles used across multiple screens for consistency
+   ================================================================= */
+
+/* ===== CONTAINER LAYOUTS ===== */
+
+.screen-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 40px 20px;
+  width: 90%;
+  max-width: 600px;
+  margin: 0 auto;
+  animation: static-flicker 0.5s infinite;
+}
+
+.screen-container-wide {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 40px 20px;
+  width: 95%;
+  max-width: 900px;
+  margin: 0 auto;
+  animation: static-flicker 0.5s infinite;
+}
+
+/* ===== CARD COMPONENTS ===== */
+
+.card-default {
+  background: var(--creepy-charcoal);
+  border-radius: 0;
+  padding: 25px;
+  border: 2px solid var(--creepy-fog);
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8);
+  animation: slow-breathe 6s infinite;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.card-large {
+  background: var(--creepy-charcoal);
+  border-radius: 0;
+  padding: 40px;
+  border: 2px solid var(--creepy-fog);
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8);
+  animation: slow-breathe 6s infinite;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* ===== NAVIGATION BUTTON ===== */
+
+.nav-back-button {
+  position: absolute;
+  top: 40px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 0;
+  border: 2px solid var(--creepy-fog);
+  background-color: var(--creepy-dark-gray);
+  cursor: pointer;
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--text-normal);
+  letter-spacing: 0.1em;
+  z-index: 10;
+  transition: all 0.2s;
+  box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
+  text-transform: uppercase;
+}
+
+.nav-back-button:hover {
+  background-color: var(--creepy-mid-gray);
+  color: var(--text-highlight);
+  border-color: var(--text-dim);
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.7);
+}
+
+/* ===== TYPOGRAPHY ===== */
+
+.screen-title {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  font-family: 'Courier New', Courier, monospace;
+  color: var(--text-highlight);
+  text-shadow: 2px 2px 0 var(--creepy-dead-red);
+  animation: glitch-text 6s infinite;
+  text-transform: uppercase;
+  text-align: center;
+  margin: 0;
+}
+
+.screen-title-large {
+  font-size: 38px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  font-family: 'Courier New', Courier, monospace;
+  color: var(--text-highlight);
+  text-shadow: 2px 2px 0 var(--creepy-dead-red);
+  animation: glitch-text 6s infinite;
+  text-transform: uppercase;
+  text-align: center;
+  margin: 0;
+}
+
+.screen-subtitle {
+  font-size: 16px;
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 400;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: center;
+  margin: 0;
+}
+
+/* ===== BUTTONS ===== */
+
+.btn-primary {
+  width: 100%;
+  padding: 16px;
+  border-radius: 0;
+  border: 2px solid var(--creepy-fog);
+  background-color: var(--creepy-dead-red);
+  cursor: pointer;
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--text-highlight);
+  letter-spacing: 0.1em;
+  text-shadow: 1px 1px 0 var(--creepy-void);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+  transition: all 0.2s;
+  text-transform: uppercase;
+  box-sizing: border-box;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--creepy-blood);
+  border-color: var(--text-danger);
+  box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.7);
+}
+
+.btn-primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.btn-secondary {
+  width: 100%;
+  padding: 16px;
+  border-radius: 0;
+  border: 2px solid var(--creepy-fog);
+  background-color: var(--creepy-dark-gray);
+  cursor: pointer;
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--text-normal);
+  letter-spacing: 0.1em;
+  text-shadow: 1px 1px 0 var(--creepy-void);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+  transition: all 0.2s;
+  text-transform: uppercase;
+  box-sizing: border-box;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--creepy-mid-gray);
+  border-color: var(--text-dim);
+  box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.7);
+}
+
+.btn-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Yes/No Response Buttons */
+.btn-yes {
+  flex: 1;
+  padding: 14px;
+  border-radius: 0;
+  cursor: pointer;
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--text-highlight);
+  letter-spacing: 0.05em;
+  text-shadow: 1px 1px 0 var(--creepy-void);
+  transition: all 0.2s;
+  text-transform: uppercase;
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.5);
+  background-color: var(--creepy-blood);
+  border: 2px solid var(--text-danger);
+  box-sizing: border-box;
+}
+
+.btn-yes:hover {
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.7);
+}
+
+.btn-no {
+  flex: 1;
+  padding: 14px;
+  border-radius: 0;
+  cursor: pointer;
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--text-highlight);
+  letter-spacing: 0.05em;
+  text-shadow: 1px 1px 0 var(--creepy-void);
+  transition: all 0.2s;
+  text-transform: uppercase;
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.5);
+  background-color: var(--creepy-charcoal);
+  border: 2px solid var(--creepy-pale-green);
+  box-sizing: border-box;
+}
+
+.btn-no:hover {
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.7);
+}
+
+.button-row {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+/* ===== TEXT CONTENT BOXES ===== */
+
+.text-box-default {
+  padding: 20px;
+  border-radius: 0;
+  font-size: 17px;
+  line-height: 1.6;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 400;
+  color: var(--text-normal);
+  background-color: var(--creepy-deep-black);
+  border: 1px solid var(--creepy-fog);
+  letter-spacing: 0.02em;
+  box-sizing: border-box;
+}
+
+.text-box-left-align {
+  padding: 20px;
+  border-radius: 0;
+  font-size: 17px;
+  line-height: 1.6;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 400;
+  color: var(--text-normal);
+  background-color: var(--creepy-deep-black);
+  border: 1px solid var(--creepy-fog);
+  letter-spacing: 0.02em;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+/* ===== PROGRESS INDICATORS ===== */
+
+.progress-container {
+  display: flex;
+  gap: 10px;
+  margin: 20px 0;
+}
+
+.progress-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 0;
+  background: var(--creepy-dark-gray);
+  transition: all 0.3s ease;
+  border: 1px solid var(--creepy-fog);
+  box-shadow: inset 0 0 3px rgba(0, 0, 0, 0.5);
+}
+
+.progress-dot.active {
+  background: var(--creepy-blood);
+  border-color: var(--text-danger);
+  transform: scale(1.2);
+  box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.7);
+}
+
+.progress-dot.completed {
+  background: var(--creepy-sickly-green);
+  border-color: var(--creepy-pale-green);
+}
+
+/* ===== LOADING STATE ===== */
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.loading-text {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 18px;
+  color: var(--text-highlight);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  animation: horror-pulse 2s infinite;
+}
+
+/* ===== SPACING UTILITIES ===== */
+
+.mb-10 { margin-bottom: 10px; }
+.mb-15 { margin-bottom: 15px; }
+.mb-20 { margin-bottom: 20px; }
+.mb-25 { margin-bottom: 25px; }
+.mb-30 { margin-bottom: 30px; }
+
+.mt-10 { margin-top: 10px; }
+.mt-15 { margin-top: 15px; }
+.mt-20 { margin-top: 20px; }
+.mt-25 { margin-top: 25px; }
+.mt-30 { margin-top: 30px; }
+
+/* ===== RESPONSIVE DESIGN ===== */
+
+@media (max-width: 768px) {
+  .screen-container {
+    width: 95%;
+    padding: 30px 20px;
+  }
+
+  .screen-container-wide {
+    width: 95%;
+    padding: 30px 15px;
+  }
+
+  .screen-title {
+    font-size: 25px;
+  }
+
+  .screen-title-large {
+    font-size: 32px;
+  }
+
+  .card-large {
+    padding: 30px;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    font-size: 17px;
+    padding: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .screen-container {
+    width: 95%;
+    padding: 60px 10px 20px;
+  }
+
+  .screen-container-wide {
+    width: 95%;
+    padding: 60px 10px 20px;
+  }
+
+  .screen-title {
+    font-size: 23px;
+    letter-spacing: 0.08em;
+  }
+
+  .screen-title-large {
+    font-size: 28px;
+    letter-spacing: 0.08em;
+  }
+
+  .card-default,
+  .card-large {
+    padding: 20px;
+  }
+
+  .nav-back-button {
+    top: 10px;
+    left: 10px;
+    padding: 8px 12px;
+    font-size: 15px;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    font-size: 16px;
+    padding: 12px;
+  }
+
+  .btn-yes,
+  .btn-no {
+    font-size: 16px;
+    padding: 12px;
+  }
+
+  .text-box-default,
+  .text-box-left-align {
+    font-size: 16px;
+    padding: 15px;
+  }
+}
+
+@media (max-width: 360px) {
+  .screen-title {
+    font-size: 21px;
+  }
+
+  .screen-title-large {
+    font-size: 25px;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    font-size: 15px;
+  }
+
+  .btn-yes,
+  .btn-no {
+    font-size: 15px;
+  }
+}

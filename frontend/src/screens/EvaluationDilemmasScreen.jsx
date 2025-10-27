@@ -212,7 +212,7 @@ const EvaluationDilemmasScreen = () => {
         url="/evaluation-dilemmas"
       />
       <button
-        className="evaluation-go-back-button"
+        className="nav-back-button evaluation-go-back-button"
         onClick={() => navigate('/')}
       >
         <span className="arrow">←</span>
@@ -220,21 +220,21 @@ const EvaluationDilemmasScreen = () => {
       </button>
 
       <div className="evaluation-header">
-        <h1 className="evaluation-title">
+        <h1 className="screen-title evaluation-title">
           {t('evaluation.title')}
         </h1>
-        <p className="evaluation-subtitle">
+        <p className="screen-subtitle evaluation-subtitle">
           {currentDilemmaCount} / {MAX_DILEMMAS}
         </p>
       </div>
 
-      <div className={`evaluation-card ${loading && dilemma ? 'loading' : ''}`}>
+      <div className={`card-default evaluation-card ${loading && dilemma ? 'loading' : ''}`}>
         {!dilemma ? (
           <div className="evaluation-button-container">
             <button
               onClick={fetchDilemma}
               disabled={loading}
-              className="evaluation-button"
+              className="btn-primary evaluation-button"
             >
               {loading ? t('evaluation.loading') : t('evaluation.get_dilemma')}
             </button>
@@ -242,20 +242,20 @@ const EvaluationDilemmasScreen = () => {
           </div>
         ) : (
           <div>
-            <p className="evaluation-generated-text">
+            <p className="text-box-default evaluation-generated-text">
               {dilemma.dilemma}
             </p>
             {!choiceMade ? (
               <div className="evaluation-response-buttons">
                 <button
-                  className="evaluation-yes-button"
+                  className="btn-yes evaluation-yes-button"
                   onClick={() => handleChoice("first")}
                   disabled={voting}
                 >
                   {dilemma.firstAnswer}
                 </button>
                 <button
-                  className="evaluation-no-button"
+                  className="btn-no evaluation-no-button"
                   onClick={() => handleChoice("second")}
                   disabled={voting}
                 >
@@ -301,7 +301,7 @@ const EvaluationDilemmasScreen = () => {
                         },
                       })
                     }
-                    className="evaluation-button evaluation-generate-new-button"
+                    className="btn-primary evaluation-button evaluation-generate-new-button"
                   >
                     {t('evaluation.view_results')}
                   </button>
@@ -309,7 +309,7 @@ const EvaluationDilemmasScreen = () => {
                   <button
                     onClick={fetchDilemma}
                     disabled={loading}
-                    className="evaluation-button evaluation-generate-new-button"
+                    className="btn-primary evaluation-button evaluation-generate-new-button"
                   >
                     {loading ? t('evaluation.loading') : t('evaluation.get_new_dilemma')}
                   </button>

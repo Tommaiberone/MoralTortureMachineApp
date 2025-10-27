@@ -12,6 +12,7 @@ import TutorialScreen from './screens/TutorialScreen';
 // Import Error Boundary
 import ErrorBoundary from './components/ErrorBoundary';
 
+import './styles/shared.css';
 import './App.css';
 
 const App = () => {

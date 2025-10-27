@@ -104,7 +104,7 @@ const TutorialScreen = () => {
   const currentTutorial = tutorialSteps[currentStep];
 
   return (
-    <div className="tutorial-container">
+    <div className="screen-container tutorial-container">
         <SEO
           title="Tutorial - Learn How to Navigate Ethical Dilemmas"
           description="Learn how to navigate the Moral Torture Machine. Understand how to make ethical decisions and explore your moral framework through our interactive tutorial."
@@ -112,16 +112,16 @@ const TutorialScreen = () => {
           url="/tutorial"
           noindex={true}
         />
-        <div className="tutorial-card">
+        <div className="card-large tutorial-card">
           <div className="tutorial-icon">{currentTutorial.icon}</div>
-          <h1 className="tutorial-title">{currentTutorial.title}</h1>
+          <h1 className="screen-title tutorial-title">{currentTutorial.title}</h1>
           <p className="tutorial-description">{currentTutorial.description}</p>
 
           <div className="tutorial-progress">
             {tutorialSteps.map((_, index) => (
               <div
                 key={index}
-                className={`tutorial-progress-dot ${
+                className={`progress-dot tutorial-progress-dot ${
                   index === currentStep ? 'active' : ''
                 } ${index < currentStep ? 'completed' : ''}`}
               />

@@ -24,7 +24,7 @@ const HomeScreen = () => {
   };
 
   return (
-    <div className="home-container">
+    <div className="screen-container home-container">
       <SEO
         title={t('home.title_moral') + ' ' + t('home.title_torture') + ' ' + t('home.title_machine')}
         description={t('home.subtitle')}
@@ -32,7 +32,7 @@ const HomeScreen = () => {
         url="/"
       />
       <LanguageSelector />
-      <h1 className="home-title">
+      <h1 className="screen-title-large home-title">
         <span className="glitch-text">{t('home.title_moral')}</span><br />
         <span className="glitch-text">{t('home.title_torture')}</span><br />
         <span className="glitch-text">{t('home.title_machine')}</span>
