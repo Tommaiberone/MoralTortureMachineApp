@@ -89,7 +89,7 @@ const EvaluationDilemmasScreen = () => {
 
   const fetchDilemma = async () => {
     setLoading(true);
-    setDilemma(null);
+    // Don't clear dilemma immediately - keep it visible during loading
     setChoiceMade(false);
     setSelectedTease("");
     setChoiceCounts({ first: 0, second: 0 });
@@ -228,7 +228,7 @@ const EvaluationDilemmasScreen = () => {
         </p>
       </div>
 
-      <div className="evaluation-card">
+      <div className={`evaluation-card ${loading && dilemma ? 'loading' : ''}`}>
         {!dilemma ? (
           <div className="evaluation-button-container">
             <button
