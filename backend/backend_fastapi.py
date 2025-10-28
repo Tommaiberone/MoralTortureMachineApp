@@ -42,21 +42,21 @@ GROQ_API_KEY_SECRET_ID = os.getenv("GROQ_API_KEY_SECRET_ID", "")
 
 # Model fallback strategy - ordered by rate limits (highest TPD first)
 MODEL_FALLBACK_CHAIN = [
-    "llama-3.1-8b-instant",                          # 500K TPD, 6K TPM - Fast and high limits
-    "meta-llama/llama-4-scout-17b-16e-instruct",     # 500K TPD, 30K TPM - Highest TPM
-    "meta-llama/llama-4-maverick-17b-128e-instruct", # 500K TPD, 6K TPM
-    "allam-2-7b",                                    # 500K TPD, 6K TPM
-    "qwen/qwen3-32b",                                # 500K TPD, 6K TPM, 60 RPM
-    "moonshotai/kimi-k2-instruct",                   # 300K TPD, 10K TPM, 60 RPM
-    "moonshotai/kimi-k2-instruct-0905",              # 300K TPD, 10K TPM, 60 RPM
-    "openai/gpt-oss-120b",                           # 200K TPD, 8K TPM
-    "openai/gpt-oss-20b",                            # 200K TPD, 8K TPM
-    "llama-3.3-70b-versatile",                       # 100K TPD, 12K TPM - Original, lower TPD
-    "groq/compound",                                 # No TPD limit, 70K TPM
-    "groq/compound-mini",                            # No TPD limit, 70K TPM
-    "meta-llama/llama-guard-4-12b",                  # 500K TPD, 15K TPM
-    "meta-llama/llama-prompt-guard-2-86m",           # 500K TPD, 15K TPM
-    "meta-llama/llama-prompt-guard-2-22m",           # 500K TPD, 15K TPM
+    "llama-3.3-70b-versatile",                       # 100K TPD, 12K TPM - High capability
+    "openai/gpt-oss-120b",                           # 200K TPD, 8K TPM - High capability
+    "qwen/qwen3-32b",                                # 500K TPD, 6K TPM, 60 RPM - High capability
+    "meta-llama/llama-4-maverick-17b-128e-instruct", # 500K TPD, 6K TPM - High capability
+    "meta-llama/llama-4-scout-17b-16e-instruct",     # 500K TPD, 30K TPM - High capability
+    "llama-3.1-8b-instant",                          # 500K TPD, 6K TPM - Medium capability
+    "moonshotai/kimi-k2-instruct",                   # 300K TPD, 10K TPM, 60 RPM - Medium capability
+    "moonshotai/kimi-k2-instruct-0905",              # 300K TPD, 10K TPM, 60 RPM - Medium capability
+    "meta-llama/llama-guard-4-12b",                  # 500K TPD, 15K TPM - Medium capability
+    "meta-llama/llama-prompt-guard-2-86m",           # 500K TPD, 15K TPM - Medium capability
+    "meta-llama/llama-prompt-guard-2-22m",           # 500K TPD, 15K TPM - Medium capability
+    "allam-2-7b",                                    # 500K TPD, 6K TPM - Low capability
+    "openai/gpt-oss-20b",                            # 200K TPD, 8K TPM - Low capability
+    "groq/compound",                                 # No TPD limit, 70K TPM - Low capability
+    "groq/compound-mini",                            # No TPD limit, 70K TPM - Low capability
 ]
 
 # Initialize AWS clients
