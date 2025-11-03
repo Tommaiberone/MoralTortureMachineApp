@@ -105,17 +105,25 @@ def populate_story_flows(table_name='moral-torture-machine-story-flows'):
 if __name__ == '__main__':
     import sys
 
+    # Parse arguments
+    auto_confirm = '--auto-confirm' in sys.argv
+    if auto_confirm:
+        sys.argv.remove('--auto-confirm')
+
     table_name = sys.argv[1] if len(sys.argv) > 1 else 'moral-torture-machine-story-flows'
 
     try:
-        # Confirm before proceeding
+        # Confirm before proceeding (unless auto-confirm is set)
         print(f"⚠️  This will populate table '{table_name}' with multilingual story flows.")
         print("   Existing items will be deleted.")
 
-        response = input("\n⚠️⚠️⚠️ Are you sure you want to proceed? (yes/no): ").strip().lower()
-        if response != 'yes':
-            print("Aborted.")
-            sys.exit(0)
+        if not auto_confirm:
+            response = input("\n⚠️⚠️⚠️ Are you sure you want to proceed? (yes/no): ").strip().lower()
+            if response != 'yes':
+                print("Aborted.")
+                sys.exit(0)
+        else:
+            print("\n✅ Auto-confirm enabled, proceeding...")
 
         clear_dynamodb_table(table_name)
         populate_story_flows(table_name)

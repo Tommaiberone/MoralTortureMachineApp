@@ -408,14 +408,14 @@ jobs:
         run: |
           echo "📊 Populating DynamoDB dilemmas..."
           TABLE_NAME="${{ needs.setup.outputs.environment }}-moral-torture-machine-dilemmas"
-          echo "yes" | python3 -u populate_dynamodb_multilang.py $TABLE_NAME
+          python3 -u populate_dynamodb_multilang.py --auto-confirm $TABLE_NAME
           echo "✅ DynamoDB dilemmas populated!"
       - name: Populate DynamoDB Story Flows
         working-directory: backend
         run: |
           echo "📖 Populating DynamoDB story flows..."
           TABLE_NAME="${{ needs.setup.outputs.environment }}-moral-torture-machine-story-flows"
-          echo "yes" | python3 -u populate_story_flows.py $TABLE_NAME
+          python3 -u populate_story_flows.py --auto-confirm $TABLE_NAME
           echo "✅ DynamoDB story flows populated!"
       - name: Verify population
         run: |
