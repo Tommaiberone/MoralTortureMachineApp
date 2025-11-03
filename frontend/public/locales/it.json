@@ -9,6 +9,8 @@
     "eval_description": "AFFRONTA DILEMMI MORALI. LA TUA COSCIENZA SARÀ GIUDICATA.",
     "infinite_button": "MODALITÀ PASSA IL TELEFONO",
     "infinite_description": "DILEMMI MORALI DA CONDIVIDERE CON GLI AMICI. PASSA IL TELEFONO E SCOPRI LE LORO SCELTE.",
+    "story_button": "MODALITÀ STORIA",
+    "story_description": "VIVI UNA STORIA RAMIFICATA. OGNI SCELTA PLASMA IL TUO DESTINO.",
     "warning_footer": "[ QUESTO SVELERÀ I TUOI CONFINI PIÙ OSCURI ]"
   },
   "evaluation": {
@@ -65,6 +67,26 @@
     "infinite_step2_title": "[ AFFRONTA I DILEMMI ]",
     "infinite_step2_desc": "SCELTE MORALI IMPOSSIBILI. NESSUNA RISPOSTA GIUSTA. SOLO TU E LA TUA COSCIENZA CHE GRIDA.",
     "infinite_step3_title": "[ PASSA LA TORTURA ]",
-    "infinite_step3_desc": "GUARDA I TUOI AMICI LOTTARE CON LA LORO MORALITÀ. PASSA IL TELEFONO. NESSUNO ESCE ILLESO."
+    "infinite_step3_desc": "GUARDA I TUOI AMICI LOTTARE CON LA LORO MORALITÀ. PASSA IL TELEFONO. NESSUNO ESCE ILLESO.",
+    "story_step1_title": "[ VIVI UNA STORIA DI SCELTE ]",
+    "story_step1_desc": "OGNI DECISIONE TI PORTA SU UN PERCORSO DIVERSO. LE TUE SCELTE PLASMANO LA TUA STORIA. NON C'È MODO DI TORNARE INDIETRO.",
+    "story_step2_title": "[ NAVIGA IL TUO DESTINO ]",
+    "story_step2_desc": "UN ALBERO DI DECISIONI MORALI. OGNI SCELTA APRE NUOVE STRADE. CHIUDE ALTRE PER SEMPRE. IL TUO DESTINO È NELLE TUE MANI.",
+    "story_step3_title": "[ AFFRONTA LE CONSEGUENZE ]",
+    "story_step3_desc": "5 LIVELLI DI PROFONDITÀ. LE SCELTE PRECEDENTI PESANO SU QUELLE FUTURE. ALLA FINE, VEDRAI CHI SEI VERAMENTE."
+  },
+  "storyMode": {
+    "seoTitle": "Modalità Storia - Moral Torture Machine",
+    "seoDescription": "Naviga attraverso una storia ramificata di dilemmi morali dove ogni scelta conta",
+    "loading": "Caricando la tua storia...",
+    "errorFetchingFlow": "Errore nel caricamento della storia. Per favore riprova.",
+    "errorVoting": "Errore nell'elaborazione della tua scelta. Per favore riprova.",
+    "errorLoading": "Errore nel caricamento della storia",
+    "chapter": "Capitolo",
+    "continue": "Continua...",
+    "viewResults": "Vedi i Tuoi Risultati"
+  },
+  "common": {
+    "backToHome": "Torna alla Home"
   }
 }

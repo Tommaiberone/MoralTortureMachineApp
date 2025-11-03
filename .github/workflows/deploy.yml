@@ -98,6 +98,7 @@ jobs:
         run: |
           python -m py_compile backend_fastapi.py
           python -m py_compile populate_dynamodb_multilang.py
+          python -m py_compile populate_story_flows.py
 
   # Job 2: Deploy Backend
   backend-deploy:
@@ -387,28 +388,62 @@ jobs:
             echo "❌ No dilemma files found!"
             exit 1
           fi
+
+          echo "📖 Checking story flow files..."
+          if [ -f "story_flows_it.json" ] && [ -f "story_flows_en.json" ]; then
+            en_flows=$(jq '. | length' story_flows_en.json)
+            it_flows=$(jq '. | length' story_flows_it.json)
+            echo "✅ Found $en_flows English + $it_flows Italian story flows"
+          else
+            echo "⚠️ No story flow files found (optional)"
+          fi
       - name: Backup DynamoDB
         run: |
           timestamp=$(date +%Y%m%d-%H%M%S)
           TABLE_NAME="${{ needs.setup.outputs.environment }}-moral-torture-machine-dilemmas"
           aws dynamodb create-backup --table-name $TABLE_NAME --backup-name "backup-$timestamp" --region ${{ env.AWS_REGION }}
           echo "💾 Backup created: backup-$timestamp"
-      - name: Populate DynamoDB
+      - name: Populate DynamoDB Dilemmas
         working-directory: backend
         run: |
-          echo "📊 Populating DynamoDB..."
+          echo "📊 Populating DynamoDB dilemmas..."
           TABLE_NAME="${{ needs.setup.outputs.environment }}-moral-torture-machine-dilemmas"
           python3 -u populate_dynamodb_multilang.py $TABLE_NAME <<EOF
-          echo "✅ DynamoDB populated!"
+yes
+EOF
+          echo "✅ DynamoDB dilemmas populated!"
+      - name: Populate DynamoDB Story Flows
+        working-directory: backend
+        run: |
+          echo "📖 Populating DynamoDB story flows..."
+          TABLE_NAME="${{ needs.setup.outputs.environment }}-moral-torture-machine-story-flows"
+          python3 -u populate_story_flows.py $TABLE_NAME <<EOF
+yes
+EOF
+          echo "✅ DynamoDB story flows populated!"
       - name: Verify population
         run: |
-          TABLE_NAME="${{ needs.setup.outputs.environment }}-moral-torture-machine-dilemmas"
-          total=$(aws dynamodb describe-table --table-name $TABLE_NAME --region ${{ env.AWS_REGION }} --query 'Table.ItemCount' --output text)
-          echo "📊 Total items: $total"
-          if [ "$total" -eq 0 ]; then
-            echo "❌ No items in table!"
+          echo "🔍 Verifying dilemmas table..."
+          DILEMMAS_TABLE="${{ needs.setup.outputs.environment }}-moral-torture-machine-dilemmas"
+          dilemmas_total=$(aws dynamodb describe-table --table-name $DILEMMAS_TABLE --region ${{ env.AWS_REGION }} --query 'Table.ItemCount' --output text)
+          echo "📊 Total dilemmas: $dilemmas_total"
+
+          echo "🔍 Verifying story flows table..."
+          FLOWS_TABLE="${{ needs.setup.outputs.environment }}-moral-torture-machine-story-flows"
+          flows_total=$(aws dynamodb describe-table --table-name $FLOWS_TABLE --region ${{ env.AWS_REGION }} --query 'Table.ItemCount' --output text)
+          echo "📊 Total story flows: $flows_total"
+
+          if [ "$dilemmas_total" -eq 0 ]; then
+            echo "❌ No dilemmas in table!"
             exit 1
           fi
+
+          if [ "$flows_total" -eq 0 ]; then
+            echo "❌ No story flows in table!"
+            exit 1
+          fi
+
+          echo "✅ All tables populated successfully!"
 
   # Job 6: Summary e Notifiche
   deployment-summary:

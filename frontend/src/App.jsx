@@ -6,6 +6,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import HomeScreen from './screens/HomeScreen';
 import PassThePhoneScreen from './screens/PassThePhoneScreen';
 import EvaluationDilemmasScreen from './screens/EvaluationDilemmasScreen';
+import StoryModeScreen from './screens/StoryModeScreen';
 import ResultsScreen from './screens/ResultsScreen';
 import TutorialScreen from './screens/TutorialScreen';
 
@@ -31,6 +32,9 @@ const App = () => {
 
           {/* New Get Dilemma Screen */}
           <Route path="/evaluation-dilemmas" element={<EvaluationDilemmasScreen />} />
+
+          {/* Story Mode Screen */}
+          <Route path="/story-mode" element={<StoryModeScreen />} />
 
           {/* Results Screen */}
           <Route path="/results" element={<ResultsScreen />} />

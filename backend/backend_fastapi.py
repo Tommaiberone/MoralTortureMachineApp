@@ -37,6 +37,7 @@ app.add_middleware(
 # Environment variables
 DYNAMODB_TABLE = os.getenv("DYNAMODB_TABLE", "moral-torture-machine-dilemmas")
 ANALYTICS_TABLE = os.getenv("ANALYTICS_TABLE", "moral-torture-machine-user-analytics")
+STORY_FLOWS_TABLE = os.getenv("STORY_FLOWS_TABLE", "moral-torture-machine-story-flows")
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
 GROQ_API_KEY_SECRET_ID = os.getenv("GROQ_API_KEY_SECRET_ID", "")
 
@@ -63,6 +64,7 @@ MODEL_FALLBACK_CHAIN = [
 dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
 table = dynamodb.Table(DYNAMODB_TABLE)
 analytics_table = dynamodb.Table(ANALYTICS_TABLE)
+story_flows_table = dynamodb.Table(STORY_FLOWS_TABLE)
 secrets_client = boto3.client('secretsmanager', region_name=AWS_REGION)
 
 # Cache for API key (retrieved once at cold start)
@@ -222,6 +224,11 @@ class DilemmaWithChoice(BaseModel):
 class AnalyzeResultsRequest(BaseModel):
     answers: list[Dict[str, float]] = Field(..., description="List of moral category scores from user's answers")
     dilemmasWithChoices: Optional[list[DilemmaWithChoice]] = Field(default=[], description="List of dilemmas with user's choices")
+
+class StoryNodeVoteRequest(BaseModel):
+    flowId: str = Field(..., description="Story flow ID", min_length=1, max_length=100)
+    nodeId: str = Field(..., description="Current node ID", min_length=1, max_length=20)
+    vote: str = Field(..., description="Vote: 'first' or 'second'", pattern=r'^(first|second)$')
 
 # Helper function to call Groq API with model fallback
 def call_groq_api_with_fallback(payload: dict, api_key: str, operation: str = "API call") -> dict:
@@ -782,6 +789,168 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
         raise
     except Exception as e:
         logger.error(f"Error in /analyze-results: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+@app.get("/get-story-flow")
+async def get_story_flow(request: Request, language: str = "en", flowId: Optional[str] = None):
+    """
+    Get a story flow by ID or return a random one for the specified language
+
+    Args:
+        language: Language code (default: "en")
+        flowId: Optional specific flow ID (without language suffix)
+
+    Returns:
+        Complete story flow with all nodes
+    """
+    try:
+        session_id = extract_session_id(request)
+
+        if flowId:
+            # Get specific flow
+            flow_id_with_lang = f"{flowId}-{language}"
+            response = story_flows_table.get_item(Key={"_id": flow_id_with_lang})
+
+            if "Item" not in response:
+                logger.warning(f"Story flow not found: {flow_id_with_lang}")
+                raise HTTPException(status_code=404, detail="Story flow not found")
+
+            flow = response["Item"]
+        else:
+            # Get random flow for language
+            response = story_flows_table.scan(
+                FilterExpression="language = :lang",
+                ExpressionAttributeValues={":lang": language}
+            )
+
+            flows = response.get("Items", [])
+
+            if not flows:
+                logger.warning(f"No story flows found for language: {language}")
+                raise HTTPException(status_code=404, detail="No story flows available")
+
+            # Select random flow
+            import random
+            flow = random.choice(flows)
+
+        # Track analytics
+        track_analytics_event(
+            session_id=session_id,
+            action_type="story_flow_fetched",
+            action_data={
+                "flow_id": flow["_id"],
+                "flow_title": flow.get("title", ""),
+                "language": language
+            },
+            request=request
+        )
+
+        # Convert Decimal to float for JSON serialization
+        def decimal_to_float(obj):
+            if isinstance(obj, list):
+                return [decimal_to_float(i) for i in obj]
+            elif isinstance(obj, dict):
+                return {k: decimal_to_float(v) for k, v in obj.items()}
+            elif isinstance(obj, Decimal):
+                return float(obj)
+            else:
+                return obj
+
+        flow = decimal_to_float(flow)
+
+        logger.info(f"Returning story flow: {flow['_id']}")
+        return flow
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in /get-story-flow: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+@app.post("/story-node-vote")
+async def story_node_vote(vote_request: StoryNodeVoteRequest, request: Request):
+    """
+    Process a vote on a story node and return the next node
+
+    Args:
+        vote_request: Contains flowId, nodeId, and vote (first/second)
+
+    Returns:
+        Next node data or completion indicator
+    """
+    try:
+        session_id = extract_session_id(request)
+
+        # Get the flow
+        response = story_flows_table.get_item(Key={"_id": vote_request.flowId})
+
+        if "Item" not in response:
+            logger.warning(f"Story flow not found: {vote_request.flowId}")
+            raise HTTPException(status_code=404, detail="Story flow not found")
+
+        flow = response["Item"]
+        nodes = flow.get("nodes", {})
+
+        # Get current node
+        current_node = nodes.get(vote_request.nodeId)
+        if not current_node:
+            logger.warning(f"Node not found: {vote_request.nodeId} in flow {vote_request.flowId}")
+            raise HTTPException(status_code=404, detail="Node not found")
+
+        # Determine next node based on vote
+        next_node_id = None
+        if vote_request.vote == "first":
+            next_node_id = current_node.get("nextNodeOnFirst")
+        else:  # second
+            next_node_id = current_node.get("nextNodeOnSecond")
+
+        # Check if current node is a leaf (end of story)
+        is_leaf = current_node.get("isLeaf", False)
+
+        # Get next node data if exists
+        next_node = None
+        if next_node_id and next_node_id in nodes:
+            next_node = nodes[next_node_id]
+
+        # Track analytics
+        track_analytics_event(
+            session_id=session_id,
+            action_type="story_node_vote",
+            action_data={
+                "flow_id": vote_request.flowId,
+                "node_id": vote_request.nodeId,
+                "vote": vote_request.vote,
+                "next_node_id": next_node_id,
+                "is_leaf": is_leaf
+            },
+            request=request
+        )
+
+        # Convert Decimal to float for JSON serialization
+        def decimal_to_float(obj):
+            if isinstance(obj, list):
+                return [decimal_to_float(i) for i in obj]
+            elif isinstance(obj, dict):
+                return {k: decimal_to_float(v) for k, v in obj.items()}
+            elif isinstance(obj, Decimal):
+                return float(obj)
+            else:
+                return obj
+
+        result = {
+            "currentNode": decimal_to_float(current_node),
+            "nextNodeId": next_node_id,
+            "nextNode": decimal_to_float(next_node) if next_node else None,
+            "isComplete": is_leaf or next_node is None
+        }
+
+        logger.info(f"Processed vote for node {vote_request.nodeId}, next: {next_node_id}")
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in /story-node-vote: {str(e)}")
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 # Lambda handler

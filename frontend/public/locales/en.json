@@ -9,6 +9,8 @@
     "eval_description": "FACE MORAL DILEMMAS. YOUR CONSCIENCE WILL BE JUDGED.",
     "infinite_button": "PASS THE PHONE MODE",
     "infinite_description": "MORAL DILEMMAS TO SHARE WITH FRIENDS. PASS THE PHONE AND DISCOVER THEIR CHOICES.",
+    "story_button": "STORY MODE",
+    "story_description": "LIVE A BRANCHING STORY. EVERY CHOICE SHAPES YOUR FATE.",
     "warning_footer": "[ THIS WILL EXPOSE YOUR DARKEST BOUNDARIES ]"
   },
   "evaluation": {
@@ -65,6 +67,26 @@
     "infinite_step2_title": "[ FACE THE DILEMMAS ]",
     "infinite_step2_desc": "IMPOSSIBLE MORAL CHOICES. NO RIGHT ANSWER. JUST YOU AND YOUR SCREAMING CONSCIENCE.",
     "infinite_step3_title": "[ PASS THE TORTURE ]",
-    "infinite_step3_desc": "WATCH YOUR FRIENDS STRUGGLE WITH THEIR MORALITY. PASS THE PHONE. NO ONE LEAVES UNSCATHED."
+    "infinite_step3_desc": "WATCH YOUR FRIENDS STRUGGLE WITH THEIR MORALITY. PASS THE PHONE. NO ONE LEAVES UNSCATHED.",
+    "story_step1_title": "[ LIVE A STORY OF CHOICES ]",
+    "story_step1_desc": "EVERY DECISION LEADS YOU DOWN A DIFFERENT PATH. YOUR CHOICES SHAPE YOUR STORY. THERE'S NO GOING BACK.",
+    "story_step2_title": "[ NAVIGATE YOUR FATE ]",
+    "story_step2_desc": "A TREE OF MORAL DECISIONS. EACH CHOICE OPENS NEW PATHS. CLOSES OTHERS FOREVER. YOUR DESTINY IS IN YOUR HANDS.",
+    "story_step3_title": "[ FACE THE CONSEQUENCES ]",
+    "story_step3_desc": "5 LEVELS OF DEPTH. PREVIOUS CHOICES WEIGH ON FUTURE ONES. IN THE END, YOU'LL SEE WHO YOU REALLY ARE."
+  },
+  "storyMode": {
+    "seoTitle": "Story Mode - Moral Torture Machine",
+    "seoDescription": "Navigate through a branching story of moral dilemmas where every choice matters",
+    "loading": "Loading your story...",
+    "errorFetchingFlow": "Error loading story. Please try again.",
+    "errorVoting": "Error processing your choice. Please try again.",
+    "errorLoading": "Error loading story",
+    "chapter": "Chapter",
+    "continue": "Continue...",
+    "viewResults": "View Your Results"
+  },
+  "common": {
+    "backToHome": "Back to Home"
   }
 }

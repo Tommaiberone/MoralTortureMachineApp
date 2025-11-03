@@ -74,8 +74,38 @@ const TutorialScreen = () => {
     },
   ];
 
-  const tutorialSteps = mode === 'evaluation' ? evaluationTutorialSteps : infiniteTutorialSteps;
-  const targetRoute = mode === 'evaluation' ? '/evaluation-dilemmas' : '/infinite-dilemmas';
+  const storyTutorialSteps = [
+    {
+      title: t('tutorial.story_step1_title'),
+      description: t('tutorial.story_step1_desc'),
+      icon: "[📖]",
+    },
+    {
+      title: t('tutorial.story_step2_title'),
+      description: t('tutorial.story_step2_desc'),
+      icon: "[🌳]",
+    },
+    {
+      title: t('tutorial.story_step3_title'),
+      description: t('tutorial.story_step3_desc'),
+      icon: "[⚖️]",
+    },
+  ];
+
+  const getTutorialSteps = () => {
+    if (mode === 'evaluation') return evaluationTutorialSteps;
+    if (mode === 'story') return storyTutorialSteps;
+    return infiniteTutorialSteps;
+  };
+
+  const getTargetRoute = () => {
+    if (mode === 'evaluation') return '/evaluation-dilemmas';
+    if (mode === 'story') return '/story-mode';
+    return '/pass-the-phone';
+  };
+
+  const tutorialSteps = getTutorialSteps();
+  const targetRoute = getTargetRoute();
 
   const handleNext = () => {
     if (currentStep < tutorialSteps.length - 1) {
