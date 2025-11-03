@@ -241,7 +241,7 @@ resource "aws_iam_role_policy" "secrets_manager_policy" {
 resource "null_resource" "lambda_package" {
   triggers = {
     # Rebuild when these files change
-    backend_code    = filemd5("${path.module}/../backend_fastapi.py")
+    backend_code    = filemd5("${path.module}/../src/backend_fastapi.py")
     requirements    = filemd5("${path.module}/../requirements.txt")
     always_rebuild  = var.force_rebuild ? timestamp() : ""
   }
@@ -251,7 +251,7 @@ resource "null_resource" "lambda_package" {
       cd ${path.module}/..
       rm -rf lambda_deployment lambda_function.zip
       mkdir -p lambda_deployment
-      cp backend_fastapi.py lambda_deployment/
+      cp src/backend_fastapi.py lambda_deployment/
       pip install -q -r requirements.txt -t lambda_deployment/ --platform manylinux2014_x86_64 --only-binary=:all:
       cd lambda_deployment
       zip -q -r ../lambda_function.zip .
@@ -409,7 +409,7 @@ resource "null_resource" "populate_dynamodb" {
   count = var.populate_db ? 1 : 0
 
   triggers = {
-    dilemmas_data = filemd5("${path.module}/../dilemmas_it.json")
+    dilemmas_data = filemd5("${path.module}/../data/dilemmas_it.json")
     table_name    = aws_dynamodb_table.dilemmas.name
   }
 
@@ -417,7 +417,7 @@ resource "null_resource" "populate_dynamodb" {
     command = <<-EOT
       cd ${path.module}/..
       python3 -m pip install -q boto3
-      python3 populate_dynamodb_multilang.py ${aws_dynamodb_table.dilemmas.name} dilemmas_it.json
+      python3 scripts/populate_dynamodb_multilang.py ${aws_dynamodb_table.dilemmas.name}
     EOT
   }
 
