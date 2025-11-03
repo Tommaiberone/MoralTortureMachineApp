@@ -415,18 +415,35 @@ jobs:
         run: |
           echo "📖 Populating DynamoDB story flows..."
           TABLE_NAME="${{ needs.setup.outputs.environment }}-moral-torture-machine-story-flows"
+
+          echo "DEBUG: Table name: $TABLE_NAME"
+          echo "DEBUG: Checking if JSON files exist..."
+          ls -la story_flows_*.json
+
           python3 -u populate_story_flows.py --auto-confirm $TABLE_NAME
+          POPULATE_EXIT_CODE=$?
+
+          echo "DEBUG: Populate script exit code: $POPULATE_EXIT_CODE"
+
+          if [ $POPULATE_EXIT_CODE -ne 0 ]; then
+            echo "❌ Populate script failed with exit code $POPULATE_EXIT_CODE"
+            exit 1
+          fi
+
           echo "✅ DynamoDB story flows populated!"
+
+          echo "DEBUG: Immediately checking table contents..."
+          aws dynamodb scan --table-name $TABLE_NAME --region ${{ env.AWS_REGION }} --select COUNT --query 'Count' --output text
       - name: Verify population
         run: |
           echo "🔍 Verifying dilemmas table..."
           DILEMMAS_TABLE="${{ needs.setup.outputs.environment }}-moral-torture-machine-dilemmas"
-          dilemmas_total=$(aws dynamodb describe-table --table-name $DILEMMAS_TABLE --region ${{ env.AWS_REGION }} --query 'Table.ItemCount' --output text)
+          dilemmas_total=$(aws dynamodb scan --table-name $DILEMMAS_TABLE --region ${{ env.AWS_REGION }} --select COUNT --query 'Count' --output text)
           echo "📊 Total dilemmas: $dilemmas_total"
 
           echo "🔍 Verifying story flows table..."
           FLOWS_TABLE="${{ needs.setup.outputs.environment }}-moral-torture-machine-story-flows"
-          flows_total=$(aws dynamodb describe-table --table-name $FLOWS_TABLE --region ${{ env.AWS_REGION }} --query 'Table.ItemCount' --output text)
+          flows_total=$(aws dynamodb scan --table-name $FLOWS_TABLE --region ${{ env.AWS_REGION }} --select COUNT --query 'Count' --output text)
           echo "📊 Total story flows: $flows_total"
 
           if [ "$dilemmas_total" -eq 0 ]; then
