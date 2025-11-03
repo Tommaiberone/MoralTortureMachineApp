@@ -819,7 +819,8 @@ async def get_story_flow(request: Request, language: str = "en", flowId: Optiona
         else:
             # Get random flow for language
             response = story_flows_table.scan(
-                FilterExpression="language = :lang",
+                FilterExpression="#lang = :lang",
+                ExpressionAttributeNames={"#lang": "language"},
                 ExpressionAttributeValues={":lang": language}
             )
 
