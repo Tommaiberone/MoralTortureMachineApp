@@ -30,41 +30,20 @@ app.add_middleware(
         "http://localhost:5173"
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "Accept", "X-Session-Id"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Accept"],
 )
 
 # Environment variables
 DYNAMODB_TABLE = os.getenv("DYNAMODB_TABLE", "moral-torture-machine-dilemmas")
 ANALYTICS_TABLE = os.getenv("ANALYTICS_TABLE", "moral-torture-machine-user-analytics")
-STORY_FLOWS_TABLE = os.getenv("STORY_FLOWS_TABLE", "moral-torture-machine-story-flows")
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
 GROQ_API_KEY_SECRET_ID = os.getenv("GROQ_API_KEY_SECRET_ID", "")
-
-# Model fallback strategy - ordered by rate limits (highest TPD first)
-MODEL_FALLBACK_CHAIN = [
-    "llama-3.3-70b-versatile",                       # 100K TPD, 12K TPM - High capability
-    "openai/gpt-oss-120b",                           # 200K TPD, 8K TPM - High capability
-    "qwen/qwen3-32b",                                # 500K TPD, 6K TPM, 60 RPM - High capability
-    "meta-llama/llama-4-maverick-17b-128e-instruct", # 500K TPD, 6K TPM - High capability
-    "meta-llama/llama-4-scout-17b-16e-instruct",     # 500K TPD, 30K TPM - High capability
-    "llama-3.1-8b-instant",                          # 500K TPD, 6K TPM - Medium capability
-    "moonshotai/kimi-k2-instruct",                   # 300K TPD, 10K TPM, 60 RPM - Medium capability
-    "moonshotai/kimi-k2-instruct-0905",              # 300K TPD, 10K TPM, 60 RPM - Medium capability
-    "meta-llama/llama-guard-4-12b",                  # 500K TPD, 15K TPM - Medium capability
-    "meta-llama/llama-prompt-guard-2-86m",           # 500K TPD, 15K TPM - Medium capability
-    "meta-llama/llama-prompt-guard-2-22m",           # 500K TPD, 15K TPM - Medium capability
-    "allam-2-7b",                                    # 500K TPD, 6K TPM - Low capability
-    "openai/gpt-oss-20b",                            # 200K TPD, 8K TPM - Low capability
-    "groq/compound",                                 # No TPD limit, 70K TPM - Low capability
-    "groq/compound-mini",                            # No TPD limit, 70K TPM - Low capability
-]
 
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
 table = dynamodb.Table(DYNAMODB_TABLE)
 analytics_table = dynamodb.Table(ANALYTICS_TABLE)
-story_flows_table = dynamodb.Table(STORY_FLOWS_TABLE)
 secrets_client = boto3.client('secretsmanager', region_name=AWS_REGION)
 
 # Cache for API key (retrieved once at cold start)
@@ -224,82 +203,6 @@ class DilemmaWithChoice(BaseModel):
 class AnalyzeResultsRequest(BaseModel):
     answers: list[Dict[str, float]] = Field(..., description="List of moral category scores from user's answers")
     dilemmasWithChoices: Optional[list[DilemmaWithChoice]] = Field(default=[], description="List of dilemmas with user's choices")
-
-class StoryNodeVoteRequest(BaseModel):
-    flowId: str = Field(..., description="Story flow ID", min_length=1, max_length=100)
-    nodeId: str = Field(..., description="Current node ID", min_length=1, max_length=20)
-    vote: str = Field(..., description="Vote: 'first' or 'second'", pattern=r'^(first|second)$')
-
-# Helper function to call Groq API with model fallback
-def call_groq_api_with_fallback(payload: dict, api_key: str, operation: str = "API call") -> dict:
-    """
-    Call Groq API with automatic model fallback on rate limits.
-    Tries each model in MODEL_FALLBACK_CHAIN until one succeeds.
-
-    Args:
-        payload: The API request payload (will be modified with different models)
-        api_key: Groq API key
-        operation: Description of the operation for logging
-
-    Returns:
-        API response JSON
-
-    Raises:
-        HTTPException: If all models fail
-    """
-    api_url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-
-    errors = []
-
-    for model_index, model_name in enumerate(MODEL_FALLBACK_CHAIN):
-        payload["model"] = model_name
-
-        try:
-            logger.info(f"{operation}: Trying model {model_index + 1}/{len(MODEL_FALLBACK_CHAIN)}: {model_name}")
-            response = requests.post(api_url, headers=headers, json=payload, timeout=30)
-
-            # Success - return immediately
-            if response.status_code == 200:
-                logger.info(f"{operation}: Success with model {model_name}")
-                return response.json()
-
-            # Rate limit - try next model
-            if response.status_code == 429:
-                try:
-                    error_data = response.json()
-                    error_msg = error_data.get('error', {}).get('message', 'Rate limit exceeded')
-                    logger.warning(f"{operation}: Rate limit on {model_name}: {error_msg}")
-                    errors.append(f"{model_name}: {error_msg[:100]}")
-                except:
-                    logger.warning(f"{operation}: Rate limit on {model_name}")
-                    errors.append(f"{model_name}: Rate limit exceeded")
-                continue
-
-            # Other error - try next model
-            logger.warning(f"{operation}: Model {model_name} failed with status {response.status_code}")
-            errors.append(f"{model_name}: HTTP {response.status_code}")
-            continue
-
-        except requests.exceptions.Timeout:
-            logger.warning(f"{operation}: Timeout on model {model_name}")
-            errors.append(f"{model_name}: Timeout")
-            continue
-        except Exception as e:
-            logger.warning(f"{operation}: Exception on model {model_name}: {str(e)}")
-            errors.append(f"{model_name}: {str(e)[:50]}")
-            continue
-
-    # All models failed
-    logger.error(f"{operation}: All {len(MODEL_FALLBACK_CHAIN)} models failed")
-    error_summary = "; ".join(errors[:5])  # Show first 5 errors
-    raise HTTPException(
-        status_code=429,
-        detail=f"All AI models are currently rate-limited. Please try again in a few minutes. ({error_summary})"
-    )
 
 # Helper function to convert Decimal to native types
 def decimal_to_native(obj):
@@ -612,7 +515,7 @@ async def generate_dilemma(request: Request, language: str = "en"):
             )
 
         payload = {
-            "model": "llama-3.1-8b-instant",  # Will be overridden by fallback function
+            "model": "llama-3.3-70b-versatile",
             "messages": [
                 {
                     "role": "user",
@@ -621,12 +524,21 @@ async def generate_dilemma(request: Request, language: str = "en"):
             ],
         }
 
-        logger.info("Sending request to Groq API with fallback chain")
-        api_response_json = call_groq_api_with_fallback(
-            payload=payload,
-            api_key=api_key,
-            operation="Generate dilemma"
-        )
+        api_url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        logger.info("Sending request to Groq API")
+        api_response = requests.post(api_url, headers=headers, json=payload, timeout=30)
+
+        if api_response.status_code != 200:
+            logger.error(f"Groq API error: {api_response.status_code} - {api_response.text}")
+            raise HTTPException(
+                status_code=api_response.status_code,
+                detail=f"Error from external API: {api_response.status_code}"
+            )
 
         logger.info("Successfully generated dilemma from Groq API")
 
@@ -637,14 +549,14 @@ async def generate_dilemma(request: Request, language: str = "en"):
             action_type="dilemma_generated",
             action_data={
                 "source": "ai_generated",
-                "model": api_response_json.get("model", "unknown")
+                "model": "llama-3.3-70b-versatile"
             },
             language=language,
             user_agent=request.headers.get("User-Agent"),
             ip_address=request.client.host if request.client else None
         )
 
-        return api_response_json
+        return api_response.json()
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Request error in /generate-dilemma: {str(e)}")
@@ -705,7 +617,7 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
                 f'Stai analizzando il profilo morale di una persona basandoti sulle sue risposte a dilemmi etici. '
                 f'Ecco i loro punteggi medi attraverso diverse categorie morali: {profile_summary}.'
                 f'{dilemmas_summary}'
-                f'\nGenera un\'analisi ponderata, leggermente oscura e inquietante che: '
+                f'\nGenera un\'analisi ponderata, leggermente oscura e inquietante (100-150 parole) che: '
                 f'1) Fa riferimento alle loro scelte SPECIFICHE nei dilemmi che hanno affrontato '
                 f'2) Identifica i loro tratti morali dominanti basandosi sulle loro decisioni effettive '
                 f'3) Spiega cosa rivelano le loro scelte sul loro carattere e priorità '
@@ -713,7 +625,6 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
                 f'5) Usa un tono che si adatta al tema "Moral Torture Machine" - misterioso, leggermente inquietante, ma perspicace '
                 f'Scrivi in seconda persona (rivolgendoti a "tu") e mantieni un tono inquietante e filosofico. '
                 f'IMPORTANTE: Basa la tua analisi sulle scelte EFFETTIVE che hanno fatto, non solo sui punteggi numerici. '
-                f'VINCOLO CRUCIALE: L\'analisi deve essere di MASSIMO 170 parole. Sii conciso e incisivo. '
                 f'Non usare il formato JSON, restituisci solo il testo dell\'analisi direttamente.'
             )
         else:
@@ -729,7 +640,7 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
                 f'You are analyzing a person\'s moral profile based on their responses to ethical dilemmas. '
                 f'Here are their average scores across different moral categories: {profile_summary}.'
                 f'{dilemmas_summary}'
-                f'\nGenerate a thoughtful, slightly dark and creepy analysis that: '
+                f'\nGenerate a thoughtful, slightly dark and creepy analysis (100-150 words) that: '
                 f'1) References their SPECIFIC choices in the dilemmas they faced '
                 f'2) Identifies their dominant moral traits based on their actual decisions '
                 f'3) Explains what their choices reveal about their character and priorities '
@@ -737,12 +648,11 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
                 f'5) Uses a tone that fits the "Moral Torture Machine" theme - mysterious, slightly unsettling, but insightful '
                 f'Write in second person (addressing "you") and maintain a haunting, philosophical tone. '
                 f'IMPORTANT: Base your analysis on the ACTUAL choices they made, not just the numerical scores. '
-                f'CRITICAL CONSTRAINT: The analysis must be MAXIMUM 170 words. Be concise and impactful. '
                 f'Do not use JSON format, just return the analysis text directly.'
             )
 
         payload = {
-            "model": "llama-3.1-8b-instant",  # Will be overridden by fallback function
+            "model": "llama-3.3-70b-versatile",
             "messages": [
                 {
                     "role": "user",
@@ -751,13 +661,23 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
             ],
         }
 
-        logger.info("Sending request to Groq API for results analysis with fallback chain")
-        result = call_groq_api_with_fallback(
-            payload=payload,
-            api_key=api_key,
-            operation="Analyze results"
-        )
+        api_url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
 
+        logger.info("Sending request to Groq API for results analysis")
+        response = requests.post(api_url, headers=headers, json=payload, timeout=30)
+
+        if response.status_code != 200:
+            logger.error(f"Groq API error: {response.status_code} - {response.text}")
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Error from external API: {response.status_code}"
+            )
+
+        result = response.json()
         analysis_text = result['choices'][0]['message']['content']
 
         logger.info("Successfully generated analysis from Groq API")
@@ -791,172 +711,6 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
         raise
     except Exception as e:
         logger.error(f"Error in /analyze-results: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-
-@app.get("/get-story-flow")
-async def get_story_flow(request: Request, language: str = "en", flowId: Optional[str] = None):
-    """
-    Get a story flow by ID or return a random one for the specified language
-
-    Args:
-        language: Language code (default: "en")
-        flowId: Optional specific flow ID (without language suffix)
-
-    Returns:
-        Complete story flow with all nodes
-    """
-    try:
-        session_id = extract_session_id(request)
-
-        if flowId:
-            # Get specific flow
-            flow_id_with_lang = f"{flowId}-{language}"
-            response = story_flows_table.get_item(Key={"_id": flow_id_with_lang})
-
-            if "Item" not in response:
-                logger.warning(f"Story flow not found: {flow_id_with_lang}")
-                raise HTTPException(status_code=404, detail="Story flow not found")
-
-            flow = response["Item"]
-        else:
-            # Get random flow for language
-            response = story_flows_table.scan(
-                FilterExpression="#lang = :lang",
-                ExpressionAttributeNames={"#lang": "language"},
-                ExpressionAttributeValues={":lang": language}
-            )
-
-            flows = response.get("Items", [])
-
-            if not flows:
-                logger.warning(f"No story flows found for language: {language}")
-                raise HTTPException(status_code=404, detail="No story flows available")
-
-            # Select random flow
-            import random
-            flow = random.choice(flows)
-
-        # Track analytics
-        track_analytics_event(
-            session_id=session_id,
-            action_type="story_flow_fetched",
-            action_data={
-                "flow_id": flow["_id"],
-                "flow_title": flow.get("title", ""),
-                "language": language
-            },
-            language=language,
-            user_agent=request.headers.get("User-Agent"),
-            ip_address=request.client.host if request.client else None
-        )
-
-        # Convert Decimal to float for JSON serialization
-        def decimal_to_float(obj):
-            if isinstance(obj, list):
-                return [decimal_to_float(i) for i in obj]
-            elif isinstance(obj, dict):
-                return {k: decimal_to_float(v) for k, v in obj.items()}
-            elif isinstance(obj, Decimal):
-                return float(obj)
-            else:
-                return obj
-
-        flow = decimal_to_float(flow)
-
-        logger.info(f"Returning story flow: {flow['_id']}")
-        return flow
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in /get-story-flow: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-
-@app.post("/story-node-vote")
-async def story_node_vote(vote_request: StoryNodeVoteRequest, request: Request):
-    """
-    Process a vote on a story node and return the next node
-
-    Args:
-        vote_request: Contains flowId, nodeId, and vote (first/second)
-
-    Returns:
-        Next node data or completion indicator
-    """
-    try:
-        session_id = extract_session_id(request)
-
-        # Get the flow
-        response = story_flows_table.get_item(Key={"_id": vote_request.flowId})
-
-        if "Item" not in response:
-            logger.warning(f"Story flow not found: {vote_request.flowId}")
-            raise HTTPException(status_code=404, detail="Story flow not found")
-
-        flow = response["Item"]
-        nodes = flow.get("nodes", {})
-
-        # Get current node
-        current_node = nodes.get(vote_request.nodeId)
-        if not current_node:
-            logger.warning(f"Node not found: {vote_request.nodeId} in flow {vote_request.flowId}")
-            raise HTTPException(status_code=404, detail="Node not found")
-
-        # Determine next node based on vote
-        next_node_id = None
-        if vote_request.vote == "first":
-            next_node_id = current_node.get("nextNodeOnFirst")
-        else:  # second
-            next_node_id = current_node.get("nextNodeOnSecond")
-
-        # Check if current node is a leaf (end of story)
-        is_leaf = current_node.get("isLeaf", False)
-
-        # Get next node data if exists
-        next_node = None
-        if next_node_id and next_node_id in nodes:
-            next_node = nodes[next_node_id]
-
-        # Track analytics
-        track_analytics_event(
-            session_id=session_id,
-            action_type="story_node_vote",
-            action_data={
-                "flow_id": vote_request.flowId,
-                "node_id": vote_request.nodeId,
-                "vote": vote_request.vote,
-                "next_node_id": next_node_id,
-                "is_leaf": is_leaf
-            },
-            user_agent=request.headers.get("User-Agent"),
-            ip_address=request.client.host if request.client else None
-        )
-
-        # Convert Decimal to float for JSON serialization
-        def decimal_to_float(obj):
-            if isinstance(obj, list):
-                return [decimal_to_float(i) for i in obj]
-            elif isinstance(obj, dict):
-                return {k: decimal_to_float(v) for k, v in obj.items()}
-            elif isinstance(obj, Decimal):
-                return float(obj)
-            else:
-                return obj
-
-        result = {
-            "currentNode": decimal_to_float(current_node),
-            "nextNodeId": next_node_id,
-            "nextNode": decimal_to_float(next_node) if next_node else None,
-            "isComplete": is_leaf or next_node is None
-        }
-
-        logger.info(f"Processed vote for node {vote_request.nodeId}, next: {next_node_id}")
-        return result
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in /story-node-vote: {str(e)}")
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 # Lambda handler
