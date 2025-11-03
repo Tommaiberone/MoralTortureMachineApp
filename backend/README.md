@@ -2,7 +2,31 @@
 
 High-performance serverless backend for Moral Torture Machine with multilingual support.
 
-## 🚀 Quick Start
+## � Project Structure
+
+```
+backend/
+├── src/                              # Source code
+│   └── backend_fastapi.py           # Main FastAPI application
+├── data/                             # Data files
+│   ├── dilemmas_en.json             # English dilemmas
+│   ├── dilemmas_it.json             # Italian dilemmas
+│   ├── story_flows_en.json          # English story flows
+│   └── story_flows_it.json          # Italian story flows
+├── scripts/                          # Utility scripts
+│   ├── populate_dynamodb_multilang.py
+│   ├── populate_story_flows.py
+│   └── migrate_data.py
+├── terraform/                        # Infrastructure as Code
+│   ├── main.tf
+│   ├── variables.tf
+│   └── outputs.tf
+├── requirements.txt                  # Python dependencies
+├── .env.example                      # Environment variables template
+└── README.md                         # This file
+```
+
+## �🚀 Quick Start
 
 The backend uses **GitHub Actions** for automated deployment. No manual scripts needed!
 
@@ -26,9 +50,9 @@ The backend uses **GitHub Actions** for automated deployment. No manual scripts 
 
 2. **Initial DynamoDB Population:**
    
-   - Go to GitHub → Actions → "Populate DynamoDB with Dilemmas"
+   - Go to GitHub → Actions → "Deploy Full Stack"
    - Click "Run workflow"
-   - Type "yes" to confirm
+   - Enable "Populate DynamoDB with fresh data"
    - Wait for completion
 
 3. **Deploy Backend:**

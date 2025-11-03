@@ -96,9 +96,9 @@ jobs:
 
       - name: Check Python syntax
         run: |
-          python -m py_compile backend_fastapi.py
-          python -m py_compile populate_dynamodb_multilang.py
-          python -m py_compile populate_story_flows.py
+          python -m py_compile src/backend_fastapi.py
+          python -m py_compile scripts/populate_dynamodb_multilang.py
+          python -m py_compile scripts/populate_story_flows.py
 
   # Job 2: Deploy Backend
   backend-deploy:
@@ -144,7 +144,7 @@ jobs:
         run: |
           rm -rf lambda_deployment lambda_function.zip
           mkdir -p lambda_deployment
-          cp backend_fastapi.py lambda_deployment/
+          cp src/backend_fastapi.py lambda_deployment/
 
           cd lambda_deployment
           pip install \
@@ -375,14 +375,14 @@ jobs:
         working-directory: backend
         run: |
           echo "📋 Checking dilemma files..."
-          if [ -f "dilemmas_it.json" ] && [ -f "dilemmas_en.json" ]; then
+          if [ -f "data/dilemmas_it.json" ] && [ -f "data/dilemmas_en.json" ]; then
             echo "MULTILANG=true" >> $GITHUB_ENV
-            en_count=$(jq '. | length' dilemmas_en.json)
-            it_count=$(jq '. | length' dilemmas_it.json)
+            en_count=$(jq '. | length' data/dilemmas_en.json)
+            it_count=$(jq '. | length' data/dilemmas_it.json)
             echo "✅ Found $en_count English + $it_count Italian dilemmas"
-          elif [ -f "dilemmas_en.json" ]; then
+          elif [ -f "data/dilemmas_en.json" ]; then
             echo "MULTILANG=false" >> $GITHUB_ENV
-            count=$(jq '. | length' dilemmas_en.json)
+            count=$(jq '. | length' data/dilemmas_en.json)
             echo "✅ Found $count dilemmas"
           else
             echo "❌ No dilemma files found!"
@@ -390,9 +390,9 @@ jobs:
           fi
 
           echo "📖 Checking story flow files..."
-          if [ -f "story_flows_it.json" ] && [ -f "story_flows_en.json" ]; then
-            en_flows=$(jq '. | length' story_flows_en.json)
-            it_flows=$(jq '. | length' story_flows_it.json)
+          if [ -f "data/story_flows_it.json" ] && [ -f "data/story_flows_en.json" ]; then
+            en_flows=$(jq '. | length' data/story_flows_en.json)
+            it_flows=$(jq '. | length' data/story_flows_it.json)
             echo "✅ Found $en_flows English + $it_flows Italian story flows"
           else
             echo "⚠️ No story flow files found (optional)"
@@ -408,7 +408,7 @@ jobs:
         run: |
           echo "📊 Populating DynamoDB dilemmas..."
           TABLE_NAME="${{ needs.setup.outputs.environment }}-moral-torture-machine-dilemmas"
-          python3 -u populate_dynamodb_multilang.py --auto-confirm $TABLE_NAME
+          python3 -u scripts/populate_dynamodb_multilang.py --auto-confirm $TABLE_NAME
           echo "✅ DynamoDB dilemmas populated!"
       - name: Populate DynamoDB Story Flows
         working-directory: backend
@@ -418,9 +418,9 @@ jobs:
 
           echo "DEBUG: Table name: $TABLE_NAME"
           echo "DEBUG: Checking if JSON files exist..."
-          ls -la story_flows_*.json
+          ls -la data/story_flows_*.json
 
-          python3 -u populate_story_flows.py --auto-confirm $TABLE_NAME
+          python3 -u scripts/populate_story_flows.py --auto-confirm $TABLE_NAME
           POPULATE_EXIT_CODE=$?
 
           echo "DEBUG: Populate script exit code: $POPULATE_EXIT_CODE"
