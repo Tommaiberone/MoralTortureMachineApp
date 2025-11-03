@@ -843,7 +843,9 @@ async def get_story_flow(request: Request, language: str = "en", flowId: Optiona
                 "flow_title": flow.get("title", ""),
                 "language": language
             },
-            request=request
+            language=language,
+            user_agent=request.headers.get("User-Agent"),
+            ip_address=request.client.host if request.client else None
         )
 
         # Convert Decimal to float for JSON serialization
@@ -924,7 +926,8 @@ async def story_node_vote(vote_request: StoryNodeVoteRequest, request: Request):
                 "next_node_id": next_node_id,
                 "is_leaf": is_leaf
             },
-            request=request
+            user_agent=request.headers.get("User-Agent"),
+            ip_address=request.client.host if request.client else None
         )
 
         # Convert Decimal to float for JSON serialization
