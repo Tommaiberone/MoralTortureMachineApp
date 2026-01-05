@@ -76,7 +76,8 @@ body {
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
-  overflow-x: hidden;
+  max-height: 100vh;
+  overflow: hidden;
   background-color: var(--creepy-void);
   animation: static-flicker 0.5s infinite;
   
