@@ -58,6 +58,16 @@ const HomeScreen = () => {
             {t('home.eval_description')}
           </div>
         </button>
+{/* 
+        <button
+          className="home-button story-button"
+          onClick={() => handleNavigation('story', '/story-mode')}
+        >
+          <div className="button-text">{t('home.story_button')}</div>
+          <div className="button-description">
+            {t('home.story_description')}
+          </div>
+        </button> */}
 
         <button
           className="home-button arcade-button"
