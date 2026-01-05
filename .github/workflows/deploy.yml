@@ -346,7 +346,7 @@ jobs:
   android-build:
     name: Build Android APK
     runs-on: ubuntu-latest
-    needs: [setup, frontend-infrastructure]
+    needs: [setup, frontend-infrastructure, backend-deploy]
     if: needs.setup.outputs.environment == 'prod'
 
     permissions:
@@ -386,6 +386,8 @@ jobs:
 
       - name: Build web app
         working-directory: frontend
+        env:
+          VITE_API_URL: ${{ needs.backend-deploy.outputs.api_url }}
         run: pnpm build --mode prod
 
       - name: Sync Capacitor
