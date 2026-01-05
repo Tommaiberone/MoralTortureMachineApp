@@ -402,6 +402,10 @@ jobs:
         working-directory: frontend/android
         run: ./gradlew assembleDebug
 
+      - name: Build Android App Bundle (AAB)
+        working-directory: frontend/android
+        run: ./gradlew bundleRelease
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -409,29 +413,43 @@ jobs:
           path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-app-bundle
+          path: frontend/android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 90
+
       - name: Get APK info
         id: apk-info
         working-directory: frontend
         run: |
           APK_PATH="android/app/build/outputs/apk/debug/app-debug.apk"
+          AAB_PATH="android/app/build/outputs/bundle/release/app-release.aab"
           APK_SIZE=$(du -h "$APK_PATH" | cut -f1)
+          AAB_SIZE=$(du -h "$AAB_PATH" | cut -f1)
           echo "apk_size=$APK_SIZE" >> $GITHUB_OUTPUT
+          echo "aab_size=$AAB_SIZE" >> $GITHUB_OUTPUT
           echo "✅ APK built successfully! Size: $APK_SIZE"
+          echo "✅ AAB built successfully! Size: $AAB_SIZE"
 
       - name: Comment on commit with APK download link
         uses: actions/github-script@v7
         with:
           script: |
             const apkSize = '${{ steps.apk-info.outputs.apk_size }}';
+            const aabSize = '${{ steps.apk-info.outputs.aab_size }}';
             const runUrl = `https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
             
             github.rest.repos.createCommitComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               commit_sha: context.sha,
-              body: `📱 **Android APK Built Successfully!**\n\n` +
-                    `✅ APK Size: ${apkSize}\n` +
-                    `📦 [Download APK from Actions artifacts](${runUrl})\n\n` +
+              body: `📱 **Android Builds Completed!**\n\n` +
+                    `✅ APK (Debug): ${apkSize}\n` +
+                    `✅ AAB (Release): ${aabSize}\n\n` +
+                    `📦 [Download from Actions artifacts](${runUrl})\n\n` +
+                    `**Note:** Use AAB for Play Store submission\n\n` +
                     `_Build triggered by: ${context.actor}_`
             });
 
