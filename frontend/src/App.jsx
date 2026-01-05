@@ -12,7 +12,7 @@ import HomeScreen from './screens/HomeScreen';
 // All other screens are lazy loaded to reduce initial bundle size
 const PassThePhoneScreen = lazy(() => import('./screens/PassThePhoneScreen'));
 const EvaluationDilemmasScreen = lazy(() => import('./screens/EvaluationDilemmasScreen'));
-const StoryModeScreen = lazy(() => import('./screens/StoryModeScreen'));
+// const StoryModeScreen = lazy(() => import('./screens/StoryModeScreen')); // Hidden for now
 const ResultsScreen = lazy(() => import('./screens/ResultsScreen'));
 const TutorialScreen = lazy(() => import('./screens/TutorialScreen'));
 const AboutScreen = lazy(() => import('./screens/AboutScreen'));
@@ -47,7 +47,7 @@ const App = () => {
             <Route path="/tutorial" element={<TutorialScreen />} />
             <Route path="/pass-the-phone" element={<PassThePhoneScreen />} />
             <Route path="/evaluation-dilemmas" element={<EvaluationDilemmasScreen />} />
-            <Route path="/story-mode" element={<StoryModeScreen />} />
+            {/* <Route path="/story-mode" element={<StoryModeScreen />} /> */}
             <Route path="/results" element={<ResultsScreen />} />
             <Route path="/about" element={<AboutScreen />} />
           </Routes>
