@@ -402,9 +402,37 @@ jobs:
         working-directory: frontend/android
         run: ./gradlew assembleDebug
 
+      - name: Decode keystore and create key.properties
+        working-directory: frontend/android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          # Decode keystore from base64
+          echo "$KEYSTORE_BASE64" | base64 -d > upload-keystore.jks
+
+          # Create key.properties file
+          cat > key.properties <<EOF
+          storeFile=upload-keystore.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
+          echo "✅ Keystore decoded and key.properties created"
+
       - name: Build Android App Bundle (AAB)
         working-directory: frontend/android
         run: ./gradlew bundleRelease
+
+      - name: Cleanup sensitive files
+        if: always()
+        working-directory: frontend/android
+        run: |
+          rm -f upload-keystore.jks key.properties
+          echo "🧹 Cleaned up keystore and key.properties"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
