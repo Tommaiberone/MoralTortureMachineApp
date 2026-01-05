@@ -1,0 +1,31 @@
+# Android Signing Key Properties
+# 
+# IMPORTANT: This file contains SENSITIVE information!
+# DO NOT commit this file to Git!
+# DO NOT share these credentials!
+#
+# Copy this file to android/key.properties and fill in your actual values
+# Generated with: keytool -genkey -v -keystore release-key.jks ...
+
+storePassword=YOUR_KEYSTORE_PASSWORD_HERE
+keyPassword=YOUR_KEY_PASSWORD_HERE
+keyAlias=moraltorturemachine
+storeFile=../release-key.jks
+
+# Instructions:
+# 1. Generate keystore (first time only):
+#    keytool -genkey -v -keystore release-key.jks \
+#      -alias moraltorturemachine \
+#      -keyalg RSA -keysize 2048 -validity 10000
+#
+# 2. Copy this file to android/key.properties
+#
+# 3. Replace YOUR_KEYSTORE_PASSWORD_HERE with your actual keystore password
+#
+# 4. Replace YOUR_KEY_PASSWORD_HERE with your actual key password
+#    (can be the same as keystore password)
+#
+# 5. Save release-key.jks in the android/ directory
+#    (or update storeFile path if you save it elsewhere)
+#
+# 6. NEVER commit key.properties or release-key.jks to Git!

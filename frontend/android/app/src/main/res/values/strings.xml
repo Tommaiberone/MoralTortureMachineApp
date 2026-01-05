@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Moral Torture Machine</string>
+    <string name="title_activity_main">Moral Torture Machine</string>
+    <string name="package_name">com.moraltorturemachine.app</string>
+    <string name="custom_url_scheme">com.moraltorturemachine.app</string>
+</resources>
