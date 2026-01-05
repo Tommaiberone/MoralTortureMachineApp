@@ -317,7 +317,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --no-frozen-lockfile --ignore-workspace
 
       - name: Build frontend
         working-directory: frontend
@@ -382,7 +382,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --no-frozen-lockfile --ignore-workspace
 
       - name: Build web app
         working-directory: frontend
