@@ -4,11 +4,19 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import LanguageSelector from '../components/LanguageSelector';
 import SEO from '../components/SEO';
+import { combineSchemas, getWebApplicationSchema, getFAQSchema, getHowToSchema } from '../utils/structuredData';
 import './HomeScreen.css';
 
 const HomeScreen = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
+
+  // Rich structured data for SEO (combines multiple schemas for rich snippets)
+  const structuredData = combineSchemas(
+    getWebApplicationSchema(),
+    getFAQSchema(),
+    getHowToSchema()
+  );
 
   const handleNavigation = (mode, route) => {
     // Check if tutorial has been completed for this mode
@@ -30,6 +38,7 @@ const HomeScreen = () => {
         description={t('home.subtitle')}
         keywords="moral philosophy, ethics, ethical dilemmas, trolley problem, moral compass, AI analysis, philosophy game, moral framework, decision making, ethical test"
         url="/"
+        structuredData={structuredData}
       />
       <LanguageSelector />
       <h1 className="screen-title-large home-title">

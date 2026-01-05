@@ -1,0 +1,83 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0a0a;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#1a0a1a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0a0a0a;stop-opacity:1" />
+    </linearGradient>
+
+    <radialGradient id="glowGradient" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#ff0066;stop-opacity:0.6" />
+      <stop offset="50%" style="stop-color:#cc0052;stop-opacity:0.3" />
+      <stop offset="100%" style="stop-color:#0a0a0a;stop-opacity:0" />
+    </radialGradient>
+
+    <!-- Glitch effect filter -->
+    <filter id="glitch">
+      <feTurbulence baseFrequency="0.01" numOctaves="3" seed="2" />
+      <feColorMatrix values="1 0 0 0 0, 0 1 0 0 0, 0 0 1 0 0, 0 0 0 1 0" />
+      <feDisplacementMap in="SourceGraphic" scale="8" />
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bgGradient)"/>
+
+  <!-- Glow effect circles -->
+  <circle cx="600" cy="315" r="400" fill="url(#glowGradient)" opacity="0.3"/>
+  <circle cx="200" cy="150" r="150" fill="url(#glowGradient)" opacity="0.2"/>
+  <circle cx="1000" cy="480" r="180" fill="url(#glowGradient)" opacity="0.2"/>
+
+  <!-- Grid lines for tech aesthetic -->
+  <line x1="0" y1="100" x2="1200" y2="100" stroke="#ff0066" stroke-width="1" opacity="0.1"/>
+  <line x1="0" y1="200" x2="1200" y2="200" stroke="#ff0066" stroke-width="1" opacity="0.1"/>
+  <line x1="0" y1="300" x2="1200" y2="300" stroke="#ff0066" stroke-width="1" opacity="0.1"/>
+  <line x1="0" y1="400" x2="1200" y2="400" stroke="#ff0066" stroke-width="1" opacity="0.1"/>
+  <line x1="0" y1="500" x2="1200" y2="500" stroke="#ff0066" stroke-width="1" opacity="0.1"/>
+
+  <line x1="200" y1="0" x2="200" y2="630" stroke="#ff0066" stroke-width="1" opacity="0.1"/>
+  <line x1="400" y1="0" x2="400" y2="630" stroke="#ff0066" stroke-width="1" opacity="0.1"/>
+  <line x1="600" y1="0" x2="600" y2="630" stroke="#ff0066" stroke-width="1" opacity="0.1"/>
+  <line x1="800" y1="0" x2="800" y2="630" stroke="#ff0066" stroke-width="1" opacity="0.1"/>
+  <line x1="1000" y1="0" x2="1000" y2="630" stroke="#ff0066" stroke-width="1" opacity="0.1"/>
+
+  <!-- Title Text -->
+  <text x="600" y="200" font-family="Arial, sans-serif" font-size="84" font-weight="bold" fill="#ffffff" text-anchor="middle" letter-spacing="2">
+    MORAL
+  </text>
+  <text x="600" y="290" font-family="Arial, sans-serif" font-size="84" font-weight="bold" fill="#ff0066" text-anchor="middle" letter-spacing="2">
+    TORTURE
+  </text>
+  <text x="600" y="380" font-family="Arial, sans-serif" font-size="84" font-weight="bold" fill="#ffffff" text-anchor="middle" letter-spacing="2">
+    MACHINE
+  </text>
+
+  <!-- Subtitle -->
+  <text x="600" y="460" font-family="Arial, sans-serif" font-size="32" fill="#cccccc" text-anchor="middle" letter-spacing="1">
+    Explore Your Moral Framework
+  </text>
+
+  <!-- Feature highlights -->
+  <text x="600" y="520" font-family="Arial, sans-serif" font-size="24" fill="#999999" text-anchor="middle">
+    AI-Powered Analysis • Ethical Dilemmas • Discover Your Moral Compass
+  </text>
+
+  <!-- Website URL -->
+  <text x="600" y="580" font-family="Arial, sans-serif" font-size="28" fill="#ff0066" text-anchor="middle" font-weight="bold">
+    moraltorturemachine.com
+  </text>
+
+  <!-- Decorative corner elements -->
+  <rect x="40" y="40" width="80" height="4" fill="#ff0066" opacity="0.8"/>
+  <rect x="40" y="40" width="4" height="80" fill="#ff0066" opacity="0.8"/>
+
+  <rect x="1080" y="40" width="80" height="4" fill="#ff0066" opacity="0.8"/>
+  <rect x="1156" y="40" width="4" height="80" fill="#ff0066" opacity="0.8"/>
+
+  <rect x="40" y="586" width="80" height="4" fill="#ff0066" opacity="0.8"/>
+  <rect x="40" y="510" width="4" height="80" fill="#ff0066" opacity="0.8"/>
+
+  <rect x="1080" y="586" width="80" height="4" fill="#ff0066" opacity="0.8"/>
+  <rect x="1156" y="510" width="4" height="80" fill="#ff0066" opacity="0.8"/>
+</svg>
