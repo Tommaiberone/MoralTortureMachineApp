@@ -415,7 +415,7 @@ jobs:
 
           # Create key.properties file
           cat > key.properties <<EOF
-          storeFile=upload-keystore.jks
+          storeFile=../upload-keystore.jks
           storePassword=$KEYSTORE_PASSWORD
           keyAlias=$KEY_ALIAS
           keyPassword=$KEY_PASSWORD
