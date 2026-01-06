@@ -27,11 +27,14 @@ app.add_middleware(
         "https://tommaiberone.github.io",
         "https://d1vklv6uo7wyz2.cloudfront.net",
         "http://localhost:3000",
-        "http://localhost:5173"
+        "http://localhost:5173",
+        "https://localhost",  # Capacitor Android/iOS app
+        "capacitor://localhost",  # Capacitor fallback
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Accept", "X-Session-Id"],
+    expose_headers=["Content-Type"],
 )
 
 # Environment variables
