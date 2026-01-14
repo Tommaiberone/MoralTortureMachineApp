@@ -87,6 +87,13 @@ body {
   padding-left: var(--safe-area-inset-left);
 }
 
+/* Mobile margin dall'alto */
+@media (max-width: 768px) {
+  body {
+    margin-top: 40px;
+  }
+}
+
 h1 {
   font-size: 3em;
   line-height: 1.1;
