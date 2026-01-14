@@ -26,6 +26,9 @@ importers:
       '@capacitor/haptics':
         specifier: ^8.0.0
         version: 8.0.0(@capacitor/core@8.0.0)
+      '@capacitor/http':
+        specifier: ^0.0.2
+        version: 0.0.2
       '@capacitor/keyboard':
         specifier: ^8.0.0
         version: 8.0.0(@capacitor/core@8.0.0)
@@ -224,10 +227,17 @@ packages:
   '@capacitor/core@8.0.0':
     resolution: {integrity: sha512-250HTVd/W/KdMygoqaedisvNbHbpbQTN2Hy/8ZYGm1nAqE0Fx7sGss4l0nDg33STxEdDhtVRoL2fIaaiukKseA==}
 
+  '@capacitor/core@8.0.1':
+    resolution: {integrity: sha512-5UqSWxGMp/B8KhYu7rAijqNtYslhcLh+TrbfU48PfdMDsPfaU/VY48sMNzC22xL8BmoFoql/3SKyP+pavTOvOA==}
+
   '@capacitor/haptics@8.0.0':
     resolution: {integrity: sha512-DY1IUOjke1T4ITl7mFHQIKCaJJyHYAYRYHG9bVApU7PDOZiMVGMp48Yjzdqjya+wv/AHS5mDabSTUmhJ5uDvBA==}
     peerDependencies:
       '@capacitor/core': '>=8.0.0'
+
+  '@capacitor/http@0.0.2':
+    resolution: {integrity: sha512-3UPqYOmVkAQjCWWowSDGPnBkXY7znbPE7lNs8nhwTmE2E5fXTvjHM8PV15zOyn+nenY7zEu9Air49fGjrX+Tjg==}
+    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
 
   '@capacitor/keyboard@8.0.0':
     resolution: {integrity: sha512-ycPW6iQyFwzDK95jihesj5EGiyyGSfbBqNek11iNp9tBOB7zDeYkUA2S/vPpOETt3dhP6pWr7a9gNVGuEfj11g==}
@@ -1992,9 +2002,17 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
+  '@capacitor/core@8.0.1':
+    dependencies:
+      tslib: 2.8.1
+
   '@capacitor/haptics@8.0.0(@capacitor/core@8.0.0)':
     dependencies:
       '@capacitor/core': 8.0.0
+
+  '@capacitor/http@0.0.2':
+    dependencies:
+      '@capacitor/core': 8.0.1
 
   '@capacitor/keyboard@8.0.0(@capacitor/core@8.0.0)':
     dependencies:
