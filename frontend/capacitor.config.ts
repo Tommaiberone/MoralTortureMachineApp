@@ -17,7 +17,7 @@ const config: CapacitorConfig = {
     }
   },
   plugins: {
-    Http: {
+    CapacitorHttp: {
       enabled: true
     },
     SplashScreen: {
