@@ -1,4 +1,4 @@
-package com.moraltorturemachine.app;
+package com.tommaiberone.MoralTortureMachine;
 
 import com.getcapacitor.BridgeActivity;
 
