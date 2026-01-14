@@ -57,15 +57,15 @@
 /* Animations - Unsettling, glitchy, oppressive */
 @keyframes static-flicker {
   0%, 100% { opacity: 1; }
-  10% { opacity: 0.95; }
-  20% { opacity: 0.92; }
-  30% { opacity: 0.98; }
-  40% { opacity: 0.90; }
-  50% { opacity: 0.94; }
-  60% { opacity: 0.91; }
-  70% { opacity: 0.97; }
-  80% { opacity: 0.89; }
-  90% { opacity: 0.96; }
+  10% { opacity: 0.99; }
+  20% { opacity: 0.98; }
+  30% { opacity: 0.995; }
+  40% { opacity: 0.985; }
+  50% { opacity: 0.99; }
+  60% { opacity: 0.985; }
+  70% { opacity: 0.995; }
+  80% { opacity: 0.98; }
+  90% { opacity: 0.99; }
 }
 
 @keyframes glitch-text {
@@ -169,8 +169,8 @@
     text-shadow: 0 0 2px var(--text-danger);
   }
   4%, 19%, 21%, 23%, 55% {
-    opacity: 0.6;
-    text-shadow: none;
+    opacity: 0.92;
+    text-shadow: 0 0 1px var(--text-danger);
   }
 }
 
