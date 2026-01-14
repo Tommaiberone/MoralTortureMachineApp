@@ -10,19 +10,16 @@ body {
   font-family: 'Courier New', Courier, monospace;
   -webkit-font-smoothing: none;
   -moz-osx-font-smoothing: grayscale;
-  overflow: hidden;
+  overflow-x: hidden;
   background-color: var(--creepy-void);
   image-rendering: pixelated;
 }
 
 #root {
   width: 100%;
-  height: 100vh;
-  max-height: 100vh;
-  overflow: hidden;
+  min-height: 100vh;
+  overflow-x: hidden;
   position: relative;
-  display: flex;
-  flex-direction: column;
 }
 
 /* Loading container */
@@ -84,20 +81,4 @@ body {
 .language-selector button:disabled {
   background-color: #555;
   cursor: not-allowed;
-}
-
-/* Screen container - no scroll unless content exceeds viewport */
-.screen-container {
-  width: 100%;
-  height: 100vh;
-  max-height: 100vh;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-/* For screens that need internal scrolling */
-.screen-scrollable {
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
 }
