@@ -32,7 +32,8 @@ variable "cors_allowed_origins" {
     "https://d1vklv6uo7wyz2.cloudfront.net",
     "http://localhost:5173",
     "https://moraltorturemachine.com",
-    "https://www.moraltorturemachine.com"
+    "https://www.moraltorturemachine.com",
+    "https://localhost"
   ]
 }
 

@@ -42,7 +42,7 @@ DYNAMODB_TABLE = os.getenv("DYNAMODB_TABLE", "moral-torture-machine-dilemmas")
 ANALYTICS_TABLE = os.getenv("ANALYTICS_TABLE", "moral-torture-machine-user-analytics")
 STORY_FLOWS_TABLE = os.getenv("STORY_FLOWS_TABLE", "moral-torture-machine-story-flows")
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
-GROQ_API_KEY_SECRET_ID = os.getenv("GROQ_API_KEY_SECRET_ID", "")
+GROQ_API_KEY_SSM_NAME = os.getenv("GROQ_API_KEY_SSM_NAME", "")
 
 # Model fallback strategy - ordered by rate limits (highest TPD first)
 MODEL_FALLBACK_CHAIN = [
@@ -68,13 +68,13 @@ dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
 table = dynamodb.Table(DYNAMODB_TABLE)
 analytics_table = dynamodb.Table(ANALYTICS_TABLE)
 story_flows_table = dynamodb.Table(STORY_FLOWS_TABLE)
-secrets_client = boto3.client('secretsmanager', region_name=AWS_REGION)
+ssm_client = boto3.client('ssm', region_name=AWS_REGION)
 
 # Cache for API key (retrieved once at cold start)
 _api_key_cache = None
 
 def get_groq_api_key() -> str:
-    """Retrieve Groq API key from AWS Secrets Manager with caching"""
+    """Retrieve Groq API key from AWS SSM Parameter Store with caching"""
     global _api_key_cache
 
     if _api_key_cache is not None:
@@ -87,17 +87,17 @@ def get_groq_api_key() -> str:
         _api_key_cache = local_api_key
         return _api_key_cache
 
-    if not GROQ_API_KEY_SECRET_ID:
-        raise ValueError("GROQ_API_KEY_SECRET_ID not configured")
+    if not GROQ_API_KEY_SSM_NAME:
+        raise ValueError("GROQ_API_KEY_SSM_NAME not configured")
 
     try:
-        logger.info(f"Retrieving API key from Secrets Manager: {GROQ_API_KEY_SECRET_ID}")
-        response = secrets_client.get_secret_value(SecretId=GROQ_API_KEY_SECRET_ID)
-        _api_key_cache = response['SecretString']
-        logger.info("Successfully retrieved API key from Secrets Manager")
+        logger.info(f"Retrieving API key from SSM Parameter Store: {GROQ_API_KEY_SSM_NAME}")
+        response = ssm_client.get_parameter(Name=GROQ_API_KEY_SSM_NAME, WithDecryption=True)
+        _api_key_cache = response['Parameter']['Value']
+        logger.info("Successfully retrieved API key from SSM Parameter Store")
         return _api_key_cache
     except Exception as e:
-        logger.error(f"Failed to retrieve API key from Secrets Manager: {str(e)}")
+        logger.error(f"Failed to retrieve API key from SSM Parameter Store: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail="API key configuration error"
@@ -381,12 +381,12 @@ async def health_check():
         health_status["checks"]["dynamodb_analytics"] = f"error: {str(e)}"
         health_status["status"] = "degraded"
 
-    # Check Secrets Manager connectivity
+    # Check SSM Parameter Store connectivity
     try:
-        secrets_client.describe_secret(SecretId=GROQ_API_KEY_SECRET_ID)
-        health_status["checks"]["secrets_manager"] = "ok"
+        ssm_client.get_parameter(Name=GROQ_API_KEY_SSM_NAME, WithDecryption=True)
+        health_status["checks"]["ssm_parameter"] = "ok"
     except Exception as e:
-        health_status["checks"]["secrets_manager"] = f"error: {str(e)}"
+        health_status["checks"]["ssm_parameter"] = f"error: {str(e)}"
         health_status["status"] = "degraded"
 
     # Set appropriate HTTP status code

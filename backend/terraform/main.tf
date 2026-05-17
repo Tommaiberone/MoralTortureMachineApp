@@ -6,13 +6,13 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
-    archive = {
-      source  = "hashicorp/archive"
-      version = "~> 2.0"
-    }
     null = {
       source  = "hashicorp/null"
       version = "~> 3.0"
+    }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.0"
     }
   }
 }
@@ -120,40 +120,36 @@ resource "aws_dynamodb_table" "story_flows" {
   }
 }
 
-# Secrets Manager Secret for Groq API Key
-resource "aws_secretsmanager_secret" "groq_api_key" {
-  name        = "${var.environment}-${var.stack_name}-groq-api-key"
+# SSM Parameter for Groq API Key (migrato da Secrets Manager - risparmio $0.40/mese)
+# Se già creato via CLI, importare con:
+# terraform import aws_ssm_parameter.groq_api_key /prod/moral-torture-machine/groq-api-key
+resource "aws_ssm_parameter" "groq_api_key" {
+  name        = "/${var.environment}/${var.stack_name}/groq-api-key"
   description = "Groq API Key for AI-generated dilemmas"
-
-  recovery_window_in_days = 7
+  type        = "SecureString"
+  value       = var.groq_api_key
 
   tags = {
     Name        = "Moral Torture Machine Groq API Key"
     Environment = var.environment
     ManagedBy   = "Terraform"
   }
-}
 
-# Note: The secret value must be set manually or via GitHub Actions
-# This avoids storing sensitive data in Terraform state
-resource "aws_secretsmanager_secret_version" "groq_api_key" {
-  count         = var.groq_api_key != "SET_THIS_LATER" && var.groq_api_key != "" ? 1 : 0
-  secret_id     = aws_secretsmanager_secret.groq_api_key.id
-  secret_string = var.groq_api_key
+  lifecycle {
+    ignore_changes = [value]
+  }
 }
 
 # IAM Role for Lambda
 resource "aws_iam_role" "lambda_role" {
-  name = "${var.environment}-${var.stack_name}-lambda-role"
+  name = "${var.stack_name}-lambda-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
-      Principal = {
-        Service = "lambda.amazonaws.com"
-      }
-      Action = "sts:AssumeRole"
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
     }]
   })
 
@@ -164,14 +160,12 @@ resource "aws_iam_role" "lambda_role" {
   }
 }
 
-# Attach Lambda basic execution policy
-resource "aws_iam_role_policy_attachment" "lambda_basic" {
+resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
   role       = aws_iam_role.lambda_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# DynamoDB access policy
-resource "aws_iam_role_policy" "dynamodb_policy" {
+resource "aws_iam_role_policy" "lambda_permissions" {
   name = "dynamodb-access"
   role = aws_iam_role.lambda_role.id
 
@@ -185,125 +179,36 @@ resource "aws_iam_role_policy" "dynamodb_policy" {
           "dynamodb:GetItem",
           "dynamodb:UpdateItem",
           "dynamodb:Scan",
-          "dynamodb:Query",
-          "dynamodb:DescribeTable"
-        ]
-        Resource = aws_dynamodb_table.dilemmas.arn
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "dynamodb:PutItem",
-          "dynamodb:GetItem",
-          "dynamodb:Query",
-          "dynamodb:Scan",
-          "dynamodb:DescribeTable"
+          "dynamodb:Query"
         ]
         Resource = [
+          aws_dynamodb_table.dilemmas.arn,
           aws_dynamodb_table.user_analytics.arn,
-          "${aws_dynamodb_table.user_analytics.arn}/index/*"
+          "${aws_dynamodb_table.user_analytics.arn}/index/*",
+          aws_dynamodb_table.story_flows.arn
         ]
       },
       {
         Effect = "Allow"
-        Action = [
-          "dynamodb:PutItem",
-          "dynamodb:GetItem",
-          "dynamodb:Query",
-          "dynamodb:Scan",
-          "dynamodb:DescribeTable"
+        Action = ["dynamodb:DescribeTable"]
+        Resource = [
+          aws_dynamodb_table.dilemmas.arn,
+          aws_dynamodb_table.user_analytics.arn,
+          aws_dynamodb_table.story_flows.arn
         ]
-        Resource = aws_dynamodb_table.story_flows.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameter"]
+        Resource = aws_ssm_parameter.groq_api_key.arn
       }
     ]
   })
 }
 
-# Secrets Manager access policy
-resource "aws_iam_role_policy" "secrets_manager_policy" {
-  name = "secrets-manager-access"
-  role = aws_iam_role.lambda_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "secretsmanager:GetSecretValue",
-        "secretsmanager:DescribeSecret"
-      ]
-      Resource = aws_secretsmanager_secret.groq_api_key.arn
-    }]
-  })
-}
-
-# Null resource to build Lambda package
-resource "null_resource" "lambda_package" {
-  triggers = {
-    # Rebuild when these files change
-    backend_code    = filemd5("${path.module}/../src/backend_fastapi.py")
-    requirements    = filemd5("${path.module}/../requirements.txt")
-    always_rebuild  = var.force_rebuild ? timestamp() : ""
-  }
-
-  provisioner "local-exec" {
-    command = <<-EOT
-      cd ${path.module}/..
-      rm -rf lambda_deployment lambda_function.zip
-      mkdir -p lambda_deployment
-      cp src/backend_fastapi.py lambda_deployment/
-      pip install -q -r requirements.txt -t lambda_deployment/ --platform manylinux2014_x86_64 --only-binary=:all:
-      cd lambda_deployment
-      zip -q -r ../lambda_function.zip .
-    EOT
-  }
-}
-
-# Archive data source for Lambda function
-data "archive_file" "lambda_zip" {
-  type        = "zip"
-  source_dir  = "${path.module}/../lambda_deployment"
-  output_path = "${path.module}/../lambda_function.zip"
-
-  depends_on = [null_resource.lambda_package]
-}
-
-# Lambda Function
-resource "aws_lambda_function" "api" {
-  filename         = data.archive_file.lambda_zip.output_path
-  function_name    = "${var.environment}-${var.stack_name}-api"
-  role            = aws_iam_role.lambda_role.arn
-  handler         = "backend_fastapi.handler"
-  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
-  runtime         = "python3.11"
-  timeout         = 30
-  memory_size     = 512
-
-  environment {
-    variables = {
-      DYNAMODB_TABLE           = aws_dynamodb_table.dilemmas.name
-      ANALYTICS_TABLE          = aws_dynamodb_table.user_analytics.name
-      STORY_FLOWS_TABLE        = aws_dynamodb_table.story_flows.name
-      GROQ_API_KEY_SECRET_ID   = aws_secretsmanager_secret.groq_api_key.id
-    }
-  }
-
-  depends_on = [
-    aws_iam_role_policy_attachment.lambda_basic,
-    aws_iam_role_policy.dynamodb_policy,
-    null_resource.lambda_package
-  ]
-
-  tags = {
-    Name        = "Moral Torture Machine API"
-    Environment = var.environment
-    ManagedBy   = "Terraform"
-  }
-}
-
 # CloudWatch Log Group for Lambda
 resource "aws_cloudwatch_log_group" "lambda_logs" {
-  name              = "/aws/lambda/${aws_lambda_function.api.function_name}"
+  name              = "/aws/lambda/${var.stack_name}-api"
   retention_in_days = var.log_retention_days
 
   tags = {
@@ -313,19 +218,49 @@ resource "aws_cloudwatch_log_group" "lambda_logs" {
   }
 }
 
+# Lambda Function
+resource "aws_lambda_function" "api" {
+  function_name    = "${var.stack_name}-api"
+  filename         = "${path.module}/../lambda_function.zip"
+  source_code_hash = filebase64sha256("${path.module}/../lambda_function.zip")
+  handler          = "backend_fastapi.handler"
+  runtime          = "python3.11"
+  role             = aws_iam_role.lambda_role.arn
+  timeout          = 30
+  memory_size      = 512
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE        = aws_dynamodb_table.dilemmas.name
+      ANALYTICS_TABLE       = aws_dynamodb_table.user_analytics.name
+      STORY_FLOWS_TABLE     = aws_dynamodb_table.story_flows.name
+      GROQ_API_KEY_SSM_NAME = aws_ssm_parameter.groq_api_key.name
+    }
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.lambda_basic_execution,
+    aws_cloudwatch_log_group.lambda_logs
+  ]
+
+  tags = {
+    Name        = "Moral Torture Machine API"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
+
 # API Gateway HTTP API
 resource "aws_apigatewayv2_api" "api" {
-  name          = "${var.environment}-${var.stack_name}-api"
+  name          = "${var.stack_name}-api"
   protocol_type = "HTTP"
 
   cors_configuration {
-    allow_origins = concat(
-      var.cors_allowed_origins,
-      var.cloudfront_domain != "" ? ["https://${var.cloudfront_domain}"] : []
-    )
-    allow_methods     = ["*"]
-    allow_headers     = ["*"]
     allow_credentials = true
+    allow_headers     = ["*"]
+    allow_methods     = ["*"]
+    allow_origins     = var.cors_allowed_origins
+    max_age           = 0
   }
 
   tags = {
@@ -335,44 +270,35 @@ resource "aws_apigatewayv2_api" "api" {
   }
 }
 
-# API Gateway Integration with Lambda
-resource "aws_apigatewayv2_integration" "lambda" {
-  api_id                 = aws_apigatewayv2_api.api.id
-  integration_type       = "AWS_PROXY"
-  integration_uri        = aws_lambda_function.api.invoke_arn
-  payload_format_version = "2.0"
+# CloudWatch Log Group for API Gateway
+resource "aws_cloudwatch_log_group" "api_logs" {
+  name              = "/aws/apigateway/${aws_apigatewayv2_api.api.name}"
+  retention_in_days = var.log_retention_days
+
+  tags = {
+    Name        = "Moral Torture Machine API Gateway Logs"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
 }
 
-# API Gateway Default Route
-resource "aws_apigatewayv2_route" "default" {
-  api_id    = aws_apigatewayv2_api.api.id
-  route_key = "$default"
-  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
-}
-
-# API Gateway Stage with throttling
+# API Gateway Stage
 resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.api.id
   name        = "$default"
   auto_deploy = true
 
-  # Rate limiting at the stage level
-  default_route_settings {
-    throttling_burst_limit = 100  # Maximum concurrent requests
-    throttling_rate_limit  = 50   # Requests per second
-  }
-
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api_logs.arn
     format = jsonencode({
-      requestId      = "$context.requestId"
-      ip             = "$context.identity.sourceIp"
-      requestTime    = "$context.requestTime"
       httpMethod     = "$context.httpMethod"
+      ip             = "$context.identity.sourceIp"
+      protocol       = "$context.protocol"
+      requestId      = "$context.requestId"
+      requestTime    = "$context.requestTime"
+      responseLength = "$context.responseLength"
       routeKey       = "$context.routeKey"
       status         = "$context.status"
-      protocol       = "$context.protocol"
-      responseLength = "$context.responseLength"
     })
   }
 
@@ -383,21 +309,26 @@ resource "aws_apigatewayv2_stage" "default" {
   }
 }
 
-# CloudWatch Log Group for API Gateway
-resource "aws_cloudwatch_log_group" "api_logs" {
-  name              = "/aws/apigateway/${var.environment}-${var.stack_name}-api"
-  retention_in_days = var.log_retention_days
-
-  tags = {
-    Name        = "Moral Torture Machine API Gateway Logs"
-    Environment = var.environment
-    ManagedBy   = "Terraform"
-  }
+# API Gateway Lambda Integration
+resource "aws_apigatewayv2_integration" "lambda" {
+  api_id                 = aws_apigatewayv2_api.api.id
+  integration_type       = "AWS_PROXY"
+  integration_method     = "POST"
+  integration_uri        = aws_lambda_function.api.invoke_arn
+  payload_format_version = "2.0"
+  timeout_milliseconds   = 30000
 }
 
-# Lambda permission for API Gateway
+# API Gateway Catch-all Route
+resource "aws_apigatewayv2_route" "default" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
+# Lambda Permission for API Gateway
 resource "aws_lambda_permission" "api_gateway" {
-  statement_id  = "AllowAPIGatewayInvoke"
+  statement_id  = "allow-api-gateway"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.api.function_name
   principal     = "apigateway.amazonaws.com"

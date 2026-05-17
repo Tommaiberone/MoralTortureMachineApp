@@ -135,10 +135,11 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
         with:
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          version: "latest"
+          enable-cache: false
 
       - name: Build Lambda package
         run: |
@@ -146,39 +147,35 @@ jobs:
           mkdir -p lambda_deployment
           cp src/backend_fastapi.py lambda_deployment/
 
-          cd lambda_deployment
-          pip install \
-            --target . \
-            --platform manylinux2014_x86_64 \
-            --implementation cp \
+          uv pip install \
+            --target lambda_deployment \
+            --python-platform manylinux2014_x86_64 \
             --python-version ${{ env.PYTHON_VERSION }} \
-            --only-binary=:all: \
-            -r ../requirements.txt
+            --no-installer-metadata \
+            -r requirements.txt
 
-          zip -q -r ../lambda_function.zip .
-          cd ..
+          cd lambda_deployment && zip -q -r ../lambda_function.zip . && cd ..
+          echo "📦 Lambda package size: $(du -h lambda_function.zip | cut -f1)"
 
-          echo "📦 Lambda package size: $(du -h lambda_function.zip)"
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
 
-      - name: Create/Update Secrets Manager Secret
+      - name: Update SSM Parameter (Groq API Key)
         run: |
-          SECRET_NAME="${{ needs.setup.outputs.environment }}-moral-torture-machine-groq-api-key"
-
-          # Check if secret exists
-          if aws secretsmanager describe-secret --secret-id "$SECRET_NAME" --region ${{ env.AWS_REGION }} 2>/dev/null; then
-            echo "Secret exists, updating..."
-            aws secretsmanager put-secret-value \
-              --secret-id "$SECRET_NAME" \
-              --secret-string "${{ secrets.GROQ_API_KEY }}" \
-              --region ${{ env.AWS_REGION }}
-          else
-            echo "Secret does not exist, will be created by Terraform"
-          fi
+          SSM_NAME="/${{ needs.setup.outputs.environment }}/moral-torture-machine/groq-api-key"
+          aws ssm put-parameter \
+            --name "$SSM_NAME" \
+            --type SecureString \
+            --value "${{ secrets.GROQ_API_KEY }}" \
+            --overwrite \
+            --region ${{ env.AWS_REGION }}
+          echo "✅ SSM parameter updated: $SSM_NAME"
 
       - name: Terraform Init & Apply
         working-directory: ./backend/terraform
         env:
-          TF_VAR_groq_api_key: ${{ secrets.GROQ_API_KEY }}
           TF_VAR_environment: ${{ needs.setup.outputs.environment }}
           TF_VAR_stack_name: moral-torture-machine
         run: |
@@ -187,7 +184,7 @@ jobs:
           # Select or create workspace
           terraform workspace select ${{ needs.setup.outputs.environment }} || terraform workspace new ${{ needs.setup.outputs.environment }}
 
-          # Apply with environment variables
+          # Apply (manages DynamoDB + SSM + Lambda + API Gateway)
           terraform apply -auto-approve
 
       - name: Get API Endpoint
@@ -202,27 +199,17 @@ jobs:
         run: |
           API_URL="${{ steps.api-endpoint.outputs.api_url }}"
           echo "🧪 Testing API at: $API_URL"
-          sleep 10 # Aggiunto un breve delay per dare tempo all'API Gateway di propagarsi
+          sleep 5
 
-          # Test root endpoint
-          echo "Testing root endpoint..."
           curl -f -s --retry 3 --retry-delay 5 "$API_URL/" || exit 1
 
-          # Test get-dilemma endpoint (may fail if DB is empty, but API should still return 500)
-          echo "Testing get-dilemma endpoint..."
-          RESPONSE=$(curl -s --retry 3 --retry-delay 5 "$API_URL/get-dilemma" -w "%{http_code}" -o /tmp/response.txt)
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-
-          # Accept 200 (success), 404 (no dilemmas), or 500 (empty DB) as valid responses
-          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "404" ] && [ "$HTTP_CODE" != "500" ]; then
-            echo "❌ Unexpected HTTP code: $HTTP_CODE"
-            cat /tmp/response.txt
-            exit 1
-          fi
-
-          echo "✅ API health check passed! HTTP Code: $HTTP_CODE"
+          RESPONSE=$(curl -s --retry 3 --retry-delay 5 "$API_URL/health")
+          echo "Health check response: $RESPONSE"
+          echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); exit(0 if d.get('status') in ['healthy','degraded'] else 1)"
+          echo "✅ API health check passed!"
 
       - name: Cleanup Lambda package
+        if: always()
         run: |
           rm -rf lambda_function.zip lambda_deployment
           echo "🧹 Cleaned up temporary Lambda files"
@@ -612,11 +599,9 @@ jobs:
 
           **Environment:** ${{ needs.setup.outputs.environment }}
 
-          ### Backend
+          ### Backend (DynamoDB + SSM)
           $(if [ "${{ needs.backend-deploy.result }}" == "success" ]; then
             echo "✅ **Deployed successfully**"
-            echo "**API Endpoint:** \`${{ needs.backend-deploy.outputs.api_url }}\`"
-            echo "**DynamoDB Table:** \`${{ needs.setup.outputs.dynamodb_table }}\`"
           else
             echo "❌ **Failed**"
           fi)
