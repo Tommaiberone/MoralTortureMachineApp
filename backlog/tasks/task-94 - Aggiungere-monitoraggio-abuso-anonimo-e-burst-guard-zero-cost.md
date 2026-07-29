@@ -4,7 +4,7 @@ title: Aggiungere monitoraggio abuso anonimo e burst guard zero-cost
 status: Done
 assignee: []
 created_date: '2026-07-29 12:37'
-updated_date: '2026-07-29 13:11'
+updated_date: '2026-07-29 13:23'
 labels:
   - security
   - analytics
@@ -39,6 +39,8 @@ Prima tranche autonoma di TASK-67: classificare sessioni anonime anomale nella d
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-07-29: implementati fingerprint di rete HMAC-peppered, detector privacy-safe con livelli watch/suspicious e motivazioni, burst guard per-container configurabile (120 globali, 12 AI, 30 batch analytics al minuto), dashboard Notion bilingue e access log senza IP grezzo con path. Passano 15 unit test backend, py_compile, pnpm lint, build production e terraform validate. Modifica backend retrocompatibile: nessun rebuild APK richiesto.
+
+2026-07-29 deploy: corretta la variabile access-log API Gateway da $context.http.path (non valida per HTTP API) a $context.path, verificata sulla documentazione AWS.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -4,7 +4,7 @@ title: Configurare credenziali Google OAuth e deployare Cognito
 status: In Progress
 assignee: []
 created_date: '2026-07-29 11:27'
-updated_date: '2026-07-29 13:18'
+updated_date: '2026-07-29 13:23'
 labels:
   - m1-auth
   - auth
@@ -37,4 +37,6 @@ Creare il client OAuth Google, valorizzare i secret previsti e applicare le riso
 2026-07-29: verifica read-only con AWS CLI --profile personal: nessun user pool moral-torture-machine presente in eu-west-1. Restano necessari Google OAuth client ID/secret e terraform apply esplicitamente autorizzato.
 
 2026-07-29: secret Google aggiunti su GitHub dall owner. Il primo apply ha creato pool/provider/domain ma Cognito ha rifiutato i due app client perché write_attributes ometteva email, attributo obbligatorio; corretti entrambi a email+name e validato Terraform per il retry.
+
+2026-07-29 retry 2: pool, provider Google, dominio, gruppo admin e app client web/Android creati; Lambda aggiornata. Apply fermato solo dall access-log API Gateway con variabile path errata, corretta per il retry finale.
 <!-- SECTION:NOTES:END -->
