@@ -98,6 +98,16 @@ drop the raw source IP and add the request path. The admin API exposes only a
 short derived mask, aggregate activity, risk level, and reason codes. `watch` and
 `suspicious` always mean human review is required; they are not bot verdicts.
 
+### ADR-013 — Cognito-only analytics access and timezone segmentation
+
+The analytics workspace accepts only a verified Cognito ID token containing the
+`admins` group; the client-supplied SSM key fallback is removed. The existing
+Standard SecureString is retained solely as a server-side HMAC pepper for abuse
+pseudonyms. Analytics records a bounded IANA-style timezone reported by the
+device, alongside the selected in-app language, rather than deriving location
+from an IP. This enables useful regional-time and language segmentation without
+collecting country, city, or raw network location.
+
 
 ## Consequences
 

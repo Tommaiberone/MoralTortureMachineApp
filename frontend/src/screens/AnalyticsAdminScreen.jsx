@@ -30,8 +30,6 @@ const PLATFORM_COLORS = {
 const AnalyticsAdminScreen = () => {
   const { t, i18n } = useTranslation();
   const auth = useAuth();
-  const [keyInput, setKeyInput] = useState('');
-  const [adminKey, setAdminKey] = useState('');
   const [days, setDays] = useState(30);
   const [platform, setPlatform] = useState('all');
   const [data, setData] = useState(null);
@@ -49,8 +47,8 @@ const AnalyticsAdminScreen = () => {
     [i18n.language],
   );
 
-  const loadOverview = useCallback(async (key, token, selectedDays, selectedPlatform) => {
-    if (!key && !token) return;
+  const loadOverview = useCallback(async (token, selectedDays, selectedPlatform) => {
+    if (!token) return;
     setLoading(true);
     setError('');
     try {
@@ -59,20 +57,16 @@ const AnalyticsAdminScreen = () => {
         {
           headers: {
             ...getApiHeaders(),
-            ...(key ? { 'X-Admin-Key': key } : {}),
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            Authorization: `Bearer ${token}`,
           },
         },
       );
-      setAdminKey(key);
-      setKeyInput('');
       setData(overview);
     } catch (requestError) {
       console.error('Analytics dashboard unavailable', requestError);
       setError(String(requestError.message).includes('403')
         ? t('auth.adminPending')
         : t('analyticsAdmin.accessError'));
-      if (String(requestError.message).includes('401')) setAdminKey('');
     } finally {
       setLoading(false);
     }
@@ -82,27 +76,20 @@ const AnalyticsAdminScreen = () => {
     const token = auth.session?.idToken;
     if (!auth.isAdmin || !token || attemptedToken.current === token || data) return;
     attemptedToken.current = token;
-    void loadOverview('', token, days, platform);
+    void loadOverview(token, days, platform);
   }, [auth.isAdmin, auth.session?.idToken, data, days, loadOverview, platform]);
-
-  const submitAccess = (event) => {
-    event.preventDefault();
-    loadOverview(keyInput.trim(), '', days, platform);
-  };
 
   const changePeriod = (nextDays) => {
     setDays(nextDays);
-    loadOverview(adminKey, auth.isAdmin ? auth.session?.idToken : '', nextDays, platform);
+    loadOverview(auth.isAdmin ? auth.session?.idToken : '', nextDays, platform);
   };
 
   const changePlatform = (nextPlatform) => {
     setPlatform(nextPlatform);
-    loadOverview(adminKey, auth.isAdmin ? auth.session?.idToken : '', days, nextPlatform);
+    loadOverview(auth.isAdmin ? auth.session?.idToken : '', days, nextPlatform);
   };
 
   const lockDashboard = () => {
-    setAdminKey('');
-    setKeyInput('');
     setData(null);
     setError('');
     if (auth.isAuthenticated) auth.logout();
@@ -129,26 +116,7 @@ const AnalyticsAdminScreen = () => {
           {auth.isAuthenticated && (
             <p className="analytics-security-note">{auth.user?.email}</p>
           )}
-          <details className="analytics-breakglass">
-            <summary>{t('analyticsAdmin.emergencyAccess')}</summary>
-            <form onSubmit={submitAccess}>
-              <label htmlFor="analytics-admin-key">{t('analyticsAdmin.accessKey')}</label>
-              <input
-                id="analytics-admin-key"
-                type="password"
-                autoComplete="off"
-                value={keyInput}
-                onChange={(event) => setKeyInput(event.target.value)}
-                disabled={loading}
-                required
-              />
-              <button type="submit" disabled={loading || !keyInput.trim()}>
-                {loading ? t('analyticsAdmin.loading') : t('analyticsAdmin.enter')}
-              </button>
-            </form>
-          </details>
           {error && <p className="analytics-error" role="alert">{error}</p>}
-          <p className="analytics-security-note">{t('analyticsAdmin.keyNotStored')}</p>
         </section>
       </main>
     );
@@ -176,6 +144,7 @@ const AnalyticsAdminScreen = () => {
     ['abuseSuspicious', abuse.summary.suspicious],
     ['abuseMaxPeak', abuse.summary.maxPeakEventsPerMinute],
   ];
+  const timeZoneCounts = data.timeZoneCounts || { unknown: data.summary.totalEvents };
 
   return (
     <main className="analytics-admin">
@@ -199,7 +168,7 @@ const AnalyticsAdminScreen = () => {
             {(auth.user?.email || 'A').slice(0, 1).toUpperCase()}
           </span>
           <div>
-            <strong>{auth.user?.email || t('analyticsAdmin.emergencyAccess')}</strong>
+            <strong>{auth.user?.email || t('analyticsAdmin.privateWorkspace')}</strong>
             <small>{t('analyticsAdmin.platforms')}</small>
           </div>
         </div>
@@ -213,7 +182,7 @@ const AnalyticsAdminScreen = () => {
           <p>{t('analyticsAdmin.subtitle')}</p>
         </div>
         <div className="analytics-header-actions">
-          <button type="button" onClick={() => loadOverview(adminKey, auth.isAdmin ? auth.session?.idToken : '', days, platform)} disabled={loading}>
+          <button type="button" onClick={() => loadOverview(auth.isAdmin ? auth.session?.idToken : '', days, platform)} disabled={loading}>
             {loading ? t('analyticsAdmin.loading') : t('analyticsAdmin.refresh')}
           </button>
           <button type="button" className="analytics-button--quiet" onClick={lockDashboard}>
@@ -444,6 +413,17 @@ const AnalyticsAdminScreen = () => {
           <div className="analytics-ranked-list analytics-ranked-list--compact">
             {Object.entries(data.languageCounts).map(([language, count]) => (
               <div key={language}><code>{language}</code><strong>{formatNumber(count)}</strong></div>
+            ))}
+          </div>
+          <h3>{t('analyticsAdmin.timeZones')}</h3>
+          <p className="analytics-card-copy">
+            {t('analyticsAdmin.timeZoneDescription', {
+              coverage: data.dataQuality.timeZoneCoveragePct || 0,
+            })}
+          </p>
+          <div className="analytics-ranked-list analytics-ranked-list--compact">
+            {Object.entries(timeZoneCounts).map(([timeZone, count]) => (
+              <div key={timeZone}><code>{timeZone}</code><strong>{formatNumber(count)}</strong></div>
             ))}
           </div>
           <h3>{t('analyticsAdmin.appVersions')}</h3>

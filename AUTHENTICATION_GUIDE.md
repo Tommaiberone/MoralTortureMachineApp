@@ -144,5 +144,5 @@ aws cognito-idp admin-add-user-to-group \
 The user must sign out and sign in again after the group assignment so Cognito
 issues a new ID token containing `cognito:groups: ["admins"]`.
 
-The analytics SSM key remains available only as break-glass access during the
-authentication migration.
+Analytics access is exclusively granted by the `admins` Cognito group. There is
+no key-based or break-glass dashboard login.

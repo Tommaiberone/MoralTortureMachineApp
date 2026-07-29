@@ -6,7 +6,7 @@ import { getPlatform, isNativePlatform } from './platform';
 const ANONYMOUS_USER_KEY = 'mtm_anonymous_user_id';
 const INSTALL_KEY = 'mtm_install_id';
 const SESSION_KEY = 'mtm_session_id';
-const APP_VERSION = import.meta.env.VITE_APP_VERSION || '1.3.0';
+const APP_VERSION = import.meta.env.VITE_APP_VERSION || '1.3.1';
 
 let anonymousUserId;
 let installId;
@@ -90,12 +90,26 @@ export const getIdentityContext = () => ({
   appVersion: APP_VERSION,
 });
 
+export const getTimeZone = () => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+export const getAppLanguage = () => (
+  document.documentElement.lang || navigator.language?.split('-')[0] || 'en'
+);
+
 /**
  * Get headers for API requests including session tracking
  * @returns {Object} Headers object with session ID
  */
 export const getApiHeaders = () => {
   const identity = getIdentityContext();
+  const timeZone = getTimeZone();
+  const appLanguage = getAppLanguage();
 
   return {
     'Content-Type': 'application/json',
@@ -104,6 +118,8 @@ export const getApiHeaders = () => {
     'X-Install-Id': identity.installId,
     'X-Client-Platform': identity.platform,
     'X-App-Version': identity.appVersion,
+    'X-Client-Language': appLanguage,
+    ...(timeZone ? { 'X-Time-Zone': timeZone } : {}),
   };
 };
 

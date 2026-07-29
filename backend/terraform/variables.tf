@@ -28,13 +28,6 @@ variable "groq_api_key" {
   default     = "SET_THIS_LATER"
 }
 
-variable "analytics_admin_key" {
-  description = "Private access key for the analytics dashboard (replace before deployment)"
-  type        = string
-  sensitive   = true
-  default     = "SET_THIS_LATER"
-}
-
 variable "google_oauth_client_id" {
   description = "Google OAuth 2.0 web client ID used by Cognito federation"
   type        = string

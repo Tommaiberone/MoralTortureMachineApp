@@ -195,14 +195,22 @@ resource "aws_ssm_parameter" "groq_api_key" {
   }
 }
 
-resource "aws_ssm_parameter" "analytics_admin_key" {
+# Preserve the existing Standard SecureString value without exposing it or using
+# it for authorization. The physical name is retained to avoid replacing the
+# live secret during this authentication migration.
+moved {
+  from = aws_ssm_parameter.analytics_admin_key
+  to   = aws_ssm_parameter.analytics_fingerprint_pepper
+}
+
+resource "aws_ssm_parameter" "analytics_fingerprint_pepper" {
   name        = "/${var.environment}/${var.stack_name}/analytics-admin-key"
-  description = "Private access key for the analytics dashboard"
+  description = "Internal HMAC pepper for analytics network pseudonyms"
   type        = "SecureString"
-  value       = var.analytics_admin_key
+  value       = "MANAGED_OUT_OF_BAND"
 
   tags = {
-    Name        = "Moral Torture Machine Analytics Admin Key"
+    Name        = "Moral Torture Machine Analytics Fingerprint Pepper"
     Environment = var.environment
     ManagedBy   = "Terraform"
   }
@@ -424,7 +432,7 @@ resource "aws_iam_role_policy" "lambda_permissions" {
         Action = ["ssm:GetParameter"]
         Resource = [
           aws_ssm_parameter.groq_api_key.arn,
-          aws_ssm_parameter.analytics_admin_key.arn
+          aws_ssm_parameter.analytics_fingerprint_pepper.arn
         ]
       }
     ]
@@ -456,19 +464,19 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE                     = aws_dynamodb_table.dilemmas.name
-      ANALYTICS_TABLE                    = aws_dynamodb_table.user_analytics.name
-      STORY_FLOWS_TABLE                  = aws_dynamodb_table.story_flows.name
-      PRODUCT_EVENTS_TABLE               = aws_dynamodb_table.product_events.name
-      GROQ_API_KEY_SSM_NAME              = aws_ssm_parameter.groq_api_key.name
-      ANALYTICS_ADMIN_KEY_SSM_NAME       = aws_ssm_parameter.analytics_admin_key.name
-      COGNITO_USER_POOL_ID               = aws_cognito_user_pool.users.id
-      COGNITO_APP_CLIENT_ID              = aws_cognito_user_pool_client.web.id
-      COGNITO_APP_CLIENT_IDS             = join(",", [aws_cognito_user_pool_client.web.id, aws_cognito_user_pool_client.android.id])
-      ABUSE_BURST_GUARD_ENABLED          = tostring(var.abuse_burst_guard_enabled)
-      ABUSE_GLOBAL_REQUESTS_PER_MINUTE   = tostring(var.abuse_global_requests_per_minute)
-      ABUSE_AI_REQUESTS_PER_MINUTE       = tostring(var.abuse_ai_requests_per_minute)
-      ABUSE_ANALYTICS_BATCHES_PER_MINUTE = tostring(var.abuse_analytics_batches_per_minute)
+      DYNAMODB_TABLE                        = aws_dynamodb_table.dilemmas.name
+      ANALYTICS_TABLE                       = aws_dynamodb_table.user_analytics.name
+      STORY_FLOWS_TABLE                     = aws_dynamodb_table.story_flows.name
+      PRODUCT_EVENTS_TABLE                  = aws_dynamodb_table.product_events.name
+      GROQ_API_KEY_SSM_NAME                 = aws_ssm_parameter.groq_api_key.name
+      ANALYTICS_FINGERPRINT_SECRET_SSM_NAME = aws_ssm_parameter.analytics_fingerprint_pepper.name
+      COGNITO_USER_POOL_ID                  = aws_cognito_user_pool.users.id
+      COGNITO_APP_CLIENT_ID                 = aws_cognito_user_pool_client.web.id
+      COGNITO_APP_CLIENT_IDS                = join(",", [aws_cognito_user_pool_client.web.id, aws_cognito_user_pool_client.android.id])
+      ABUSE_BURST_GUARD_ENABLED             = tostring(var.abuse_burst_guard_enabled)
+      ABUSE_GLOBAL_REQUESTS_PER_MINUTE      = tostring(var.abuse_global_requests_per_minute)
+      ABUSE_AI_REQUESTS_PER_MINUTE          = tostring(var.abuse_ai_requests_per_minute)
+      ABUSE_ANALYTICS_BATCHES_PER_MINUTE    = tostring(var.abuse_analytics_batches_per_minute)
     }
   }
 

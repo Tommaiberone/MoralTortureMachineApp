@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 
 from fastapi import HTTPException
 from pydantic import ValidationError
+from starlette.requests import Request
 
 
 os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
@@ -21,6 +22,8 @@ from backend.src.backend_fastapi import (  # noqa: E402
     build_analytics_overview,
     infer_platform,
     normalize_analytics_event,
+    require_analytics_admin,
+    track_analytics_event,
     verify_cognito_id_token,
 )
 from backend.src import backend_fastapi as backend_module  # noqa: E402
@@ -38,6 +41,7 @@ def valid_event(**overrides):
         "platform": "web",
         "appVersion": "1.1.2",
         "language": "it",
+        "timeZone": "Europe/Rome",
         "utm": {"utm_source": "test"},
         "properties": {"mode": "evaluation", "planned_dilemmas": 7},
     }
@@ -51,6 +55,29 @@ class AnalyticsModelTests(unittest.TestCase):
 
         self.assertEqual(event.eventName, "test_started")
         self.assertEqual(event.properties["planned_dilemmas"], 7)
+        self.assertEqual(event.timeZone, "Europe/Rome")
+
+    def test_rejects_invalid_time_zone(self):
+        with self.assertRaises(ValidationError):
+            AnalyticsEvent(**valid_event(timeZone="Europe Rome!"))
+
+    def test_legacy_events_use_the_selected_client_language_and_timezone(self):
+        analytics_table = Mock()
+        with (
+            patch.object(backend_module, "analytics_table", analytics_table),
+            patch.object(backend_module, "_network_fingerprint", return_value=None),
+        ):
+            track_analytics_event(
+                session_id="session-1",
+                action_type="vote_cast",
+                language="en",
+                client_language="it",
+                time_zone="Europe/Rome",
+            )
+
+        stored = analytics_table.put_item.call_args.kwargs["Item"]
+        self.assertEqual(stored["language"], "it")
+        self.assertEqual(stored["timeZone"], "Europe/Rome")
 
     def test_rejects_sensitive_property_name(self):
         with self.assertRaises(ValidationError):
@@ -115,6 +142,7 @@ class AnalyticsOverviewTests(unittest.TestCase):
                 "occurredAt": now_ms - 500,
                 "actionType": "test_started",
                 "platform": "web",
+                "timeZone": "Europe/Rome",
                 "properties": "{}",
             }],
             days=7,
@@ -124,6 +152,8 @@ class AnalyticsOverviewTests(unittest.TestCase):
         self.assertEqual(overview["summary"]["totalEvents"], 2)
         self.assertEqual(overview["dataQuality"]["exactPlatformCoveragePct"], 50.0)
         self.assertEqual(overview["platformCounts"], {"android": 1, "web": 1})
+        self.assertEqual(overview["timeZoneCounts"], {"unknown": 1, "Europe/Rome": 1})
+        self.assertEqual(overview["dataQuality"]["timeZoneCoveragePct"], 50.0)
         self.assertNotEqual(overview["recentEvents"][0]["identity"], "anonymous-user")
         self.assertEqual(overview["topDilemmas"][0]["dilemmaId"], "dilemma-1")
         self.assertEqual(overview["abuseMonitoring"]["summary"]["suspicious"], 0)
@@ -184,7 +214,7 @@ class AbuseGuardTests(unittest.TestCase):
         self.assertEqual([name for name, _ in rules], ["global", "ai"])
 
     def test_network_fingerprint_is_stable_and_peppered(self):
-        with patch.object(backend_module, "get_analytics_admin_key", return_value="private-pepper"):
+        with patch.object(backend_module, "get_analytics_fingerprint_secret", return_value="private-pepper"):
             first = _network_fingerprint("203.0.113.10")
             second = _network_fingerprint("203.0.113.10")
             other = _network_fingerprint("203.0.113.11")
@@ -247,6 +277,27 @@ class CognitoAuthenticationTests(unittest.TestCase):
                 verify_cognito_id_token("access-token")
 
         self.assertEqual(raised.exception.status_code, 401)
+
+    def test_analytics_access_requires_a_cognito_admin_token(self):
+        def request_with_headers(headers):
+            return Request({
+                "type": "http",
+                "method": "GET",
+                "path": "/admin/analytics/overview",
+                "headers": [(key.lower().encode(), value.encode()) for key, value in headers.items()],
+            })
+
+        with self.assertRaises(HTTPException) as unauthenticated:
+            require_analytics_admin(request_with_headers({"X-Admin-Key": "no-longer-valid"}))
+        self.assertEqual(unauthenticated.exception.status_code, 401)
+
+        with patch.object(backend_module, "verify_cognito_id_token", return_value={"cognito:groups": []}):
+            with self.assertRaises(HTTPException) as non_admin:
+                require_analytics_admin(request_with_headers({"Authorization": "Bearer token"}))
+        self.assertEqual(non_admin.exception.status_code, 403)
+
+        with patch.object(backend_module, "verify_cognito_id_token", return_value={"cognito:groups": ["admins"]}):
+            require_analytics_admin(request_with_headers({"Authorization": "Bearer token"}))
 
 
 if __name__ == "__main__":

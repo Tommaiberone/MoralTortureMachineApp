@@ -43,11 +43,6 @@ output "ssm_parameter_name" {
   value       = aws_ssm_parameter.groq_api_key.name
 }
 
-output "analytics_admin_key_ssm_parameter_name" {
-  description = "SSM Parameter Store path for the analytics dashboard key"
-  value       = aws_ssm_parameter.analytics_admin_key.name
-}
-
 output "cognito_user_pool_id" {
   description = "Production Cognito User Pool ID"
   value       = aws_cognito_user_pool.users.id

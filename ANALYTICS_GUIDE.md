@@ -9,7 +9,8 @@ privacy-safe aggregate from `GET /admin/analytics/overview` and supports:
 - `all`, `web`, `android`, and `unknown` platform filters;
 - daily events and active-identity trends;
 - the test-to-share funnel;
-- all event types, languages, top dilemmas, and recent events;
+- all event types, in-app languages, device-declared timezones, top dilemmas,
+  and recent events;
 - separate `exact`, `inferred`, and `unknown` platform quality.
 
 New web and Android events share the same event schema and carry an exact
@@ -17,11 +18,10 @@ platform field. Historical rows did not contain it, so Android WebView traffic i
 estimated from the user-agent and is always labeled `inferred`. Mobile browser
 traffic counts as `web`, not Android app traffic.
 
-Access is protected by `X-Admin-Key`. The key is held in the SSM SecureString
-parameter `/<environment>/moral-torture-machine/analytics-admin-key`; it is typed
-into the dashboard and kept only in React memory. `SET_THIS_LATER` deliberately
-disables the endpoint. The route must move to a Cognito admin group when account
-authentication is introduced.
+Access is protected exclusively by a verified Cognito ID token whose
+`cognito:groups` claim contains `admins`. The dashboard never accepts, stores,
+or displays an access key. The server retains a private Standard SSM secret only
+as an HMAC pepper for anti-abuse pseudonyms; it is not an access credential.
 
 The backend caches each aggregate for 60 seconds. At the current table size, a
 scan is inexpensive; replace it with daily rollups before analytics volume grows
@@ -30,21 +30,9 @@ enough to make repeated scans material.
 ### Production access
 
 1. Open `https://moraltorturemachine.com/admin/analytics`.
-2. Retrieve the current key in your own terminal (do not paste it into chat or
-   commit it):
-
-   ```bash
-   aws ssm get-parameter \
-     --name /prod/moral-torture-machine/analytics-admin-key \
-     --with-decryption \
-     --query Parameter.Value \
-     --output text \
-     --region eu-west-1 \
-     --profile personal
-   ```
-
-3. Paste that value into the dashboard access form. The browser keeps it only in
-   memory; reloading or closing the page requires entering it again.
+2. Sign in with Google.
+3. An existing Cognito administrator can promote a user with the `admins` group;
+   sign out and sign in again after promotion to receive a new ID token.
 
 Use the platform selector to recalculate every KPI, trend, funnel, and event list
 for web or Android. `Exact platform` will initially be low because historical
@@ -77,11 +65,12 @@ The Moral Torture Machine application now tracks comprehensive user behavior ana
 | `language` | String | User's selected language (e.g., "en", "it") |
 | `actionData` | String (JSON) | Additional data specific to the action |
 | `userAgent` | String | Browser/client information (max 200 chars) |
-| `hashedIp` | String | SHA-256 hashed IP address (first 16 chars for privacy) |
+| `networkFingerprint` | String | Server-only HMAC pseudonym for abuse aggregates; never returned to clients |
 | `anonymousUserId` | String | Persistent anonymous identity on newly recorded rows |
 | `installId` | String | Installation identity on newly recorded rows |
 | `platform` | String | Exact `web`, `android`, or `ios` on newly recorded rows |
 | `appVersion` | String | Web/native application version |
+| `timeZone` | String | Device-declared IANA-style timezone on new rows; never inferred from IP |
 | `expirationTime` | Number | TTL timestamp - data auto-deletes after 90 days |
 
 ### Global Secondary Index

@@ -1,10 +1,10 @@
 ---
 id: TASK-11
 title: Configurare credenziali Google OAuth e deployare Cognito
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-29 11:27'
-updated_date: '2026-07-29 13:30'
+updated_date: '2026-07-29 13:32'
 labels:
   - m1-auth
   - auth
@@ -26,7 +26,7 @@ Creare il client OAuth Google, valorizzare i secret previsti e applicare le riso
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Callback e logout URL prod sono configurati
-- [ ] #2 Login Google completa il round trip in produzione
+- [x] #2 Login Google completa il round trip in produzione
 - [x] #3 Nessun client secret entra nel bundle frontend
 - [x] #4 Il primo account può essere promosso nel gruppo admins
 <!-- AC:END -->
@@ -41,4 +41,12 @@ Creare il client OAuth Google, valorizzare i secret previsti e applicare le riso
 2026-07-29 retry 2: pool, provider Google, dominio, gruppo admin e app client web/Android creati; Lambda aggiornata. Apply fermato solo dall access-log API Gateway con variabile path errata, corretta per il retry finale.
 
 2026-07-29 deploy riuscito nel run GitHub Actions 30455802320. Verificati: client web e Android live, callback/logout prod, redirect Cognito 302 verso Google, nessun secret nel bundle, gruppo admins presente. Resta la AC #2: round trip reale dopo il primo login dell owner.
+
+2026-07-29: dopo il login reale di tommasobersani@gmail.com, utente Cognito Google_102630893387646173119 aggiunto e verificato nel gruppo admins. Per recepire il claim il browser deve emettere un nuovo ID token tramite logout/login.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Google/Cognito è operativo in produzione; callback e client web/Android sono configurati e il primo amministratore è nel gruppo admins.
+<!-- SECTION:FINAL_SUMMARY:END -->

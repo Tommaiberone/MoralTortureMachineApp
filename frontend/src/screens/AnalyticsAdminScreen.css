@@ -72,20 +72,6 @@
   margin-top: 1rem;
 }
 
-.analytics-breakglass {
-  margin-top: 1.25rem;
-  padding-top: 1rem;
-  color: var(--analytics-muted);
-  border-top: 1px solid var(--analytics-line);
-  font-size: 0.82rem;
-}
-
-.analytics-breakglass summary {
-  width: fit-content;
-  cursor: pointer;
-  user-select: none;
-}
-
 .analytics-access-card label { color: var(--analytics-ink); font-weight: 600; }
 
 .analytics-access-card input {

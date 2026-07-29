@@ -1,5 +1,10 @@
 import { API_ENDPOINTS } from '../config/api';
-import { getApiHeaders, getIdentityContext } from './session';
+import {
+  getApiHeaders,
+  getAppLanguage,
+  getIdentityContext,
+  getTimeZone,
+} from './session';
 
 const QUEUE_KEY = 'mtm_analytics_queue_v1';
 const SCHEMA_VERSION = 1;
@@ -106,7 +111,8 @@ export const trackEvent = (eventName, properties = {}) => {
       installId: identity.installId,
       platform: identity.platform,
       appVersion: identity.appVersion,
-      language: document.documentElement.lang || navigator.language?.split('-')[0] || 'en',
+      language: getAppLanguage(),
+      timeZone: getTimeZone(),
       referrer: attribution.referrer,
       utm: attribution.utm,
       properties: sanitizeProperties(properties),

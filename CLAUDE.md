@@ -41,7 +41,7 @@ Before implementing any task, in this order:
 4. If an implementation request has no matching task, create an atomic task with
    acceptance criteria after deduplication.
 5. Run `backlog task edit TASK-N --status "In Progress"` before implementation.
-   At most one task may be In Progress.
+   Multiple tasks may be In Progress at once.
 6. If the request conflicts with project context, report the conflict before
    proceeding.
 
@@ -71,7 +71,7 @@ Available columns:
 |---|---|
 | `Open Points` | A decision or blocking question requiring a person |
 | `To Do` | Ready and high enough priority to implement |
-| `In Progress` | Currently being implemented; maximum one |
+| `In Progress` | Currently being implemented |
 | `Blocked` | Started but stopped by an external impediment |
 | `Done` | Implemented and verified |
 | `Backlog` | Useful future work without current urgency |
@@ -181,9 +181,10 @@ Growth metric or strategic gate changed        -> backlog/docs/doc-2
   New events must use exact `web`/`android` values; historical inference must
   always be labeled as inferred rather than mixed into exact data.
 - The unlinked `/admin/analytics` route reads only privacy-safe aggregates from
-  `/admin/analytics/overview`. Cognito `admins` is the primary authorization
-  mechanism. The temporary SSM access key is break-glass only, is supplied at
-  runtime, and must never be persisted or bundled.
+  `/admin/analytics/overview`. Access is exclusively through a verified Cognito
+  ID token containing the `admins` group; no dashboard key fallback exists.
+- Device timezone may be collected as a bounded IANA-style label for aggregate
+  analytics only. Never infer a country, city, or timezone from an IP address.
 - Web authentication uses Cognito managed login with Google, authorization-code
   flow, and PKCE. The Google client secret is Terraform/GitHub secret material and
   must never enter frontend environment variables. Browser tokens may use

@@ -13,6 +13,7 @@ import logging
 import time
 import hmac
 import hashlib
+import re
 from collections import Counter, defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from math import ceil
@@ -54,7 +55,8 @@ app.add_middleware(
         "X-Install-Id",
         "X-Client-Platform",
         "X-App-Version",
-        "X-Admin-Key",
+        "X-Client-Language",
+        "X-Time-Zone",
         "Authorization",
     ],
     expose_headers=["Content-Type"],
@@ -67,7 +69,10 @@ STORY_FLOWS_TABLE = os.getenv("STORY_FLOWS_TABLE", "moral-torture-machine-story-
 PRODUCT_EVENTS_TABLE = os.getenv("PRODUCT_EVENTS_TABLE", "prod-moral-torture-machine-product-events")
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
 GROQ_API_KEY_SSM_NAME = os.getenv("GROQ_API_KEY_SSM_NAME", "")
-ANALYTICS_ADMIN_KEY_SSM_NAME = os.getenv("ANALYTICS_ADMIN_KEY_SSM_NAME", "")
+ANALYTICS_FINGERPRINT_SECRET_SSM_NAME = os.getenv(
+    "ANALYTICS_FINGERPRINT_SECRET_SSM_NAME",
+    "",
+)
 COGNITO_USER_POOL_ID = os.getenv("COGNITO_USER_POOL_ID", "")
 COGNITO_APP_CLIENT_ID = os.getenv("COGNITO_APP_CLIENT_ID", "")
 COGNITO_APP_CLIENT_IDS = tuple(
@@ -122,7 +127,7 @@ ssm_client = boto3.client('ssm', region_name=AWS_REGION)
 
 # Cache for API key (retrieved once at cold start)
 _api_key_cache = None
-_analytics_admin_key_cache = None
+_analytics_fingerprint_secret_cache = None
 _analytics_overview_cache = {}
 _cognito_jwks_client = None
 _burst_windows = defaultdict(deque)
@@ -159,36 +164,36 @@ def get_groq_api_key() -> str:
             detail="API key configuration error"
         )
 
-def get_analytics_admin_key() -> str:
-    """Load the dashboard credential without ever exposing it to the client bundle."""
-    global _analytics_admin_key_cache
+def get_analytics_fingerprint_secret() -> str:
+    """Load the private pepper used only for analytics network pseudonyms."""
+    global _analytics_fingerprint_secret_cache
 
-    if _analytics_admin_key_cache is not None:
-        return _analytics_admin_key_cache
+    if _analytics_fingerprint_secret_cache is not None:
+        return _analytics_fingerprint_secret_cache
 
-    local_key = os.getenv("ANALYTICS_ADMIN_KEY")
-    if local_key and local_key != "SET_THIS_LATER":
-        _analytics_admin_key_cache = local_key
-        return _analytics_admin_key_cache
+    local_secret = os.getenv("ANALYTICS_FINGERPRINT_SECRET")
+    if local_secret and local_secret != "SET_THIS_LATER":
+        _analytics_fingerprint_secret_cache = local_secret
+        return _analytics_fingerprint_secret_cache
 
-    if not ANALYTICS_ADMIN_KEY_SSM_NAME:
-        raise HTTPException(status_code=503, detail="Analytics dashboard is not configured")
+    if not ANALYTICS_FINGERPRINT_SECRET_SSM_NAME:
+        raise HTTPException(status_code=503, detail="Analytics fingerprinting is not configured")
 
     try:
         response = ssm_client.get_parameter(
-            Name=ANALYTICS_ADMIN_KEY_SSM_NAME,
+            Name=ANALYTICS_FINGERPRINT_SECRET_SSM_NAME,
             WithDecryption=True,
         )
-        key = response["Parameter"]["Value"]
-        if not key or key == "SET_THIS_LATER":
-            raise ValueError("Analytics admin key has not been initialized")
-        _analytics_admin_key_cache = key
-        return _analytics_admin_key_cache
+        secret = response["Parameter"]["Value"]
+        if not secret or secret == "SET_THIS_LATER":
+            raise ValueError("Analytics fingerprint secret has not been initialized")
+        _analytics_fingerprint_secret_cache = secret
+        return _analytics_fingerprint_secret_cache
     except HTTPException:
         raise
     except Exception as error:
-        logger.error("Failed to retrieve analytics admin key: %s", str(error))
-        raise HTTPException(status_code=503, detail="Analytics dashboard is not configured")
+        logger.error("Failed to retrieve analytics fingerprint secret: %s", str(error))
+        raise HTTPException(status_code=503, detail="Analytics fingerprinting is not configured")
 
 def _extract_bearer_token(request: Request) -> Optional[str]:
     authorization = request.headers.get("Authorization", "")
@@ -241,20 +246,13 @@ def _claims_are_admin(claims: Dict[str, Any]) -> bool:
     return "admins" in groups
 
 def require_analytics_admin(request: Request) -> None:
-    """Prefer Cognito admin authorization; retain the SSM key as break-glass access."""
+    """Authorize the analytics workspace exclusively through Cognito admins."""
     bearer_token = _extract_bearer_token(request)
-    if bearer_token:
-        claims = verify_cognito_id_token(bearer_token)
-        if not _claims_are_admin(claims):
-            raise HTTPException(status_code=403, detail="Administrator role required")
-        return
-
-    supplied_key = request.headers.get("X-Admin-Key", "")
-    if supplied_key:
-        expected_key = get_analytics_admin_key()
-        if hmac.compare_digest(supplied_key, expected_key):
-            return
-    raise HTTPException(status_code=401, detail="Administrator authentication required")
+    if not bearer_token:
+        raise HTTPException(status_code=401, detail="Administrator authentication required")
+    claims = verify_cognito_id_token(bearer_token)
+    if not _claims_are_admin(claims):
+        raise HTTPException(status_code=403, detail="Administrator role required")
 
 
 def _network_fingerprint(ip_address: Optional[str]) -> Optional[str]:
@@ -262,7 +260,7 @@ def _network_fingerprint(ip_address: Optional[str]) -> Optional[str]:
     if not ip_address:
         return None
     try:
-        pepper = get_analytics_admin_key()
+        pepper = get_analytics_fingerprint_secret()
     except HTTPException:
         # Analytics must keep working locally even when the production SSM secret
         # is intentionally absent. In that case no network-derived value is stored.
@@ -272,6 +270,17 @@ def _network_fingerprint(ip_address: Optional[str]) -> Optional[str]:
         ip_address.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()[:24]
+
+
+TIME_ZONE_PATTERN = re.compile(r"^[A-Za-z0-9_+/-]{1,64}$")
+
+
+def _normalize_time_zone(value: Optional[str]) -> Optional[str]:
+    """Accept only a bounded IANA-style timezone; never infer it from an IP."""
+    if not value:
+        return None
+    normalized = value.strip()
+    return normalized if TIME_ZONE_PATTERN.fullmatch(normalized) else None
 
 def track_analytics_event(
     session_id: str,
@@ -284,6 +293,8 @@ def track_analytics_event(
     install_id: Optional[str] = None,
     platform: Optional[str] = None,
     app_version: Optional[str] = None,
+    client_language: Optional[str] = None,
+    time_zone: Optional[str] = None,
 ) -> None:
     """
     Track user analytics event to DynamoDB
@@ -304,11 +315,17 @@ def track_analytics_event(
 
         network_fingerprint = _network_fingerprint(ip_address)
 
+        normalized_client_language = (client_language or "").strip().lower()
+        resolved_language = (
+            normalized_client_language
+            if normalized_client_language.isalpha() and len(normalized_client_language) <= 10
+            else language.lower()
+        )
         event_data = {
             'sessionId': session_id,
             'timestamp': timestamp,
             'actionType': action_type,
-            'language': language,
+            'language': resolved_language,
             'expirationTime': expiration_time
         }
 
@@ -333,6 +350,10 @@ def track_analytics_event(
 
         if app_version:
             event_data['appVersion'] = app_version[:30]
+
+        normalized_time_zone = _normalize_time_zone(time_zone)
+        if normalized_time_zone:
+            event_data['timeZone'] = normalized_time_zone
 
         # Write to DynamoDB asynchronously (fire and forget)
         analytics_table.put_item(Item=event_data)
@@ -368,6 +389,8 @@ def extract_client_analytics_context(request: Request) -> Dict[str, Optional[str
         "install_id": request.headers.get("X-Install-Id"),
         "platform": request.headers.get("X-Client-Platform"),
         "app_version": request.headers.get("X-App-Version"),
+        "client_language": request.headers.get("X-Client-Language"),
+        "time_zone": request.headers.get("X-Time-Zone"),
     }
 
 # Pydantic models with input validation
@@ -438,6 +461,11 @@ class AnalyticsEvent(BaseModel):
     platform: str = Field(default="unknown", pattern=r'^(web|android|ios|unknown)$')
     appVersion: str = Field(default="unknown", min_length=1, max_length=32)
     language: str = Field(default="en", min_length=2, max_length=10, pattern=r'^[a-zA-Z]+$')
+    timeZone: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        pattern=r'^[A-Za-z0-9_+/-]+$',
+    )
     referrer: Optional[str] = Field(default=None, max_length=500)
     utm: Dict[str, str] = Field(default_factory=dict)
     properties: Dict[str, Any] = Field(default_factory=dict)
@@ -799,9 +827,12 @@ async def ingest_analytics_events(batch: AnalyticsBatchRequest, request: Request
                     "platform": event.platform,
                     "appVersion": event.appVersion,
                     "language": event.language.lower(),
+                    "timeZone": event.timeZone,
                     "expirationTime": expiration_time,
                     "properties": json.dumps(event.properties, separators=(",", ":")),
                 }
+                if not event.timeZone:
+                    item.pop("timeZone")
                 if event.installId:
                     item["installId"] = event.installId
                 if event.referrer:
@@ -891,6 +922,7 @@ def normalize_analytics_event(item: Dict[str, Any], source: str) -> Dict[str, An
 
     session_id = str(item.get("sessionId", "unknown"))
     anonymous_user_id = str(item.get("anonymousUserId", ""))
+    time_zone = _normalize_time_zone(str(item.get("timeZone", ""))) or "unknown"
     identity = anonymous_user_id or f"legacy-session:{session_id}"
     network_fingerprint = str(item.get("networkFingerprint", ""))
     legacy_network_hash = str(item.get("hashedIp", ""))
@@ -922,6 +954,7 @@ def normalize_analytics_event(item: Dict[str, Any], source: str) -> Dict[str, An
         "platform": platform,
         "platformResolution": platform_resolution,
         "language": str(item.get("language", "unknown")).lower(),
+        "timeZone": time_zone,
         "appVersion": str(item.get("appVersion", "unknown")),
         "properties": _parse_event_properties(
             item.get("properties") if is_product_event else item.get("actionData")
@@ -1076,6 +1109,7 @@ def build_analytics_overview(
     event_counts = Counter(event["eventName"] for event in events)
     source_counts = Counter(event["source"] for event in events)
     language_counts = Counter(event["language"] for event in events)
+    time_zone_counts = Counter(event["timeZone"] for event in events)
     app_version_counts = Counter(event["appVersion"] for event in events)
     platform_counts = Counter(event["platform"] for event in events)
     platform_resolution_counts = Counter(event["platformResolution"] for event in events)
@@ -1152,6 +1186,7 @@ def build_analytics_overview(
     total_events = len(events)
     exact_events = platform_resolution_counts["exact"]
     anonymous_events = sum(1 for event in events if event["anonymousUserId"])
+    time_zone_events = sum(1 for event in events if event["timeZone"] != "unknown")
     recent_events = []
     for event in sorted(events, key=lambda row: row["occurredAt"], reverse=True)[:60]:
         recent_events.append({
@@ -1183,6 +1218,7 @@ def build_analytics_overview(
             for platform in ("web", "android", "ios", "unknown")
         ],
         "languageCounts": dict(language_counts),
+        "timeZoneCounts": dict(time_zone_counts),
         "appVersionCounts": dict(app_version_counts),
         "eventCounts": [
             {"eventName": name, "count": count}
@@ -1199,6 +1235,7 @@ def build_analytics_overview(
         "dataQuality": {
             "exactPlatformCoveragePct": round((exact_events / total_events) * 100, 1) if total_events else 0,
             "anonymousIdentityCoveragePct": round((anonymous_events / total_events) * 100, 1) if total_events else 0,
+            "timeZoneCoveragePct": round((time_zone_events / total_events) * 100, 1) if total_events else 0,
             "platformResolution": dict(platform_resolution_counts),
             "historicalPlatformIsEstimated": platform_resolution_counts["inferred"] > 0,
         },

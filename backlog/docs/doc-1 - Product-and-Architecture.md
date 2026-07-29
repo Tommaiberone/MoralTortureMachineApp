@@ -61,8 +61,8 @@ dev table, or `/dev` SSM hierarchy.
   and the `moraltorturemachine://auth/callback` deep link. Native session and PKCE
   material are encrypted by an AES-GCM key stored in Android Keystore.
 - The backend validates JWT signature, issuer, audience, expiry, token use, and
-  the `admins` group for both explicit app-client audiences. A temporary SSM
-  admin key is break-glass only.
+  the `admins` group for both explicit app-client audiences. Analytics access
+  has no key fallback.
 - Authenticated ownership is keyed by immutable provider subject, never email.
 - Public profile IDs and invite tokens are non-enumerable.
 
@@ -89,7 +89,9 @@ dev table, or `/dev` SSM hierarchy.
 - Never collect raw email, auth tokens, IP addresses, full dilemma response
   text, or AI analysis in client event properties.
 - Shared fields include anonymous and session identity, occurrence time,
-  platform, app version, locale, referrer, UTMs, and experiment assignment.
+  platform, app version, locale, device-declared IANA-style timezone, referrer,
+  UTMs, and experiment assignment. Timezone is never inferred from an IP and is
+  presented as `unknown` for historical rows.
 - `/admin/analytics` consumes privacy-safe aggregates from
   `/admin/analytics/overview` and intentionally has a separate, Notion-like
   operational visual language from the public horror-themed product.
@@ -100,6 +102,10 @@ dev table, or `/dev` SSM hierarchy.
 - `watch` and `suspicious` are review signals, not proof that an identity is a
   bot. Platform filters also apply to abuse aggregates so web and Android remain
   directly comparable.
+- Analytics administration is restricted exclusively to a verified Cognito ID
+  token with `cognito:groups` containing `admins`. The existing Standard SSM
+  SecureString is retained only as an internal HMAC pepper for network
+  pseudonyms, not as a client-supplied access credential.
 
 ## Cost and operational constraints
 
