@@ -49,6 +49,7 @@ jobs:
     outputs:
       environment: ${{ steps.set-env.outputs.environment }}
       dynamodb_table: ${{ steps.set-env.outputs.dynamodb_table }}
+      android_version_bumped: ${{ steps.check-version.outputs.bumped }}
 
     steps:
       - name: Set production environment
@@ -56,6 +57,32 @@ jobs:
         run: |
           echo "environment=prod" >> $GITHUB_OUTPUT
           echo "🎯 Deploying the production stack"
+
+      - name: Checkout code
+        if: github.event_name == 'push'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Auto-publish only fires when this push actually raised versionCode,
+      # so ordinary commits never attempt a duplicate Play Store upload.
+      - name: Check Android version bump
+        id: check-version
+        run: |
+          BUMPED=false
+          if [ "${{ github.event_name }}" == "push" ] && \
+             [ -n "${{ github.event.before }}" ] && \
+             [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            if git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- frontend/android/app/build.gradle | grep -q .; then
+              OLD_VC=$(git show ${{ github.event.before }}:frontend/android/app/build.gradle 2>/dev/null | grep -oP 'versionCode\s+\K[0-9]+' || echo 0)
+              NEW_VC=$(git show ${{ github.sha }}:frontend/android/app/build.gradle 2>/dev/null | grep -oP 'versionCode\s+\K[0-9]+' || echo 0)
+              if [ "$NEW_VC" -gt "$OLD_VC" ]; then
+                BUMPED=true
+                echo "✅ Android versionCode bumped: $OLD_VC -> $NEW_VC"
+              fi
+            fi
+          fi
+          echo "bumped=$BUMPED" >> $GITHUB_OUTPUT
 
   # Job 1: Lint e Test Backend
   backend-lint-test:
@@ -481,15 +508,17 @@ jobs:
                     `_Build triggered by: ${context.actor}_`
             });
 
-  # Job 4c: Publish the signed AAB to Google Play. Never runs on an ordinary
-  # push; it requires an explicit manual workflow_dispatch with the flag on.
+  # Job 4c: Publish the signed AAB to Google Play. Fires automatically on a
+  # push to main that bumps versionCode (straight to production, no human
+  # gate — see ADR-017), or on a manual workflow_dispatch with the flag on
+  # (track selectable, for ad-hoc tests against internal/alpha/beta).
   play-store-publish:
-    name: Publish to Google Play (${{ github.event.inputs.play_store_track }})
+    name: Publish to Google Play (${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.play_store_track) || 'production' }})
     runs-on: ubuntu-latest
     needs: [setup, android-build]
     if: |
-      github.event_name == 'workflow_dispatch' &&
-      github.event.inputs.publish_to_play_store == 'true'
+      (github.event_name == 'push' && needs.setup.outputs.android_version_bumped == 'true') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_to_play_store == 'true')
 
     environment:
       name: ${{ needs.setup.outputs.environment }}
@@ -507,7 +536,7 @@ jobs:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
           packageName: com.tommaiberone.MoralTortureMachine
           releaseFiles: android-release/app-release.aab
-          track: ${{ github.event.inputs.play_store_track }}
+          track: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.play_store_track) || 'production' }}
           status: completed
 
   # Job 5: Populate DynamoDB (opzionale)
@@ -667,9 +696,9 @@ jobs:
 
           ### Google Play publish
           $(if [ "${{ needs.play-store-publish.result }}" == "success" ]; then
-            echo "✅ **Published to track:** \`${{ github.event.inputs.play_store_track }}\`"
+            echo "✅ **Published to track:** \`${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.play_store_track) || 'production' }}\`"
           elif [ "${{ needs.play-store-publish.result }}" == "skipped" ]; then
-            echo "⏭️ **Skipped** (not requested via workflow_dispatch)"
+            echo "⏭️ **Skipped** (no versionCode bump detected on this push, and not requested via workflow_dispatch)"
           else
             echo "❌ **Failed**"
           fi)

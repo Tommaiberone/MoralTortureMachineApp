@@ -106,6 +106,17 @@ dev table, or `/dev` SSM hierarchy.
   token with `cognito:groups` containing `admins`. The existing Standard SSM
   SecureString is retained only as an internal HMAC pepper for network
   pseudonyms, not as a client-supplied access credential.
+- Growth intelligence runs as a scheduled GitHub Actions report, not in the
+  product runtime or AWS. It reads only aggregate Search Console, GA4,
+  PageSpeed, Google Play acquisition-report and Android Vitals signals, then
+  produces a private artifact and optional manually requested review issue.
+  It has no publishing, listing-edit, asset-upload, release, or web-content
+  mutation capability. Service-account material remains a GitHub secret and is
+  never available to the frontend, Lambda, or Android APK.
+- Google Play listing text is supplied as a checked-in human-maintained
+  snapshot for character-limit review; the reporting identity intentionally
+  lacks the store-listing edit permission. Actual ASO listing changes belong to
+  `TASK-79` after the social MVP and require explicit human approval.
 
 ## Cost and operational constraints
 
@@ -163,18 +174,24 @@ is a migration pointer only and must not be used as a second mutable task list.
 ## Release automation
 
 - `.github/workflows/deploy.yml` builds and signs the release AAB on every push
-  to `main` (job `android-build`) but never publishes it anywhere by itself.
-- A separate job, `play-store-publish`, can push that same AAB to Google Play
-  through the Play Developer API (`r0adkll/upload-google-play`). It only runs on
-  a manual `workflow_dispatch` with `publish_to_play_store: true`, never on an
-  ordinary push, so a Play Store release always requires an explicit human
-  action for that run.
+  to `main` (job `android-build`).
+- A separate job, `play-store-publish`, pushes that same AAB to Google Play
+  through the Play Developer API (`r0adkll/upload-google-play`). Per ADR-017 it
+  fires automatically, straight to the `production` track, whenever a push to
+  `main` raises `versionCode` in `frontend/android/app/build.gradle` (detected
+  by diffing that file against the prior commit); an ordinary push that leaves
+  `versionCode` untouched still builds Android artifacts but never publishes.
+  There is no human approval step between a version-bumped commit and a public
+  Play Store release — see ADR-017 for the explicit trade-off and rollback path.
+- Manual `workflow_dispatch` with `publish_to_play_store: true` remains
+  available for ad-hoc publishes to a chosen `play_store_track`
+  (`internal`/`alpha`/`beta`/`production`, defaulting to `internal`), independent
+  of whether `versionCode` changed — useful for testing without a real bump.
 - Authentication uses a dedicated Play Console service account whose JSON key is
   stored only as the GitHub secret `PLAY_STORE_SERVICE_ACCOUNT_JSON`; it is
   never written to the repository or persisted on the runner beyond the job.
 - The Google Play Developer API itself is free; this does not add an AWS
   resource, workspace, or variable-cost service, so it sits outside the AWS
-  Free Tier review process. The target `play_store_track` input
-  (`internal`/`alpha`/`beta`/`production`) defaults to `internal`.
+  Free Tier review process.
 - Google Play requires at least one prior manual release on the target track
   before API-based publishing is accepted for that track.

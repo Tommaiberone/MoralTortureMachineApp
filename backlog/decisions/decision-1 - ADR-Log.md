@@ -134,6 +134,39 @@ was a workflow-hygiene rule, not a product or architecture constraint, so
 relaxing it does not affect anonymous continuity, data, or deployment
 guarantees recorded elsewhere in this log.
 
+### ADR-016 — Read-only SEO and ASO intelligence with a human publishing gate
+
+Search Console, GA4, PageSpeed and Google Play acquisition/Vitals data are
+collected by a weekly GitHub Actions job into a private, short-retention report.
+The system creates evidence-backed recommendations only: a scheduled run never
+writes an issue, repository file, web page, Play listing, asset, release or
+Android bundle. A human may explicitly request a GitHub review issue, while
+any actual content or Play listing change remains a reviewed PR or a Play
+Console experiment. Options considered: storing third-party analytics in a new
+AWS data store (rejected: unnecessary cost/privacy surface) and granting the
+service account Play store-presence edit permission to read listing text
+(rejected: violates least privilege and makes accidental publication possible).
+Consequently, the operational identity is read-only and current listing text is
+kept as a human-maintained snapshot until `TASK-79` is eligible.
+
+### ADR-017 — Automatic direct-to-production Google Play publish on version bump
+
+Supersedes ADR-014. At the user's explicit request (after being warned that this
+removes any human review gate), `deploy.yml` now auto-publishes the signed AAB
+straight to Google Play's `production` track whenever a push to `main` raises
+`versionCode` in `frontend/android/app/build.gradle` (detected by diffing that
+file between `github.event.before` and `github.sha`); an ordinary push that does
+not touch `versionCode` still builds Android artifacts but skips publishing.
+Manual `workflow_dispatch` with `publish_to_play_store` remains available and
+keeps its selectable `play_store_track` input, for ad-hoc tests against
+`internal`/`alpha`/`beta` without needing a version bump. Consequence: any
+`versionCode` bump merged to `main` now goes live to every Play Store user with
+no staged rollout and no human approval step between commit and public release;
+the only safety net is Google's own app review and the existing mandatory
+version-bump/Android-rebuild-warning rules in `CLAUDE.md`, so a bad release can
+only be stopped by a fast-follow fix commit, a manual halt/rollback in Play
+Console, or removing this job. This intentionally trades release safety for
+release speed and must be revisited if it causes a production incident.
 
 ## Consequences
 
