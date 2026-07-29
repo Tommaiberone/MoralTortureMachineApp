@@ -3,7 +3,7 @@
 
 # AWS Configuration
 aws_region = "us-east-1"
-environment = "production"
+environment = "prod"
 
 # Stack Configuration
 stack_name = "moral-torture-machine"
@@ -11,6 +11,9 @@ table_name = "moral-torture-machine-dilemmas"
 
 # API Configuration
 groq_api_key = "YOUR_GROQ_API_KEY_HERE"
+analytics_admin_key = "GENERATE_A_LONG_RANDOM_VALUE_HERE"
+google_oauth_client_id = "YOUR_GOOGLE_OAUTH_WEB_CLIENT_ID"
+google_oauth_client_secret = "YOUR_GOOGLE_OAUTH_WEB_CLIENT_SECRET"
 
 # CORS Configuration
 cors_allowed_origins = [
@@ -22,6 +25,12 @@ cors_allowed_origins = [
 
 # Logging Configuration
 log_retention_days = 7
+
+# Best-effort abuse protection (no additional AWS service)
+abuse_burst_guard_enabled                = true
+abuse_global_requests_per_minute         = 120
+abuse_ai_requests_per_minute             = 12
+abuse_analytics_batches_per_minute       = 30
 
 # Database Configuration
 populate_db = true

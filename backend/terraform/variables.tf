@@ -11,9 +11,14 @@ variable "stack_name" {
 }
 
 variable "environment" {
-  description = "Environment name (dev or prod) - used in all resource names"
+  description = "Cloud environment name. Only the production stack is supported."
   type        = string
   default     = "prod"
+
+  validation {
+    condition     = var.environment == "prod"
+    error_message = "Only the prod AWS stack is supported; development is local-only."
+  }
 }
 
 variable "groq_api_key" {
@@ -21,6 +26,35 @@ variable "groq_api_key" {
   type        = string
   sensitive   = true
   default     = "SET_THIS_LATER"
+}
+
+variable "analytics_admin_key" {
+  description = "Private access key for the analytics dashboard (replace before deployment)"
+  type        = string
+  sensitive   = true
+  default     = "SET_THIS_LATER"
+}
+
+variable "google_oauth_client_id" {
+  description = "Google OAuth 2.0 web client ID used by Cognito federation"
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = length(trimspace(var.google_oauth_client_id)) > 10
+    error_message = "A Google OAuth web client ID is required."
+  }
+}
+
+variable "google_oauth_client_secret" {
+  description = "Google OAuth 2.0 web client secret used by Cognito federation"
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = length(trimspace(var.google_oauth_client_secret)) > 10
+    error_message = "A Google OAuth web client secret is required."
+  }
 }
 
 variable "cors_allowed_origins" {
@@ -47,6 +81,45 @@ variable "log_retention_days" {
   description = "Number of days to retain CloudWatch logs"
   type        = number
   default     = 7
+}
+
+variable "abuse_burst_guard_enabled" {
+  description = "Enable the best-effort, per-Lambda-container burst guard"
+  type        = bool
+  default     = true
+}
+
+variable "abuse_global_requests_per_minute" {
+  description = "Maximum requests per minute per transient network source in each Lambda container"
+  type        = number
+  default     = 120
+
+  validation {
+    condition     = var.abuse_global_requests_per_minute > 0
+    error_message = "The global burst limit must be positive."
+  }
+}
+
+variable "abuse_ai_requests_per_minute" {
+  description = "Maximum AI endpoint requests per minute per transient network source in each Lambda container"
+  type        = number
+  default     = 12
+
+  validation {
+    condition     = var.abuse_ai_requests_per_minute > 0
+    error_message = "The AI burst limit must be positive."
+  }
+}
+
+variable "abuse_analytics_batches_per_minute" {
+  description = "Maximum analytics batches per minute per transient network source in each Lambda container"
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.abuse_analytics_batches_per_minute > 0
+    error_message = "The analytics ingestion burst limit must be positive."
+  }
 }
 
 variable "populate_db" {

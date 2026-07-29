@@ -1,10 +1,11 @@
 // screens/ResultsScreen.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend } from 'recharts';
 import { useTranslation } from 'react-i18next';
 import { getApiHeaders } from '../utils/session';
 import SEO from '../components/SEO';
+import { trackEvent } from '../utils/analytics';
 import './ResultsScreen.css';
 
 const ResultsScreen = () => {
@@ -14,25 +15,11 @@ const ResultsScreen = () => {
   const { answers, dilemmasWithChoices } = location.state || { answers: [], dilemmasWithChoices: [] };
   const [aiAnalysis, setAiAnalysis] = useState('');
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
-
-  if (!answers || answers.length === 0) {
-    return (
-      <div className="results-gradient-background">
-        <div className="results-container">
-          <h1 className="screen-title results-title">{t('results.no_results')}</h1>
-          <button
-            className="btn-primary results-back-button"
-            onClick={() => navigate('/')}
-          >
-            {t('results.home_button')}
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const resultTracked = useRef(false);
+  const hasResults = Boolean(answers && answers.length > 0);
 
   // Aggregate the answers to compute average values for each category
-  const aggregated = answers.reduce((acc, curr) => {
+  const aggregated = (answers || []).reduce((acc, curr) => {
     for (let key in curr) {
       acc[key] = (acc[key] || 0) + curr[key];
     }
@@ -40,15 +27,27 @@ const ResultsScreen = () => {
   }, {});
 
   const labels = Object.keys(aggregated);
+  const maxAverage = labels.length > 0
+    ? Math.max(...Object.values(aggregated).map(v => v / answers.length))
+    : 0;
   const data = labels.map(label => ({
     subject: label,
     value: (aggregated[label] / answers.length).toFixed(2),
-    fullMark: Math.max(...Object.values(aggregated).map(v => v / answers.length)) * 1.2,
+    fullMark: maxAverage * 1.2,
   }));
 
   useEffect(() => {
+    if (!hasResults || resultTracked.current) return;
+    resultTracked.current = true;
+    trackEvent('result_viewed', {
+      mode: 'evaluation',
+      completed_dilemmas: answers.length,
+    });
+  }, [answers, hasResults]);
+
+  useEffect(() => {
     // Block browser back button
-    const preventBackNavigation = (e) => {
+    const preventBackNavigation = (_event) => {
       window.history.pushState(null, '', window.location.href);
     };
 
@@ -103,7 +102,23 @@ const ResultsScreen = () => {
     };
 
     fetchAiAnalysis();
-  }, [answers, dilemmasWithChoices, i18n.language]);
+  }, [answers, dilemmasWithChoices, i18n.language, t]);
+
+  if (!hasResults) {
+    return (
+      <div className="results-gradient-background">
+        <div className="results-container">
+          <h1 className="screen-title results-title">{t('results.no_results')}</h1>
+          <button
+            className="btn-primary results-back-button"
+            onClick={() => navigate('/')}
+          >
+            {t('results.home_button')}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="results-scroll-container">
@@ -167,6 +182,7 @@ const ResultsScreen = () => {
             <button
               className="results-share-button whatsapp"
               onClick={() => {
+                trackEvent('share_clicked', { channel: 'whatsapp', object_type: 'result' });
                 const shareText = t('results.share_text');
                 const shareChallenge = t('results.share_challenge');
                 const url = window.location.origin;
@@ -179,6 +195,7 @@ const ResultsScreen = () => {
             <button
               className="results-share-button facebook"
               onClick={() => {
+                trackEvent('share_clicked', { channel: 'facebook', object_type: 'result' });
                 const shareText = t('results.share_text');
                 const shareChallenge = t('results.share_challenge');
                 const url = window.location.origin;

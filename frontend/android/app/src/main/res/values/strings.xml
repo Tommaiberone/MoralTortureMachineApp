@@ -3,5 +3,5 @@
     <string name="app_name">Moral Torture Machine</string>
     <string name="title_activity_main">Moral Torture Machine</string>
     <string name="package_name">com.tommaiberone.MoralTortureMachine</string>
-    <string name="custom_url_scheme">com.tommaiberone.MoralTortureMachine</string>
+    <string name="custom_url_scheme">moraltorturemachine</string>
 </resources>

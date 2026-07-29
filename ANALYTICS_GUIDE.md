@@ -1,5 +1,59 @@
 # User Analytics Guide
 
+## Admin dashboard (primary interface)
+
+The application exposes an unlinked dashboard at `/admin/analytics`. It reads a
+privacy-safe aggregate from `GET /admin/analytics/overview` and supports:
+
+- 7, 30, and 90 day windows;
+- `all`, `web`, `android`, and `unknown` platform filters;
+- daily events and active-identity trends;
+- the test-to-share funnel;
+- all event types, languages, top dilemmas, and recent events;
+- separate `exact`, `inferred`, and `unknown` platform quality.
+
+New web and Android events share the same event schema and carry an exact
+platform field. Historical rows did not contain it, so Android WebView traffic is
+estimated from the user-agent and is always labeled `inferred`. Mobile browser
+traffic counts as `web`, not Android app traffic.
+
+Access is protected by `X-Admin-Key`. The key is held in the SSM SecureString
+parameter `/<environment>/moral-torture-machine/analytics-admin-key`; it is typed
+into the dashboard and kept only in React memory. `SET_THIS_LATER` deliberately
+disables the endpoint. The route must move to a Cognito admin group when account
+authentication is introduced.
+
+The backend caches each aggregate for 60 seconds. At the current table size, a
+scan is inexpensive; replace it with daily rollups before analytics volume grows
+enough to make repeated scans material.
+
+### Production access
+
+1. Open `https://moraltorturemachine.com/admin/analytics`.
+2. Retrieve the current key in your own terminal (do not paste it into chat or
+   commit it):
+
+   ```bash
+   aws ssm get-parameter \
+     --name /prod/moral-torture-machine/analytics-admin-key \
+     --with-decryption \
+     --query Parameter.Value \
+     --output text \
+     --region eu-west-1 \
+     --profile personal
+   ```
+
+3. Paste that value into the dashboard access form. The browser keeps it only in
+   memory; reloading or closing the page requires entering it again.
+
+Use the platform selector to recalculate every KPI, trend, funnel, and event list
+for web or Android. `Exact platform` will initially be low because historical
+rows are inferred; it rises as web 1.2.0 and subsequently distributed Android
+1.2.0 clients generate the new schema.
+
+The rest of this document describes direct access to the legacy table for
+diagnostics. Prefer the dashboard for product decisions.
+
 ## Overview
 
 The Moral Torture Machine application now tracks comprehensive user behavior analytics to gain insights into how users interact with the application. All analytics data is stored in a DynamoDB table with automatic data expiration after 90 days for privacy compliance.
@@ -7,7 +61,7 @@ The Moral Torture Machine application now tracks comprehensive user behavior ana
 ## Analytics Table Schema
 
 ### Table Name
-`moral-torture-machine-prod-user-analytics`
+`prod-moral-torture-machine-user-analytics`
 
 ### Primary Keys
 - **Hash Key (Partition Key)**: `sessionId` (String) - Unique session identifier
@@ -24,6 +78,10 @@ The Moral Torture Machine application now tracks comprehensive user behavior ana
 | `actionData` | String (JSON) | Additional data specific to the action |
 | `userAgent` | String | Browser/client information (max 200 chars) |
 | `hashedIp` | String | SHA-256 hashed IP address (first 16 chars for privacy) |
+| `anonymousUserId` | String | Persistent anonymous identity on newly recorded rows |
+| `installId` | String | Installation identity on newly recorded rows |
+| `platform` | String | Exact `web`, `android`, or `ios` on newly recorded rows |
+| `appVersion` | String | Web/native application version |
 | `expirationTime` | Number | TTL timestamp - data auto-deletes after 90 days |
 
 ### Global Secondary Index
@@ -62,7 +120,7 @@ aws configure
 
 ```bash
 aws dynamodb query \
-  --table-name moral-torture-machine-prod-user-analytics \
+  --table-name prod-moral-torture-machine-user-analytics \
   --key-condition-expression "sessionId = :sid" \
   --expression-attribute-values '{":sid":{"S":"your-session-id"}}' \
   --region eu-west-1
@@ -72,7 +130,7 @@ aws dynamodb query \
 
 ```bash
 aws dynamodb scan \
-  --table-name moral-torture-machine-prod-user-analytics \
+  --table-name prod-moral-torture-machine-user-analytics \
   --select COUNT \
   --filter-expression "actionType = :type" \
   --expression-attribute-values '{":type":{"S":"vote_cast"}}' \
@@ -83,7 +141,7 @@ aws dynamodb scan \
 
 ```bash
 aws dynamodb query \
-  --table-name moral-torture-machine-prod-user-analytics \
+  --table-name prod-moral-torture-machine-user-analytics \
   --index-name ActionTypeIndex \
   --key-condition-expression "actionType = :type" \
   --expression-attribute-values '{":type":{"S":"vote_cast"}}' \
@@ -98,7 +156,7 @@ CURRENT_TIME=$(date +%s)
 ONE_HOUR_AGO=$((($CURRENT_TIME - 3600) * 1000))
 
 aws dynamodb query \
-  --table-name moral-torture-machine-prod-user-analytics \
+  --table-name prod-moral-torture-machine-user-analytics \
   --key-condition-expression "sessionId = :sid AND #ts > :start" \
   --expression-attribute-names '{"#ts":"timestamp"}' \
   --expression-attribute-values "{\":sid\":{\"S\":\"your-session-id\"},\":start\":{\"N\":\"$ONE_HOUR_AGO\"}}" \
@@ -109,7 +167,7 @@ aws dynamodb query \
 
 ```bash
 aws dynamodb scan \
-  --table-name moral-torture-machine-prod-user-analytics \
+  --table-name prod-moral-torture-machine-user-analytics \
   --region eu-west-1 \
   --output json > analytics_export.json
 ```
@@ -133,7 +191,7 @@ import pandas as pd
 
 # Initialize DynamoDB client
 dynamodb = boto3.resource('dynamodb', region_name='eu-west-1')
-table = dynamodb.Table('moral-torture-machine-prod-user-analytics')
+table = dynamodb.Table('prod-moral-torture-machine-user-analytics')
 
 # Scan all events
 response = table.scan()
@@ -202,7 +260,7 @@ import boto3
 from collections import defaultdict
 
 dynamodb = boto3.resource('dynamodb', region_name='eu-west-1')
-table = dynamodb.Table('moral-torture-machine-prod-user-analytics')
+table = dynamodb.Table('prod-moral-torture-machine-user-analytics')
 
 # Scan all events
 response = table.scan()
@@ -234,7 +292,8 @@ print(f"Results Conversion Rate: {sessions_with_results/total_sessions*100:.1f}%
 1. **IP Address Hashing**: User IP addresses are SHA-256 hashed and truncated to 16 characters
 2. **Automatic Expiration**: All data automatically expires after 90 days via DynamoDB TTL
 3. **No PII Storage**: No personally identifiable information is stored directly
-4. **Session-based Tracking**: Uses session IDs, not persistent user identifiers
+4. **Progressive Identity**: Historical rows use sessions; new rows also carry a
+   persistent anonymous identity for cross-session measurement
 
 ### GDPR Compliance
 
@@ -243,7 +302,7 @@ To delete a user's data manually:
 ```bash
 # Delete all events for a specific session
 aws dynamodb query \
-  --table-name moral-torture-machine-prod-user-analytics \
+  --table-name prod-moral-torture-machine-user-analytics \
   --key-condition-expression "sessionId = :sid" \
   --expression-attribute-values '{":sid":{"S":"session-to-delete"}}' \
   --region eu-west-1 \
@@ -251,7 +310,7 @@ aws dynamodb query \
   jq -r '.Items[] | [.sessionId.S, .timestamp.N] | @tsv' | \
   while IFS=$'\t' read -r sid ts; do
     aws dynamodb delete-item \
-      --table-name moral-torture-machine-prod-user-analytics \
+      --table-name prod-moral-torture-machine-user-analytics \
       --key "{\"sessionId\":{\"S\":\"$sid\"},\"timestamp\":{\"N\":\"$ts\"}}" \
       --region eu-west-1
   done
@@ -279,7 +338,7 @@ Monitor table metrics in CloudWatch:
 aws cloudwatch get-metric-statistics \
   --namespace AWS/DynamoDB \
   --metric-name ConsumedWriteCapacityUnits \
-  --dimensions Name=TableName,Value=moral-torture-machine-prod-user-analytics \
+  --dimensions Name=TableName,Value=prod-moral-torture-machine-user-analytics \
   --start-time $(date -u -d '1 day ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 3600 \
@@ -313,7 +372,7 @@ fetch('https://your-api/get-dilemma', {
 ```bash
 # Get recent events
 aws dynamodb scan \
-  --table-name moral-torture-machine-prod-user-analytics \
+  --table-name prod-moral-torture-machine-user-analytics \
   --limit 10 \
   --region eu-west-1
 ```
@@ -331,7 +390,7 @@ import boto3
 import time
 
 dynamodb = boto3.resource('dynamodb', region_name='eu-west-1')
-table = dynamodb.Table('moral-torture-machine-prod-user-analytics')
+table = dynamodb.Table('prod-moral-torture-machine-user-analytics')
 
 # Insert test event
 table.put_item(Item={

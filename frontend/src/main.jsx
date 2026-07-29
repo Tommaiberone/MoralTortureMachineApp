@@ -5,16 +5,28 @@ import './index.css'
 import './i18n';
 import App from './App.jsx'
 import { initializeMobileFeatures } from './utils/mobileInit'
+import { initializeIdentity } from './utils/session'
+import { initializeAnalytics } from './utils/analytics'
+import AuthProvider from './auth/AuthProvider'
 
 // Inizializza feature mobile (status bar, splash screen, etc.)
 initializeMobileFeatures();
 
-createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <HelmetProvider>
-      <Suspense fallback="loading...">
-        <App />
-      </Suspense>
-    </HelmetProvider>
-  </StrictMode>,
-)
+const bootstrap = async () => {
+  await initializeIdentity();
+  initializeAnalytics();
+
+  createRoot(document.getElementById('root')).render(
+    <StrictMode>
+      <HelmetProvider>
+        <AuthProvider>
+          <Suspense fallback="loading...">
+            <App />
+          </Suspense>
+        </AuthProvider>
+      </HelmetProvider>
+    </StrictMode>,
+  )
+};
+
+void bootstrap();

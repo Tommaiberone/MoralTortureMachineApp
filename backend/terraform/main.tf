@@ -96,6 +96,61 @@ resource "aws_dynamodb_table" "user_analytics" {
   }
 }
 
+# Idempotent product analytics events. This table replaces client-side funnel
+# events in the legacy session/timestamp table while the server endpoint events
+# continue to run during migration.
+resource "aws_dynamodb_table" "product_events" {
+  name         = "${var.environment}-${var.stack_name}-product-events"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "eventId"
+
+  attribute {
+    name = "eventId"
+    type = "S"
+  }
+
+  attribute {
+    name = "anonymousUserId"
+    type = "S"
+  }
+
+  attribute {
+    name = "actionType"
+    type = "S"
+  }
+
+  attribute {
+    name = "occurredAt"
+    type = "N"
+  }
+
+  global_secondary_index {
+    name            = "AnonymousUserIndex"
+    hash_key        = "anonymousUserId"
+    range_key       = "occurredAt"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = "ActionTypeIndex"
+    hash_key        = "actionType"
+    range_key       = "occurredAt"
+    projection_type = "KEYS_ONLY"
+  }
+
+  ttl {
+    attribute_name = "expirationTime"
+    enabled        = true
+  }
+
+  tags = {
+    Name        = "Moral Torture Machine Product Events"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+    Purpose     = "Idempotent product funnel and referral analytics"
+  }
+}
+
 # DynamoDB Table for Story Flows
 resource "aws_dynamodb_table" "story_flows" {
   name         = "${var.environment}-${var.stack_name}-story-flows"
@@ -138,6 +193,170 @@ resource "aws_ssm_parameter" "groq_api_key" {
   lifecycle {
     ignore_changes = [value]
   }
+}
+
+resource "aws_ssm_parameter" "analytics_admin_key" {
+  name        = "/${var.environment}/${var.stack_name}/analytics-admin-key"
+  description = "Private access key for the analytics dashboard"
+  type        = "SecureString"
+  value       = var.analytics_admin_key
+
+  tags = {
+    Name        = "Moral Torture Machine Analytics Admin Key"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+# Production-only authentication. Google is the only end-user sign-in method;
+# web and Android use separate public app clients with authorization-code flow
+# and PKCE.
+resource "aws_cognito_user_pool" "users" {
+  name                     = "${var.environment}-${var.stack_name}-users"
+  username_attributes      = ["email"]
+  auto_verified_attributes = ["email"]
+  mfa_configuration        = "OFF"
+  deletion_protection      = "ACTIVE"
+  user_pool_tier           = "ESSENTIALS"
+
+  account_recovery_setting {
+    recovery_mechanism {
+      name     = "verified_email"
+      priority = 1
+    }
+  }
+
+  schema {
+    attribute_data_type = "String"
+    mutable             = true
+    name                = "email"
+    required            = true
+
+    string_attribute_constraints {
+      min_length = 5
+      max_length = 320
+    }
+  }
+
+  schema {
+    attribute_data_type = "String"
+    mutable             = true
+    name                = "name"
+    required            = false
+
+    string_attribute_constraints {
+      min_length = 1
+      max_length = 120
+    }
+  }
+
+  tags = {
+    Name        = "Moral Torture Machine Users"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+    Purpose     = "Progressive web and native authentication"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "aws_cognito_identity_provider" "google" {
+  user_pool_id  = aws_cognito_user_pool.users.id
+  provider_name = "Google"
+  provider_type = "Google"
+
+  provider_details = {
+    authorize_scopes = "openid email profile"
+    client_id        = var.google_oauth_client_id
+    client_secret    = var.google_oauth_client_secret
+  }
+
+  attribute_mapping = {
+    email    = "email"
+    name     = "name"
+    username = "sub"
+  }
+}
+
+resource "aws_cognito_user_pool_client" "web" {
+  name                                 = "${var.environment}-${var.stack_name}-web"
+  user_pool_id                         = aws_cognito_user_pool.users.id
+  generate_secret                      = false
+  allowed_oauth_flows_user_pool_client = true
+  allowed_oauth_flows                  = ["code"]
+  allowed_oauth_scopes                 = ["openid", "email", "profile"]
+  supported_identity_providers         = [aws_cognito_identity_provider.google.provider_name]
+  callback_urls = [
+    "https://moraltorturemachine.com/auth/callback",
+    "https://www.moraltorturemachine.com/auth/callback",
+    "http://localhost:5173/auth/callback"
+  ]
+  logout_urls = [
+    "https://moraltorturemachine.com/",
+    "https://www.moraltorturemachine.com/",
+    "http://localhost:5173/"
+  ]
+  default_redirect_uri          = "https://moraltorturemachine.com/auth/callback"
+  access_token_validity         = 1
+  id_token_validity             = 1
+  refresh_token_validity        = 30
+  enable_token_revocation       = true
+  prevent_user_existence_errors = "ENABLED"
+  explicit_auth_flows           = ["ALLOW_REFRESH_TOKEN_AUTH"]
+  read_attributes               = ["email", "email_verified", "name"]
+  write_attributes              = ["name"]
+
+  token_validity_units {
+    access_token  = "hours"
+    id_token      = "hours"
+    refresh_token = "days"
+  }
+}
+
+resource "aws_cognito_user_pool_client" "android" {
+  name                                 = "${var.environment}-${var.stack_name}-android"
+  user_pool_id                         = aws_cognito_user_pool.users.id
+  generate_secret                      = false
+  allowed_oauth_flows_user_pool_client = true
+  allowed_oauth_flows                  = ["code"]
+  allowed_oauth_scopes                 = ["openid", "email", "profile"]
+  supported_identity_providers         = [aws_cognito_identity_provider.google.provider_name]
+  callback_urls                        = ["moraltorturemachine://auth/callback"]
+  logout_urls                          = ["moraltorturemachine://auth/logout"]
+  default_redirect_uri                 = "moraltorturemachine://auth/callback"
+  access_token_validity                = 1
+  id_token_validity                    = 1
+  refresh_token_validity               = 30
+  enable_token_revocation              = true
+  prevent_user_existence_errors        = "ENABLED"
+  explicit_auth_flows                  = ["ALLOW_REFRESH_TOKEN_AUTH"]
+  read_attributes                      = ["email", "email_verified", "name"]
+  write_attributes                     = ["name"]
+
+  token_validity_units {
+    access_token  = "hours"
+    id_token      = "hours"
+    refresh_token = "days"
+  }
+}
+
+resource "aws_cognito_user_pool_domain" "auth" {
+  domain                = "moral-torture-machine-${data.aws_caller_identity.current.account_id}"
+  user_pool_id          = aws_cognito_user_pool.users.id
+  managed_login_version = 2
+}
+
+resource "aws_cognito_user_group" "admins" {
+  name         = "admins"
+  user_pool_id = aws_cognito_user_pool.users.id
+  description  = "Moral Torture Machine administrators"
+  precedence   = 1
 }
 
 # IAM Role for Lambda
@@ -185,6 +404,8 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           aws_dynamodb_table.dilemmas.arn,
           aws_dynamodb_table.user_analytics.arn,
           "${aws_dynamodb_table.user_analytics.arn}/index/*",
+          aws_dynamodb_table.product_events.arn,
+          "${aws_dynamodb_table.product_events.arn}/index/*",
           aws_dynamodb_table.story_flows.arn
         ]
       },
@@ -194,13 +415,17 @@ resource "aws_iam_role_policy" "lambda_permissions" {
         Resource = [
           aws_dynamodb_table.dilemmas.arn,
           aws_dynamodb_table.user_analytics.arn,
+          aws_dynamodb_table.product_events.arn,
           aws_dynamodb_table.story_flows.arn
         ]
       },
       {
-        Effect   = "Allow"
-        Action   = ["ssm:GetParameter"]
-        Resource = aws_ssm_parameter.groq_api_key.arn
+        Effect = "Allow"
+        Action = ["ssm:GetParameter"]
+        Resource = [
+          aws_ssm_parameter.groq_api_key.arn,
+          aws_ssm_parameter.analytics_admin_key.arn
+        ]
       }
     ]
   })
@@ -231,10 +456,19 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE        = aws_dynamodb_table.dilemmas.name
-      ANALYTICS_TABLE       = aws_dynamodb_table.user_analytics.name
-      STORY_FLOWS_TABLE     = aws_dynamodb_table.story_flows.name
-      GROQ_API_KEY_SSM_NAME = aws_ssm_parameter.groq_api_key.name
+      DYNAMODB_TABLE                     = aws_dynamodb_table.dilemmas.name
+      ANALYTICS_TABLE                    = aws_dynamodb_table.user_analytics.name
+      STORY_FLOWS_TABLE                  = aws_dynamodb_table.story_flows.name
+      PRODUCT_EVENTS_TABLE               = aws_dynamodb_table.product_events.name
+      GROQ_API_KEY_SSM_NAME              = aws_ssm_parameter.groq_api_key.name
+      ANALYTICS_ADMIN_KEY_SSM_NAME       = aws_ssm_parameter.analytics_admin_key.name
+      COGNITO_USER_POOL_ID               = aws_cognito_user_pool.users.id
+      COGNITO_APP_CLIENT_ID              = aws_cognito_user_pool_client.web.id
+      COGNITO_APP_CLIENT_IDS             = join(",", [aws_cognito_user_pool_client.web.id, aws_cognito_user_pool_client.android.id])
+      ABUSE_BURST_GUARD_ENABLED          = tostring(var.abuse_burst_guard_enabled)
+      ABUSE_GLOBAL_REQUESTS_PER_MINUTE   = tostring(var.abuse_global_requests_per_minute)
+      ABUSE_AI_REQUESTS_PER_MINUTE       = tostring(var.abuse_ai_requests_per_minute)
+      ABUSE_ANALYTICS_BATCHES_PER_MINUTE = tostring(var.abuse_analytics_batches_per_minute)
     }
   }
 
@@ -292,7 +526,7 @@ resource "aws_apigatewayv2_stage" "default" {
     destination_arn = aws_cloudwatch_log_group.api_logs.arn
     format = jsonencode({
       httpMethod     = "$context.httpMethod"
-      ip             = "$context.identity.sourceIp"
+      path           = "$context.http.path"
       protocol       = "$context.protocol"
       requestId      = "$context.requestId"
       requestTime    = "$context.requestTime"

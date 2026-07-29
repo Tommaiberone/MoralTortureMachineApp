@@ -1,11 +1,12 @@
 // screens/EvaluationDilemmasScreen.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
 import { useTranslation } from 'react-i18next';
 import { getApiHeaders } from '../utils/session';
 import { getSeenDilemmas, markDilemmaAsSeen } from '../utils/seenDilemmas';
 import SEO from '../components/SEO';
+import { trackEvent } from '../utils/analytics';
 import "./EvaluationDilemmasScreen.css";
 
 const MAX_DILEMMAS = 7;
@@ -24,6 +25,7 @@ const EvaluationDilemmasScreen = () => {
   const [currentChoice, setChoiceCounts] = useState({ first: 0, second: 0 });
   const [voting, setVoting] = useState(false);
   const [evaluationComplete, setEvaluationComplete] = useState(false);
+  const testStarted = useRef(false);
 
   useEffect(() => {
     if (currentDilemmaCount >= MAX_DILEMMAS) {
@@ -33,7 +35,7 @@ const EvaluationDilemmasScreen = () => {
 
   useEffect(() => {
     // Block browser back button
-    const preventBackNavigation = (e) => {
+    const preventBackNavigation = (_event) => {
       window.history.pushState(null, '', window.location.href);
     };
 
@@ -88,6 +90,14 @@ const EvaluationDilemmasScreen = () => {
   };
 
   const fetchDilemma = async () => {
+    if (!testStarted.current) {
+      testStarted.current = true;
+      trackEvent('test_started', {
+        mode: 'evaluation',
+        planned_dilemmas: MAX_DILEMMAS,
+      });
+    }
+
     setLoading(true);
     // Don't clear dilemma immediately - keep it visible during loading
     setChoiceMade(false);
@@ -185,7 +195,21 @@ const EvaluationDilemmasScreen = () => {
     };
     setDilemmasWithChoices([...dilemmasWithChoices, dilemmaWithChoice]);
 
-    setCurrentDilemmaCount(currentDilemmaCount + 1);
+    const nextDilemmaCount = currentDilemmaCount + 1;
+    trackEvent('answer_selected', {
+      mode: 'evaluation',
+      dilemma_id: dilemma._id,
+      choice,
+      question_number: nextDilemmaCount,
+    });
+    if (nextDilemmaCount >= MAX_DILEMMAS) {
+      trackEvent('test_completed', {
+        mode: 'evaluation',
+        completed_dilemmas: nextDilemmaCount,
+      });
+    }
+
+    setCurrentDilemmaCount(nextDilemmaCount);
     setChoiceMade(true);
     setVoting(false);
   };

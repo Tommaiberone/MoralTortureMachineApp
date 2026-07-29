@@ -19,7 +19,7 @@ const PassThePhoneScreen = () => {
 
   useEffect(() => {
     // Block browser back button
-    const preventBackNavigation = (e) => {
+    const preventBackNavigation = (_event) => {
       window.history.pushState(null, '', window.location.href);
     };
 

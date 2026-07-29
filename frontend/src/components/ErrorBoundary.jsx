@@ -11,7 +11,7 @@ class ErrorBoundary extends React.Component {
     };
   }
 
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError(_error) {
     // Update state so the next render will show the fallback UI
     return { hasError: true };
   }
@@ -77,7 +77,7 @@ class ErrorBoundary extends React.Component {
               La Moral Torture Machine ha incontrato un errore imprevisto.
             </p>
 
-            {process.env.NODE_ENV === 'development' && this.state.error && (
+            {import.meta.env.DEV && this.state.error && (
               <details style={{
                 marginBottom: '20px',
                 textAlign: 'left',

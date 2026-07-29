@@ -1,12 +1,52 @@
-// Session management utility for analytics tracking
+// Identity and session management for analytics and progressive authentication.
+
+import { getPreference, setPreference } from './storage';
+import { getPlatform, isNativePlatform } from './platform';
+
+const ANONYMOUS_USER_KEY = 'mtm_anonymous_user_id';
+const INSTALL_KEY = 'mtm_install_id';
+const SESSION_KEY = 'mtm_session_id';
+const APP_VERSION = import.meta.env.VITE_APP_VERSION || '1.3.0';
+
+let anonymousUserId;
+let installId;
+
+const createId = () => crypto.randomUUID();
+
+/**
+ * Initialize persistent identity before the React tree starts making requests.
+ * Capacitor Preferences is used on native platforms; web uses localStorage via
+ * the shared storage wrapper.
+ */
+export const initializeIdentity = async () => {
+  try {
+    anonymousUserId = await getPreference(ANONYMOUS_USER_KEY);
+    if (!anonymousUserId) {
+      anonymousUserId = createId();
+      await setPreference(ANONYMOUS_USER_KEY, anonymousUserId);
+    }
+
+    installId = await getPreference(INSTALL_KEY);
+    if (!installId) {
+      installId = createId();
+      await setPreference(INSTALL_KEY, installId);
+    }
+  } catch (error) {
+    // A storage failure must never prevent gameplay. Keep an in-memory identity
+    // for the current page as a privacy-safe fallback.
+    console.warn('Persistent identity unavailable; using ephemeral identity.', error);
+    anonymousUserId ||= createId();
+    installId ||= createId();
+  }
+
+  return getIdentityContext();
+};
 
 /**
  * Get or create a unique session ID for analytics tracking
  * @returns {string} Session ID (UUID v4)
  */
 export const getSessionId = () => {
-  const SESSION_KEY = 'mtm_session_id';
-
   // Try to get existing session ID from sessionStorage (per-tab)
   let sessionId = sessionStorage.getItem(SESSION_KEY);
 
@@ -20,13 +60,50 @@ export const getSessionId = () => {
 };
 
 /**
+ * Return the persistent anonymous user ID. initializeIdentity should run before
+ * this function; the fallback keeps requests safe during unusual bootstrap errors.
+ */
+export const getAnonymousUserId = () => {
+  if (!anonymousUserId) {
+    anonymousUserId = localStorage.getItem(ANONYMOUS_USER_KEY) || createId();
+    localStorage.setItem(ANONYMOUS_USER_KEY, anonymousUserId);
+  }
+
+  return anonymousUserId;
+};
+
+export const getInstallId = () => {
+  if (!installId) {
+    installId = localStorage.getItem(INSTALL_KEY) || createId();
+    localStorage.setItem(INSTALL_KEY, installId);
+  }
+
+  return installId;
+};
+
+export const getIdentityContext = () => ({
+  anonymousUserId: getAnonymousUserId(),
+  sessionId: getSessionId(),
+  installId: getInstallId(),
+  platform: getPlatform(),
+  isNative: isNativePlatform(),
+  appVersion: APP_VERSION,
+});
+
+/**
  * Get headers for API requests including session tracking
  * @returns {Object} Headers object with session ID
  */
 export const getApiHeaders = () => {
+  const identity = getIdentityContext();
+
   return {
     'Content-Type': 'application/json',
-    'X-Session-Id': getSessionId()
+    'X-Session-Id': identity.sessionId,
+    'X-Anonymous-User-Id': identity.anonymousUserId,
+    'X-Install-Id': identity.installId,
+    'X-Client-Platform': identity.platform,
+    'X-App-Version': identity.appVersion,
   };
 };
 
@@ -34,5 +111,5 @@ export const getApiHeaders = () => {
  * Clear the current session (useful for testing or logout)
  */
 export const clearSession = () => {
-  sessionStorage.removeItem('mtm_session_id');
+  sessionStorage.removeItem(SESSION_KEY);
 };

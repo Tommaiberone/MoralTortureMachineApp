@@ -5,7 +5,7 @@
 
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { SplashScreen } from '@capacitor/splash-screen';
-import { isNativePlatform, isAndroid } from './platform';
+import { isNativePlatform } from './platform';
 
 /**
  * Configura la status bar al caricamento dell'app

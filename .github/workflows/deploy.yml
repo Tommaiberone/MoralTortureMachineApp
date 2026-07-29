@@ -1,22 +1,13 @@
-# Deploy backend and frontend to dev or prod environment based on branch
+# Deploy the production backend, web app, and Android artifacts.
 name: Deploy Full Stack
 
-# Trigger: Deploy to dev on develop branch, prod on main branch
+# AWS has one production stack. Local development never provisions cloud resources.
 on:
   push:
     branches:
-      - main      # Production
-      - develop   # Development
+      - main
   workflow_dispatch:
     inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'dev'
-        type: choice
-        options:
-          - dev
-          - prod
       populate_dynamodb:
         description: 'Populate DynamoDB with fresh data'
         required: false
@@ -36,30 +27,20 @@ env:
   TF_VERSION_FRONTEND: '1.9.5'
 
 jobs:
-  # Job 0: Determine environment based on branch or input
+  # Job 0: Publish the single allowed cloud environment.
   setup:
-    name: Setup Environment
+    name: Setup Production
     runs-on: ubuntu-latest
     outputs:
       environment: ${{ steps.set-env.outputs.environment }}
       dynamodb_table: ${{ steps.set-env.outputs.dynamodb_table }}
 
     steps:
-      - name: Determine environment
+      - name: Set production environment
         id: set-env
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            ENV="${{ github.event.inputs.environment }}"
-          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            ENV="prod"
-          elif [ "${{ github.ref }}" = "refs/heads/develop" ]; then
-            ENV="dev"
-          else
-            ENV="dev"
-          fi
-
-          echo "environment=$ENV" >> $GITHUB_OUTPUT
-          echo "🎯 Deploying to: $ENV"
+          echo "environment=prod" >> $GITHUB_OUTPUT
+          echo "🎯 Deploying the production stack"
 
   # Job 1: Lint e Test Backend
   backend-lint-test:
@@ -100,6 +81,9 @@ jobs:
           python -m py_compile scripts/populate_dynamodb_multilang.py
           python -m py_compile scripts/populate_story_flows.py
 
+      - name: Run backend unit tests
+        run: cd .. && python -m unittest backend.tests.test_analytics_models
+
   # Job 2: Deploy Backend
   backend-deploy:
     name: Deploy Backend (${{ needs.setup.outputs.environment }})
@@ -115,6 +99,9 @@ jobs:
 
     outputs:
       api_url: ${{ steps.api-endpoint.outputs.api_url }}
+      cognito_domain: ${{ steps.api-endpoint.outputs.cognito_domain }}
+      cognito_client_id: ${{ steps.api-endpoint.outputs.cognito_client_id }}
+      cognito_native_client_id: ${{ steps.api-endpoint.outputs.cognito_native_client_id }}
 
     environment:
       name: ${{ needs.setup.outputs.environment }}
@@ -178,11 +165,13 @@ jobs:
         env:
           TF_VAR_environment: ${{ needs.setup.outputs.environment }}
           TF_VAR_stack_name: moral-torture-machine
+          TF_VAR_google_oauth_client_id: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          TF_VAR_google_oauth_client_secret: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
         run: |
           terraform init
 
-          # Select or create workspace
-          terraform workspace select ${{ needs.setup.outputs.environment }} || terraform workspace new ${{ needs.setup.outputs.environment }}
+          # Only the production workspace is allowed for cloud deployments.
+          terraform workspace select prod
 
           # Apply (manages DynamoDB + SSM + Lambda + API Gateway)
           terraform apply -auto-approve
@@ -192,7 +181,13 @@ jobs:
         working-directory: ./backend/terraform
         run: |
           API_URL=$(terraform output -raw api_endpoint)
+          COGNITO_DOMAIN=$(terraform output -raw cognito_domain)
+          COGNITO_CLIENT_ID=$(terraform output -raw cognito_web_client_id)
+          COGNITO_NATIVE_CLIENT_ID=$(terraform output -raw cognito_android_client_id)
           echo "api_url=$API_URL" >> $GITHUB_OUTPUT
+          echo "cognito_domain=$COGNITO_DOMAIN" >> $GITHUB_OUTPUT
+          echo "cognito_client_id=$COGNITO_CLIENT_ID" >> $GITHUB_OUTPUT
+          echo "cognito_native_client_id=$COGNITO_NATIVE_CLIENT_ID" >> $GITHUB_OUTPUT
           echo "✅ API Endpoint: $API_URL"
 
       - name: Test API Health
@@ -255,13 +250,13 @@ jobs:
         env:
           TF_VAR_environment: ${{ needs.setup.outputs.environment }}
           TF_VAR_stack_name: moral-torture-machine
-          TF_VAR_domain_name: ${{ needs.setup.outputs.environment == 'prod' && 'moraltorturemachine.com' || '' }}
-          TF_VAR_use_custom_domain: ${{ needs.setup.outputs.environment == 'prod' && 'true' || 'false' }}
+          TF_VAR_domain_name: moraltorturemachine.com
+          TF_VAR_use_custom_domain: 'true'
         run: |
           terraform init
 
-          # Select or create workspace
-          terraform workspace select ${{ needs.setup.outputs.environment }} || terraform workspace new ${{ needs.setup.outputs.environment }}
+          # Only the production workspace is allowed for cloud deployments.
+          terraform workspace select prod
 
           # Apply with environment variables
           terraform apply -auto-approve
@@ -277,7 +272,7 @@ jobs:
   frontend-deploy:
     name: Build & Deploy Frontend (${{ needs.setup.outputs.environment }})
     runs-on: ubuntu-latest
-    needs: [setup, frontend-infrastructure]
+    needs: [setup, frontend-infrastructure, backend-deploy]
 
     permissions:
       contents: read
@@ -308,7 +303,11 @@ jobs:
 
       - name: Build frontend
         working-directory: frontend
-        run: pnpm build --mode ${{ needs.setup.outputs.environment }}
+        env:
+          VITE_COGNITO_DOMAIN: ${{ needs.backend-deploy.outputs.cognito_domain }}
+          VITE_COGNITO_CLIENT_ID: ${{ needs.backend-deploy.outputs.cognito_client_id }}
+          VITE_COGNITO_NATIVE_CLIENT_ID: ${{ needs.backend-deploy.outputs.cognito_native_client_id }}
+        run: pnpm build --mode prod
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -329,12 +328,11 @@ jobs:
             --distribution-id ${{ needs.frontend-infrastructure.outputs.distribution_id }} \
             --paths "/*"
 
-  # Job 4b: Build Android APK (solo per prod)
+  # Job 4b: Build Android artifacts for the production client.
   android-build:
     name: Build Android APK
     runs-on: ubuntu-latest
     needs: [setup, frontend-infrastructure, backend-deploy]
-    if: needs.setup.outputs.environment == 'prod'
 
     permissions:
       contents: write # Per upload release artifacts
@@ -619,8 +617,6 @@ jobs:
           $(if [ "${{ needs.android-build.result }}" == "success" ]; then
             echo "✅ **Built successfully**"
             echo "📦 **Download from:** [Actions Artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
-          elif [ "${{ needs.android-build.result }}" == "skipped" ]; then
-            echo "⏭️ **Skipped** (only builds on production)"
           else
             echo "❌ **Failed**"
           fi)

@@ -1,15 +1,12 @@
 // screens/AboutScreen.jsx
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
 import SEO from '../components/SEO';
 import { combineSchemas, getArticleSchema, getFAQSchema, getBreadcrumbSchema } from '../utils/structuredData';
 import './AboutScreen.css';
 
 const AboutScreen = () => {
   const navigate = useNavigate();
-  const { t } = useTranslation();
-
   // Rich structured data for SEO
   const structuredData = combineSchemas(
     getArticleSchema({

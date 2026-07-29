@@ -16,6 +16,8 @@ const EvaluationDilemmasScreen = lazy(() => import('./screens/EvaluationDilemmas
 const ResultsScreen = lazy(() => import('./screens/ResultsScreen'));
 const TutorialScreen = lazy(() => import('./screens/TutorialScreen'));
 const AboutScreen = lazy(() => import('./screens/AboutScreen'));
+const AnalyticsAdminScreen = lazy(() => import('./screens/AnalyticsAdminScreen'));
+const AuthCallbackScreen = lazy(() => import('./screens/AuthCallbackScreen'));
 
 import './styles/shared.css';
 import './App.css';
@@ -50,6 +52,9 @@ const App = () => {
             {/* <Route path="/story-mode" element={<StoryModeScreen />} /> */}
             <Route path="/results" element={<ResultsScreen />} />
             <Route path="/about" element={<AboutScreen />} />
+            {/* Intentionally unlinked: protected by a server-side admin credential. */}
+            <Route path="/admin/analytics" element={<AnalyticsAdminScreen />} />
+            <Route path="/auth/callback" element={<AuthCallbackScreen />} />
           </Routes>
         </Suspense>
       </Router>

@@ -11,9 +11,14 @@ variable "stack_name" {
 }
 
 variable "environment" {
-  description = "Environment name (dev or prod) - used in all resource names"
+  description = "Cloud environment name. Only the production stack is supported."
   type        = string
   default     = "prod"
+
+  validation {
+    condition     = var.environment == "prod"
+    error_message = "Only the prod AWS stack is supported; development is local-only."
+  }
 }
 
 variable "domain_name" {

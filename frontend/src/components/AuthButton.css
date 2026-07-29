@@ -1,0 +1,65 @@
+.auth-login,
+.auth-account {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1000;
+}
+
+.auth-google-button,
+.auth-account button {
+  padding: 0.55rem 0.7rem;
+  color: var(--text-normal);
+  border: 1px solid var(--creepy-fog);
+  background: rgba(18, 17, 19, 0.94);
+  font: 700 0.72rem "Courier New", monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.auth-google-button span {
+  display: inline-grid;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-right: 0.45rem;
+  place-items: center;
+  color: #4285f4;
+  background: #fff;
+  border-radius: 50%;
+}
+
+.auth-account {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  max-width: min(70vw, 26rem);
+  padding: 0.35rem 0.35rem 0.35rem 0.6rem;
+  color: var(--text-dim);
+  border: 1px solid var(--creepy-charcoal);
+  background: rgba(18, 17, 19, 0.94);
+  font-size: 0.72rem;
+}
+
+.auth-account > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .auth-login,
+  .auth-account { top: 3.25rem; }
+}
+.auth-login {
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+}
+
+.auth-error {
+  max-width: 22rem;
+  color: #d98b8b;
+  font-size: 0.68rem;
+  text-align: center;
+}

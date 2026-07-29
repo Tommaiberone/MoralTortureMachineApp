@@ -1,15 +1,24 @@
 // screens/HomeScreen.jsx
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import LanguageSelector from '../components/LanguageSelector';
 import SEO from '../components/SEO';
+import AuthButton from '../components/AuthButton';
 import { combineSchemas, getWebApplicationSchema, getFAQSchema, getHowToSchema } from '../utils/structuredData';
+import { trackEvent } from '../utils/analytics';
 import './HomeScreen.css';
 
 const HomeScreen = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const landingTracked = useRef(false);
+
+  useEffect(() => {
+    if (landingTracked.current) return;
+    landingTracked.current = true;
+    trackEvent('landing_viewed');
+  }, []);
 
   // Rich structured data for SEO (combines multiple schemas for rich snippets)
   const structuredData = combineSchemas(
@@ -19,6 +28,8 @@ const HomeScreen = () => {
   );
 
   const handleNavigation = (mode, route) => {
+    trackEvent('mode_selected', { mode });
+
     // Check if tutorial has been completed for this mode
     const tutorialCompleted = localStorage.getItem(`tutorial_completed_${mode}`);
 
@@ -40,6 +51,7 @@ const HomeScreen = () => {
         url="/"
         structuredData={structuredData}
       />
+      <AuthButton />
       <LanguageSelector />
       <h1 className="screen-title-large home-title">
         <span className="glitch-text">{t('home.title_moral')}</span><br />

@@ -3,7 +3,7 @@
  * Centralizza la configurazione dell'API per web e mobile
  */
 
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 
 // Per debug, log dell'ambiente
 console.log('🔧 Environment:', import.meta.env.MODE);
@@ -20,6 +20,9 @@ export const API_ENDPOINTS = {
   getStoryFlow: `${API_BASE_URL}/get-story-flow`,
   storyNodeVote: `${API_BASE_URL}/story-node-vote`,
   generateDilemma: `${API_BASE_URL}/generate-dilemma`,
+  analyticsEvents: `${API_BASE_URL}/analytics/events`,
+  analyticsAdminOverview: `${API_BASE_URL}/admin/analytics/overview`,
+  authMe: `${API_BASE_URL}/auth/me`,
 };
 
 // Determina se usare Capacitor HTTP o fetch normale
@@ -37,8 +40,6 @@ export const apiFetch = async (endpoint, options = {}) => {
 
     if (useCapacitorHttp) {
       // Usa il plugin Capacitor HTTP per le richieste native
-      const { Http } = await import('@capacitor/http');
-      
       const httpOptions = {
         url,
         method: options.method || 'GET',
@@ -54,11 +55,10 @@ export const apiFetch = async (endpoint, options = {}) => {
         httpOptions.data = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
       }
 
-      response = await Http.request(httpOptions);
+      response = await CapacitorHttp.request(httpOptions);
       
       // Simula l'oggetto Response di fetch
       response.ok = response.status >= 200 && response.status < 300;
-      response.status = response.status;
       response.statusText = `HTTP ${response.status}`;
       response.json = async () => response.data;
       response.text = async () => JSON.stringify(response.data);
@@ -83,7 +83,7 @@ export const apiFetch = async (endpoint, options = {}) => {
     }
 
     const data = useCapacitorHttp ? response.data : await response.json();
-    console.log('✅ API Success:', data);
+    console.log('✅ API request completed successfully');
     return data;
 
   } catch (error) {

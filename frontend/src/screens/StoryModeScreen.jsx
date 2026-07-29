@@ -1,10 +1,14 @@
 // screens/StoryModeScreen.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from 'react-i18next';
 import { getApiHeaders } from '../utils/session';
 import SEO from '../components/SEO';
 import "./StoryModeScreen.css";
+
+const API_URL = import.meta.env.VITE_API_URL;
+const getFlowUrl = `${API_URL}/get-story-flow`;
+const voteUrl = `${API_URL}/story-node-vote`;
 
 const StoryModeScreen = () => {
   const navigate = useNavigate();
@@ -21,7 +25,7 @@ const StoryModeScreen = () => {
 
   useEffect(() => {
     // Block browser back button
-    const preventBackNavigation = (e) => {
+    const preventBackNavigation = (_event) => {
       window.history.pushState(null, '', window.location.href);
     };
 
@@ -34,15 +38,7 @@ const StoryModeScreen = () => {
     };
   }, []);
 
-  useEffect(() => {
-    fetchStoryFlow();
-  }, [i18n.language]);
-
-  const API_URL = import.meta.env.VITE_API_URL;
-  const getFlowUrl = `${API_URL}/get-story-flow`;
-  const voteUrl = `${API_URL}/story-node-vote`;
-
-  const fetchStoryFlow = async () => {
+  const fetchStoryFlow = useCallback(async () => {
     setLoading(true);
     const currentLanguage = i18n.language;
 
@@ -69,7 +65,11 @@ const StoryModeScreen = () => {
       alert(t('storyMode.errorFetchingFlow', 'Error loading story. Please try again.'));
       navigate('/');
     }
-  };
+  }, [i18n.language, navigate, t]);
+
+  useEffect(() => {
+    void fetchStoryFlow();
+  }, [fetchStoryFlow]);
 
   const handleChoice = async (choice) => {
     if (choiceMade || voting || !currentNode) return;
