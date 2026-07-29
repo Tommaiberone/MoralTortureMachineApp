@@ -57,7 +57,10 @@ def add_missing(data: dict[str, Any], value: str) -> None:
 
 def add_error(data: dict[str, Any], source: str, error: Exception) -> None:
     errors = data.setdefault("configuration", {}).setdefault("errors", [])
-    errors.append(f"{source}: {type(error).__name__}")
+    response = getattr(error, "response", None)
+    status_code = getattr(response, "status_code", None)
+    detail = f"HTTP {status_code}" if status_code else type(error).__name__
+    errors.append(f"{source}: {detail}")
 
 
 def recommendation(title: str, source: str, evidence: str, action: str, risk: str = "low") -> dict[str, str]:

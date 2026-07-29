@@ -1,6 +1,6 @@
 import unittest
 
-from growth_intelligence import build_recommendations, markdown_report
+from growth_intelligence import add_error, build_recommendations, markdown_report
 
 
 class GrowthIntelligenceTests(unittest.TestCase):
@@ -26,6 +26,17 @@ class GrowthIntelligenceTests(unittest.TestCase):
     def test_report_surfaces_non_fatal_source_errors(self):
         data = {"configuration": {"missing": [], "errors": ["Search Console: HTTPError"]}, "search_console": {"rows": []}, "ga4": {"rows": []}, "pagespeed": {}, "play": {"acquisition_rows": [], "vitals": {}, "listings": {}}}
         self.assertIn("Source error (report continues)", markdown_report(data))
+
+    def test_error_summary_includes_safe_http_status(self):
+        class Response:
+            status_code = 403
+
+        class SourceError(Exception):
+            response = Response()
+
+        data = {"configuration": {"missing": []}}
+        add_error(data, "Search Console", SourceError())
+        self.assertEqual(data["configuration"]["errors"], ["Search Console: HTTP 403"])
 
     def test_play_csv_prefix_requires_an_organic_search_file(self):
         # The selector is intentionally constrained to the Play Search report:
