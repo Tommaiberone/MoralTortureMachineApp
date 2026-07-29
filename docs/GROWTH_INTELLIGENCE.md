@@ -25,7 +25,9 @@ assuming a particular month exists.
 
 These are the only external actions required from the account owner:
 
-1. Verify `https://moraltorturemachine.com/` in Google Search Console.
+1. Verify the Domain property `sc-domain:moraltorturemachine.com` in Google
+   Search Console and grant the reporting service account access to that same
+   property.
 2. Create a GA4 property and web data stream, then configure consent and the
    privacy notice before enabling the GA4 browser tag. Do not send email,
    Cognito subject, answer text, tokens, or custom user IDs.
