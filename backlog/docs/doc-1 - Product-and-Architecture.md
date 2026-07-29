@@ -111,8 +111,10 @@ dev table, or `/dev` SSM hierarchy.
   PageSpeed, Google Play acquisition-report and Android Vitals signals, then
   produces a private artifact and optional manually requested review issue.
   It has no publishing, listing-edit, asset-upload, release, or web-content
-  mutation capability. Service-account material remains a GitHub secret and is
-  never available to the frontend, Lambda, or Android APK.
+  mutation capability. GitHub OIDC exchanges a short-lived token for a
+  keyless Google service account restricted to this repository; no static
+  credential is available to the frontend, Lambda, Android APK, or GitHub
+  Secrets.
 - Google Play listing text is supplied as a checked-in human-maintained
   snapshot for character-limit review; the reporting identity intentionally
   lacks the store-listing edit permission. Actual ASO listing changes belong to
