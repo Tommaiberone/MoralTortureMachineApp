@@ -1,0 +1,68 @@
+name: Growth Intelligence Report
+
+on:
+  schedule:
+    - cron: '17 8 * * 1'
+  workflow_dispatch:
+    inputs:
+      create_issue:
+        description: 'Create a GitHub issue containing the report (never publishes web or Play changes)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+jobs:
+  report:
+    name: Read-only SEO and ASO report
+    runs-on: ubuntu-latest
+    env:
+      GA4_PROPERTY_ID: ${{ vars.GA4_PROPERTY_ID }}
+      GOOGLE_PLAY_PACKAGE_NAME: ${{ vars.GOOGLE_PLAY_PACKAGE_NAME }}
+      GOOGLE_PLAY_ACQUISITION_REPORT_URI: ${{ vars.GOOGLE_PLAY_ACQUISITION_REPORT_URI }}
+      PAGESPEED_API_KEY: ${{ secrets.PAGESPEED_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - id: google-auth
+        name: Exchange GitHub OIDC for Google read-only identity
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/411799055035/locations/global/workloadIdentityPools/github-actions/providers/github
+          service_account: growth-intelligence@moraltorturemachine.iam.gserviceaccount.com
+
+      - name: Install report-only Google clients
+        run: python -m pip install --disable-pip-version-check google-auth google-cloud-storage requests
+
+      - name: Test recommendation rules
+        run: python scripts/test_growth_intelligence.py
+
+      - name: Collect aggregate sources
+        run: python scripts/growth_intelligence.py collect --config .github/growth-intelligence.json --output "$RUNNER_TEMP/growth-data.json"
+
+      - name: Build review report
+        run: python scripts/growth_intelligence.py analyze --input "$RUNNER_TEMP/growth-data.json" --output-dir growth-report
+
+      - name: Publish workflow summary
+        run: cat growth-report/growth-intelligence-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload private report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: growth-intelligence-report
+          path: growth-report/
+          retention-days: 14
+
+      - name: Create a review issue only when manually requested
+        if: github.event_name == 'workflow_dispatch' && inputs.create_issue == true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue create --title "Growth intelligence review $(date -u +%F)" --body-file growth-report/growth-intelligence-report.md

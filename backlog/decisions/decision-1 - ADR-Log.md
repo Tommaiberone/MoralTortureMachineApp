@@ -147,7 +147,9 @@ AWS data store (rejected: unnecessary cost/privacy surface) and granting the
 service account Play store-presence edit permission to read listing text
 (rejected: violates least privilege and makes accidental publication possible).
 Consequently, the operational identity is read-only and current listing text is
-kept as a human-maintained snapshot until `TASK-79` is eligible.
+kept as a human-maintained snapshot until `TASK-79` is eligible. GitHub uses
+OIDC workload identity federation to obtain a short-lived token for the Google
+service account, avoiding service-account JSON keys entirely.
 
 ### ADR-017 — Automatic direct-to-production Google Play publish on version bump
 
