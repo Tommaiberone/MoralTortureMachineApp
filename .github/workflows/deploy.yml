@@ -18,6 +18,21 @@ on:
         required: false
         default: true
         type: boolean
+      publish_to_play_store:
+        description: 'Publish the signed AAB to Google Play (requires a prior manual release on the target track)'
+        required: false
+        default: false
+        type: boolean
+      play_store_track:
+        description: 'Google Play track to publish to'
+        required: false
+        default: 'internal'
+        type: choice
+        options:
+          - internal
+          - alpha
+          - beta
+          - production
 
 env:
   AWS_REGION: eu-west-1
@@ -466,6 +481,35 @@ jobs:
                     `_Build triggered by: ${context.actor}_`
             });
 
+  # Job 4c: Publish the signed AAB to Google Play. Never runs on an ordinary
+  # push; it requires an explicit manual workflow_dispatch with the flag on.
+  play-store-publish:
+    name: Publish to Google Play (${{ github.event.inputs.play_store_track }})
+    runs-on: ubuntu-latest
+    needs: [setup, android-build]
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.publish_to_play_store == 'true'
+
+    environment:
+      name: ${{ needs.setup.outputs.environment }}
+
+    steps:
+      - name: Download AAB artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: android-app-bundle
+          path: android-release
+
+      - name: Publish AAB to Google Play
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
+          packageName: com.tommaiberone.MoralTortureMachine
+          releaseFiles: android-release/app-release.aab
+          track: ${{ github.event.inputs.play_store_track }}
+          status: completed
+
   # Job 5: Populate DynamoDB (opzionale)
   populate-dynamodb:
     name: Populate DynamoDB (${{ needs.setup.outputs.environment }})
@@ -586,7 +630,7 @@ jobs:
   deployment-summary:
     name: Deployment Summary
     runs-on: ubuntu-latest
-    needs: [setup, backend-deploy, frontend-deploy, android-build]
+    needs: [setup, backend-deploy, frontend-deploy, android-build, play-store-publish]
     if: always() # Esegui sempre per dare un feedback
 
     steps:
@@ -617,6 +661,15 @@ jobs:
           $(if [ "${{ needs.android-build.result }}" == "success" ]; then
             echo "✅ **Built successfully**"
             echo "📦 **Download from:** [Actions Artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          else
+            echo "❌ **Failed**"
+          fi)
+
+          ### Google Play publish
+          $(if [ "${{ needs.play-store-publish.result }}" == "success" ]; then
+            echo "✅ **Published to track:** \`${{ github.event.inputs.play_store_track }}\`"
+          elif [ "${{ needs.play-store-publish.result }}" == "skipped" ]; then
+            echo "⏭️ **Skipped** (not requested via workflow_dispatch)"
           else
             echo "❌ **Failed**"
           fi)

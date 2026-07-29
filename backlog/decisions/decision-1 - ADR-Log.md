@@ -108,6 +108,32 @@ device, alongside the selected in-app language, rather than deriving location
 from an IP. This enables useful regional-time and language segmentation without
 collecting country, city, or raw network location.
 
+### ADR-014 — Manual-only Google Play publishing from CI
+
+The signed AAB is already built by `deploy.yml` on every push to `main`, but
+publishing it to Google Play is a separate `play-store-publish` job gated
+strictly behind an explicit `workflow_dispatch` run with
+`publish_to_play_store: true`; it never fires on an ordinary push. Options
+considered: auto-publish on every push to `main` (rejected: most commits do not
+bump `versionCode`, so Play would reject duplicate uploads, and an unattended
+publish to a public app conflicts with the repository rule against deploying or
+publishing without an explicit ask); a dedicated release branch/tag trigger
+(rejected for now: adds workflow complexity before the team has multiple
+release branches). Consequence: authentication uses one Play Console service
+account JSON kept only as the GitHub secret `PLAY_STORE_SERVICE_ACCOUNT_JSON`;
+the default target track is `internal`; the operator must still bump
+`versionName`/`versionCode` per the existing mandatory version-bump rule before
+triggering a publish, and Google Play still requires one prior manual release on
+a track before the API can publish to it.
+
+### ADR-015 — Backlog In Progress column allows multiple concurrent tasks
+
+The former "at most one task In Progress" rule is removed from `CLAUDE.md` at
+the user's explicit request; multiple tasks may be In Progress at once. This
+was a workflow-hygiene rule, not a product or architecture constraint, so
+relaxing it does not affect anonymous continuity, data, or deployment
+guarantees recorded elsewhere in this log.
+
 
 ## Consequences
 

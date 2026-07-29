@@ -159,3 +159,22 @@ conflicts below.
 Task state, priority, dependencies, acceptance criteria, open questions, and
 future work are maintained with the Backlog.md CLI. `ROADMAP_SOCIAL_GROWTH.md`
 is a migration pointer only and must not be used as a second mutable task list.
+
+## Release automation
+
+- `.github/workflows/deploy.yml` builds and signs the release AAB on every push
+  to `main` (job `android-build`) but never publishes it anywhere by itself.
+- A separate job, `play-store-publish`, can push that same AAB to Google Play
+  through the Play Developer API (`r0adkll/upload-google-play`). It only runs on
+  a manual `workflow_dispatch` with `publish_to_play_store: true`, never on an
+  ordinary push, so a Play Store release always requires an explicit human
+  action for that run.
+- Authentication uses a dedicated Play Console service account whose JSON key is
+  stored only as the GitHub secret `PLAY_STORE_SERVICE_ACCOUNT_JSON`; it is
+  never written to the repository or persisted on the runner beyond the job.
+- The Google Play Developer API itself is free; this does not add an AWS
+  resource, workspace, or variable-cost service, so it sits outside the AWS
+  Free Tier review process. The target `play_store_track` input
+  (`internal`/`alpha`/`beta`/`production`) defaults to `internal`.
+- Google Play requires at least one prior manual release on the target track
+  before API-based publishing is accepted for that track.
