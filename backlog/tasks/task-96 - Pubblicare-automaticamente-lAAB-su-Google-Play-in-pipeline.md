@@ -1,10 +1,10 @@
 ---
 id: TASK-96
 title: Pubblicare automaticamente l'AAB su Google Play in pipeline
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-29 13:41'
-updated_date: '2026-07-29 14:12'
+updated_date: '2026-07-29 14:25'
 labels:
   - android
   - release
@@ -32,4 +32,8 @@ Estendere il job android-build di deploy.yml con un job play-store-publish che c
 
 <!-- SECTION:NOTES:BEGIN -->
 Test end-to-end riuscito: run workflow_dispatch su branch ci/play-store-publish (run 30458451825, https://github.com/Tommaiberone/MoralTortureMachineApp/actions/runs/30458451825) con publish_to_play_store=true e track internal. Tutti i job verdi, incluso 'Publish to Google Play (internal)' in 25s: AAB firmato 1.3.1/code 8 caricato su Play Console track internal via service account. Modifiche non ancora mergiate su main, in attesa di conferma utente.
+
+Merge su main (fast-forward, commit d7d25a6) e verifica live: run push 30459885058 completato con successo, job 'Publish to Google Play' correttamente SKIPPATO perché questo push non tocca versionCode (comportamento atteso). Logica di rilevamento bump validata anche offline sui commit reali del repo (41caa9a->a8446cc: 7->8, rilevato; e954a1c->41caa9a: nessun cambio, non rilevato). L'effettivo publish automatico su track production resta da osservare al prossimo vero bump di versionCode in un push su main; non forzato qui per non generare una release prematura non voluta.
+
+Bump di validazione richiesto esplicitamente dall'utente: 1.3.1/8 -> 1.3.2/9, nessuna altra modifica al codice, solo per osservare l'auto-publish reale su track production al prossimo push su main.
 <!-- SECTION:NOTES:END -->
