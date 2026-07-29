@@ -46,4 +46,9 @@ Implementato 2026-07-29: scripts/growth_intelligence.py, workflow .github/workfl
 Ripreso 2026-07-29: configurata federazione GitHub OIDC sul progetto Google Cloud moraltorturemachine; migrazione del workflow da secret JSON a token brevi in corso.
 
 OIDC verificato 2026-07-29: provider GitHub ACTIVE, vincolo repository applicato e Analytics Data/Search Console/Play Reporting API abilitate nel progetto moraltorturemachine. Restano solo le autorizzazioni product-level e TASK-63 per il tag GA4.
+
+Verifica 2026-07-29: il report GitHub ha letto correttamente la proprietà
+`sc-domain:moraltorturemachine.com` senza errori; GA4 e PageSpeed sono anch'essi
+operativi. Resta bloccato esclusivamente TASK-63 prima di installare il tag GA4
+nel browser.
 <!-- SECTION:NOTES:END -->
