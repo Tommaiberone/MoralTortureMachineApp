@@ -310,7 +310,7 @@ resource "aws_cognito_user_pool_client" "web" {
   prevent_user_existence_errors = "ENABLED"
   explicit_auth_flows           = ["ALLOW_REFRESH_TOKEN_AUTH"]
   read_attributes               = ["email", "email_verified", "name"]
-  write_attributes              = ["name"]
+  write_attributes              = ["email", "name"]
 
   token_validity_units {
     access_token  = "hours"
@@ -337,7 +337,7 @@ resource "aws_cognito_user_pool_client" "android" {
   prevent_user_existence_errors        = "ENABLED"
   explicit_auth_flows                  = ["ALLOW_REFRESH_TOKEN_AUTH"]
   read_attributes                      = ["email", "email_verified", "name"]
-  write_attributes                     = ["name"]
+  write_attributes                     = ["email", "name"]
 
   token_validity_units {
     access_token  = "hours"
