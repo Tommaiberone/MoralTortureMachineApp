@@ -441,6 +441,28 @@ re-enabling Italian later means reverting `i18n.js` (commented inline) and
 restoring the `HomeScreen` import; the SEO landing pages required no change
 either way.
 
+### ADR-036 — 1.4.0 (versionCode 10) release, at the user's explicit request
+
+Backend/web (Users table, claim/export/delete account, auth-write rate limit,
+AWS Budget + CloudWatch alarms, the `dynamodb:BatchWriteItem`/`DeleteItem` IAM
+fix, evaluation auto-load/prefetch, frontend error reporting, share cards,
+Italian hidden, trimmed homepage SEO links) already deployed automatically via
+`.github/workflows/deploy.yml` on the `#9` merge push to `main` — verified
+directly against production, not just from a green CI run: a live
+`POST /analytics/events` test now returns `{"accepted":1}` (was a silent
+`AccessDeniedException` before), `prod-moral-torture-machine-product-events`
+went from 0 to real items, and the 4 CloudWatch alarms plus the
+`prod-moral-torture-machine-monthly-cost` budget exist in the account. The SNS
+email subscription remains `PendingConfirmation` until the owner clicks the
+confirmation link. `versionCode` 9 → 10, `versionName`/`package.json` 1.3.2 →
+1.4.0 (minor: new backward-compatible features, no breaking change) is the
+one remaining piece: per ADR-017 this makes the next push to `main`
+auto-publish straight to Google Play production with no human review gate.
+The user was explicitly warned this is an immediate, live, all-users publish
+(not a staged/internal one) before it was triggered, per their own
+instruction to flag hard-to-reverse actions going forward, and confirmed
+production.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
