@@ -267,6 +267,48 @@ transient errors. Options considered: lowering all thresholds (rejected as
 noise), a database for history (rejected for cost/privacy surface), and
 auto-publishing content from radar output (rejected as unsafe/scaled SEO).
 
+### ADR-025 — Deterministic nearest-centroid moral archetype engine
+
+`TASK-25`/`TASK-26` add a moral archetype to `POST /analyze-results` without
+touching the existing Groq analysis. Fourteen archetypes, each an editorial
+bilingual (IT/EN) content record plus a fixed six-dimension centroid, live in
+`backend/data/archetypes.json` (versioned as a whole via a single `version`
+field). `backend/src/archetype_engine.py` averages a user's per-dilemma
+dimension scores, exactly as `/analyze-results` already did, then assigns the
+archetype with the lowest Euclidean distance to that average; a tie resolves
+to the lowest archetype id so the result never depends on dict/iteration
+order. The engine takes no AI input and is covered by fixtures that recover
+every archetype exactly at its own centroid plus one verified equidistant
+boundary case. Options considered: a rule-based decision tree per dimension
+threshold (rejected: harder to keep symmetric/testable across six axes and to
+version as a single unit) and letting Groq name the archetype (rejected:
+violates the product rule that AI enriches but never determines scores).
+Consequence: the archetype is fully available even when Groq is down or
+rate-limited, which also derisks `TASK-27`'s Groq-fallback and
+persistence work still to come; adding an archetype only requires appending
+one entry to the JSON file and bumping `version`. `TASK-25`'s copy is
+AI-drafted and stays open pending an explicit human content/visual review
+before that task is marked Done.
+
+### ADR-026 — Lambda package gains flat sibling modules with layout fallback
+
+`backend_fastapi.py` had no internal module dependencies before ADR-025, and
+`.github/workflows/deploy.yml` copies only that single file (flat, no `src/`
+or `data/` subfolder) into the Lambda zip, with `backend_fastapi.handler` as
+the configured entry point. Restructuring the zip into `src/`+`data/`
+subfolders would also require changing the deployed Lambda `handler` setting,
+a higher-risk production change for a content/algorithm task. Instead,
+`archetype_engine.py` and `archetypes.json` are added as two more flat `cp`
+lines in the same build step, and both the import in `backend_fastapi.py` and
+the data-path lookup in `archetype_engine.py` try the flat (Lambda) layout
+first and fall back to the repository's `backend/src/` + `backend/data/`
+layout. Verified locally against all three real invocation shapes: unit tests
+importing `backend.src.backend_fastapi` from the repo root, local `uvicorn
+src.backend_fastapi:app` from `backend/`, and a flat directory simulating the
+deployed zip. Consequence: no Terraform or handler change was needed for this
+task; a future restructuring of the Lambda package should revisit this
+fallback.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

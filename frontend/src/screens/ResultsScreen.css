@@ -70,6 +70,50 @@
   color: var(--text-normal);
 }
 
+.results-archetype {
+  margin-top: 30px;
+  width: 90%;
+  max-width: 600px;
+  background-color: var(--creepy-charcoal);
+  border: 2px solid var(--creepy-fog);
+  padding: 25px;
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.9);
+}
+
+.results-archetype-title {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  font-family: 'Courier New', Courier, monospace;
+  margin-bottom: 16px;
+  color: var(--text-danger);
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.results-archetype-name {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--text-normal);
+  margin-bottom: 12px;
+}
+
+.results-archetype-emoji {
+  font-size: 24px;
+}
+
+.results-archetype-description,
+.results-archetype-strength,
+.results-archetype-blind-spot {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text-normal);
+  margin-bottom: 10px;
+}
+
 .results-ai-analysis {
   margin-top: 40px;
   margin-bottom: 40px;

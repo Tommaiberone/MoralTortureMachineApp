@@ -70,6 +70,22 @@ dev table, or `/dev` SSM hierarchy.
 
 - Archetypes and compatibility are deterministic, testable, symmetric where
   applicable, and versioned.
+- The moral archetype engine (`backend/src/archetype_engine.py`) assigns one of
+  the 14 archetypes defined in `backend/data/archetypes.json` (versioned
+  bilingual content: name, description, strength, blind spot, share phrase,
+  visual identity) by nearest-centroid Euclidean distance over the six scored
+  dimensions (Empathy, Integrity, Responsibility, Justice, Altruism, Honesty).
+  It never calls Groq, so it works identically whether or not Groq is
+  available. Ties resolve to the lowest archetype id for reproducibility.
+  `POST /analyze-results` returns it alongside the AI prose as `archetype`,
+  carrying `archetypesVersion` from the content file.
+- Because the Lambda deployment package (`.github/workflows/deploy.yml`) copies
+  `backend/src/backend_fastapi.py`, `backend/src/archetype_engine.py`, and
+  `backend/data/archetypes.json` as flat siblings (no subfolders), the import
+  in `backend_fastapi.py` and the data-path lookup in `archetype_engine.py`
+  both try the flat Lambda layout first and fall back to the repository's
+  `backend/src/` + `backend/data/` layout, so the same code runs unmodified
+  locally, in tests, and deployed.
 - AI can enrich presentation but cannot determine scores or core outcomes.
 - Generated AI output is persisted and reused; every core flow has a
   deterministic fallback when Groq is unavailable.

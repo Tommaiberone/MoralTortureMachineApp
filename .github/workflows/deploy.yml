@@ -175,6 +175,8 @@ jobs:
           rm -rf lambda_deployment lambda_function.zip
           mkdir -p lambda_deployment
           cp src/backend_fastapi.py lambda_deployment/
+          cp src/archetype_engine.py lambda_deployment/
+          cp data/archetypes.json lambda_deployment/
 
           uv pip install \
             --target lambda_deployment \
