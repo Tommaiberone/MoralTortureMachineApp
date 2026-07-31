@@ -22,6 +22,18 @@ from typing import Optional, Dict, Any
 from decimal import Decimal
 import json
 
+# archetype_engine.py is deployed as a flat sibling of this file (see
+# .github/workflows/deploy.yml), so the same import must resolve whether this
+# module is loaded as a bare top-level module (Lambda), as `src.backend_fastapi`
+# (local uvicorn), or as `backend.src.backend_fastapi` (unit tests).
+try:
+    from src.archetype_engine import assign_archetype, compute_dimension_averages
+except ImportError:
+    try:
+        from .archetype_engine import assign_archetype, compute_dimension_averages
+    except ImportError:
+        from archetype_engine import assign_archetype, compute_dimension_averages
+
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -1562,15 +1574,11 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
 
         api_key = get_groq_api_key()
 
-        # Aggregate the answers to compute average values
-        aggregated = {}
-        for answer in analyze_request.answers:
-            for key, value in answer.items():
-                aggregated[key] = aggregated.get(key, 0) + value
-
-        # Calculate averages
-        num_answers = len(analyze_request.answers)
-        averages = {key: round(value / num_answers, 2) for key, value in aggregated.items()}
+        # Calculate averages and the deterministic archetype match. This never
+        # depends on Groq: archetype assignment must hold even when the AI
+        # analysis below fails or is unavailable.
+        averages = compute_dimension_averages(analyze_request.answers)
+        archetype = assign_archetype(averages, language=language)
 
         # Create a summary of the moral profile
         profile_summary = ", ".join([f"{key}: {value}" for key, value in averages.items()])
@@ -1653,7 +1661,9 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
             action_type="results_analyzed",
             action_data={
                 "num_dilemmas": len(analyze_request.answers),
-                "averages": averages
+                "averages": averages,
+                "archetype_id": archetype["archetypeId"],
+                "archetypes_version": archetype["archetypesVersion"],
             },
             language=language,
             user_agent=request.headers.get("User-Agent"),
@@ -1663,7 +1673,8 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
 
         return {
             "analysis": analysis_text,
-            "averages": averages
+            "averages": averages,
+            "archetype": archetype,
         }
 
     except requests.exceptions.RequestException as e:

@@ -64,6 +64,13 @@ Added JSON-LD structured data in `index.html`:
 - Dynamic language detection with i18next
 - Meta tags adjust based on current language
 
+### 7. Intent-led non-brand landing cluster
+- Six editorial routes cover the first validated discovery intents, in English
+  and Italian: moral dilemma test, ethical dilemmas, and moral dilemma game.
+- They use reciprocal canonical/hreflang tags, visible FAQ content, JSON-LD,
+  internal links, and sitemap entries. They are intentionally not a template
+  for programmatic keyword pages or diagnostic claims.
+
 ---
 
 ## Files Modified
@@ -181,7 +188,8 @@ Create an Open Graph image with these specifications:
 
 ### 4. Analytics & Monitoring
 - [ ] Set up Google Search Console
-- [ ] Configure Google Analytics 4 (GA4)
+- [x] Configure opt-in Google Analytics 4 (GA4) for web only; `result_viewed`
+  is sent without properties only after affirmative consent
 - [ ] Monitor Core Web Vitals
 - [ ] Track keyword rankings
 - [ ] Set up error monitoring (404s, 500s)

@@ -175,6 +175,8 @@ jobs:
           rm -rf lambda_deployment lambda_function.zip
           mkdir -p lambda_deployment
           cp src/backend_fastapi.py lambda_deployment/
+          cp src/archetype_engine.py lambda_deployment/
+          cp data/archetypes.json lambda_deployment/
 
           uv pip install \
             --target lambda_deployment \
@@ -349,6 +351,7 @@ jobs:
           VITE_COGNITO_DOMAIN: ${{ needs.backend-deploy.outputs.cognito_domain }}
           VITE_COGNITO_CLIENT_ID: ${{ needs.backend-deploy.outputs.cognito_client_id }}
           VITE_COGNITO_NATIVE_CLIENT_ID: ${{ needs.backend-deploy.outputs.cognito_native_client_id }}
+          VITE_GA4_MEASUREMENT_ID: ${{ vars.GA4_MEASUREMENT_ID }}
         run: pnpm build --mode prod
 
       - name: Configure AWS credentials

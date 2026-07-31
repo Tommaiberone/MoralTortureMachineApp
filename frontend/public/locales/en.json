@@ -11,7 +11,12 @@
     "infinite_description": "MORAL DILEMMAS TO SHARE WITH FRIENDS. PASS THE PHONE AND DISCOVER THEIR CHOICES.",
     "story_button": "STORY MODE",
     "story_description": "LIVE A BRANCHING STORY. EVERY CHOICE SHAPES YOUR FATE.",
-    "warning_footer": "[ THIS WILL EXPOSE YOUR DARKEST BOUNDARIES ]"
+    "warning_footer": "[ THIS WILL EXPOSE YOUR DARKEST BOUNDARIES ]",
+    "seo_resources_title": "Explore moral dilemmas",
+    "seo_resources_intro": "Start with a guide, a test, or a game for difficult choices.",
+    "seo_resource_test": "Moral dilemma test",
+    "seo_resource_ethical": "Ethical dilemmas",
+    "seo_resource_game": "Moral dilemma game"
   },
   "evaluation": {
     "back_button": "[ BACK ]",
@@ -40,6 +45,9 @@
     "home_button": "[ HOME ]",
     "moral_profile": "MORAL PROFILE",
     "verdict": "[ THE MACHINE'S VERDICT ]",
+    "archetype_title": "[ YOUR MORAL ARCHETYPE ]",
+    "archetype_strength": "Strength",
+    "archetype_blind_spot": "Blind spot",
     "analyzing": "Analyzing your soul...",
     "analysis_error": "The machine's consciousness flickers... Unable to analyze your soul at this moment.",
     "rate_limit_error": "⚠ The machine has analyzed too many souls today. Its circuits need rest. Try again in a few minutes, or view your moral profile chart above.",

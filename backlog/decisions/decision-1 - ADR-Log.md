@@ -170,6 +170,145 @@ only be stopped by a fast-follow fix commit, a manual halt/rollback in Play
 Console, or removing this job. This intentionally trades release safety for
 release speed and must be revisited if it causes a production incident.
 
+### ADR-018 — Web-only opt-in GA4 without advertising features
+
+GA4 is introduced as a separate, optional web measurement layer, rather than
+as a replacement for the existing privacy-safe first-party product analytics.
+Before an affirmative choice, the app does not request the Google tag or set
+Google Analytics cookies. On acceptance it grants only `analytics_storage`;
+`ad_storage`, `ad_user_data`, and `ad_personalization` remain denied, while
+Google signals and ad-personalisation signals are explicitly disabled. The
+choice is retained in a first-party cookie for 180 days, and the fixed Privacy
+preferences control lets a visitor withdraw or reconsider it. The GA4
+Measurement ID is injected only into the web deployment build, so this change
+does not alter Android runtime behavior or require an APK rebuild. The public
+web privacy notice names Tommaso Bersani as controller, identifies the contact
+email, and states the selected two-month GA4 data retention.
+
+### ADR-019 — One-purpose GA4 retention administration workflow
+
+The existing growth-intelligence identity remains read-only in normal use. To
+apply the explicitly chosen two-month GA4 event and user data retention, a
+separately gated job runs only when the `configure_ga4_retention` input of the
+existing `workflow_dispatch` workflow is set to true; the scheduled report
+cannot enter this job. It requests the `analytics.edit` scope through the same
+GitHub OIDC federation, patches only the two retention fields for the
+configured property, and reads the singleton setting back before succeeding.
+This avoids local OAuth client credentials and limits the temporary GA4 Editor
+role to one auditable change; the account owner should restore the service
+account to Viewer afterwards.
+
+### ADR-020 — Intent-led bilingual landing cluster before scaled SEO
+
+The first non-brand SEO implementation consists of six hand-authored routes:
+English and Italian pages for a moral dilemma test, ethical dilemmas, and a
+moral dilemma game. Each page has a distinct canonical URL, reciprocal
+`hreflang`, sitemap entry, visible FAQ, internal links, and a CTA into the
+existing anonymous flow. Search Console and consented GA4 are used only to
+evaluate these pages; the scheduled intelligence workflow remains read-only.
+Options considered: creating many keyword/city/question variants (rejected as
+thin or scaled content risk) and waiting for server rendering before publishing
+any useful content (rejected for now because the existing application already
+uses React routing and the small static cluster can be crawled and validated
+without infrastructure or AWS cost). Consequence: future landing expansion is
+editorial and evidence-gated; a pre-rendering evaluation remains appropriate if
+crawl/indexation evidence shows the SPA is a material limit.
+
+### ADR-021 — Demand radar separates discovery signals from demand claims
+
+The Growth Intelligence report gains an outside-in demand radar using a small
+checked-in EN/IT intent seed set and a read-only autocomplete request. It marks
+candidate phrases as directional by default, observed only when the exact term
+has Search Console impressions, and quantified only when a human-exported
+Keyword Planner CSV supplies monthly volume and competition. It also marks
+whether an idea is already covered and whether the current product or only a
+future roadmap item can fulfil it. Options considered: an automated Google Ads
+API integration (rejected for now because it needs a developer token and a
+user-authorized Ads account) and treating autocomplete as keyword volume
+(rejected as misleading). Consequence: the weekly report discovers adjacent
+intent without AWS cost, Google Ads credentials, campaigns, or publication;
+the owner may add a reviewed CSV later to quantify only the candidates worth
+investigating.
+
+### ADR-022 — Preserve market coverage and product-safety context in the radar
+
+The radar renders its top candidates independently for each market rather than
+using one global truncation, because a dense Italian or English suggestion set
+must not make the other market disappear. Configured term rules can also mark a
+candidate as requiring policy review, including psychological-claim and
+minors-audience wording. Options considered: a single global ranking (rejected
+after the first live run hid English entries) and silently dropping sensitive
+phrases (rejected because they are useful research signals but unsafe content
+instructions). Consequence: risky candidates remain visible with an explicit
+do-not-publish-without-review label, and market comparison stays possible.
+
+### ADR-023 — Search Console access failure is a property-identifier regression
+
+The full report run `30619056214` successfully exchanged GitHub OIDC credentials
+but received HTTP 403 from Search Console. The owner confirmed the service
+account already has access to the Domain property, so the fault is the URL-prefix
+identifier in the workflow configuration. The report must use the exact domain
+property identifier `sc-domain:moraltorturemachine.com`; it must not widen the
+workload identity, add a static key, or remove the source. A new run must confirm
+the absence of 403. The related remediation is `TASK-97.5`.
+
+### ADR-024 — Recommendation evidence is aggregated, staged, and historical
+
+Search Console retains its detailed query/page/device/country response for
+diagnosis but adds a separate query/page aggregate for recommendation thresholds
+and radar matching, avoiding small-traffic fragmentation. The demand radar can
+produce at most two current-fit, autocomplete-confirmed validation briefs per
+market; it never produces a publication instruction, and future-fit or
+policy-review ideas are excluded. Recent report artifacts are read through the
+GitHub Actions read-only API and retained for 90 days so that material,
+non-brand query changes can be compared week to week without AWS storage.
+PageSpeed runs per configured landing and Play Vitals uses bounded retry for
+transient errors. Options considered: lowering all thresholds (rejected as
+noise), a database for history (rejected for cost/privacy surface), and
+auto-publishing content from radar output (rejected as unsafe/scaled SEO).
+
+### ADR-025 — Deterministic nearest-centroid moral archetype engine
+
+`TASK-25`/`TASK-26` add a moral archetype to `POST /analyze-results` without
+touching the existing Groq analysis. Fourteen archetypes, each an editorial
+bilingual (IT/EN) content record plus a fixed six-dimension centroid, live in
+`backend/data/archetypes.json` (versioned as a whole via a single `version`
+field). `backend/src/archetype_engine.py` averages a user's per-dilemma
+dimension scores, exactly as `/analyze-results` already did, then assigns the
+archetype with the lowest Euclidean distance to that average; a tie resolves
+to the lowest archetype id so the result never depends on dict/iteration
+order. The engine takes no AI input and is covered by fixtures that recover
+every archetype exactly at its own centroid plus one verified equidistant
+boundary case. Options considered: a rule-based decision tree per dimension
+threshold (rejected: harder to keep symmetric/testable across six axes and to
+version as a single unit) and letting Groq name the archetype (rejected:
+violates the product rule that AI enriches but never determines scores).
+Consequence: the archetype is fully available even when Groq is down or
+rate-limited, which also derisks `TASK-27`'s Groq-fallback and
+persistence work still to come; adding an archetype only requires appending
+one entry to the JSON file and bumping `version`. `TASK-25`'s copy is
+AI-drafted and stays open pending an explicit human content/visual review
+before that task is marked Done.
+
+### ADR-026 — Lambda package gains flat sibling modules with layout fallback
+
+`backend_fastapi.py` had no internal module dependencies before ADR-025, and
+`.github/workflows/deploy.yml` copies only that single file (flat, no `src/`
+or `data/` subfolder) into the Lambda zip, with `backend_fastapi.handler` as
+the configured entry point. Restructuring the zip into `src/`+`data/`
+subfolders would also require changing the deployed Lambda `handler` setting,
+a higher-risk production change for a content/algorithm task. Instead,
+`archetype_engine.py` and `archetypes.json` are added as two more flat `cp`
+lines in the same build step, and both the import in `backend_fastapi.py` and
+the data-path lookup in `archetype_engine.py` try the flat (Lambda) layout
+first and fall back to the repository's `backend/src/` + `backend/data/`
+layout. Verified locally against all three real invocation shapes: unit tests
+importing `backend.src.backend_fastapi` from the repo root, local `uvicorn
+src.backend_fastapi:app` from `backend/`, and a flat directory simulating the
+deployed zip. Consequence: no Terraform or handler change was needed for this
+task; a future restructuring of the Lambda package should revisit this
+fallback.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

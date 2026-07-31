@@ -70,6 +70,22 @@ dev table, or `/dev` SSM hierarchy.
 
 - Archetypes and compatibility are deterministic, testable, symmetric where
   applicable, and versioned.
+- The moral archetype engine (`backend/src/archetype_engine.py`) assigns one of
+  the 14 archetypes defined in `backend/data/archetypes.json` (versioned
+  bilingual content: name, description, strength, blind spot, share phrase,
+  visual identity) by nearest-centroid Euclidean distance over the six scored
+  dimensions (Empathy, Integrity, Responsibility, Justice, Altruism, Honesty).
+  It never calls Groq, so it works identically whether or not Groq is
+  available. Ties resolve to the lowest archetype id for reproducibility.
+  `POST /analyze-results` returns it alongside the AI prose as `archetype`,
+  carrying `archetypesVersion` from the content file.
+- Because the Lambda deployment package (`.github/workflows/deploy.yml`) copies
+  `backend/src/backend_fastapi.py`, `backend/src/archetype_engine.py`, and
+  `backend/data/archetypes.json` as flat siblings (no subfolders), the import
+  in `backend_fastapi.py` and the data-path lookup in `archetype_engine.py`
+  both try the flat Lambda layout first and fall back to the repository's
+  `backend/src/` + `backend/data/` layout, so the same code runs unmodified
+  locally, in tests, and deployed.
 - AI can enrich presentation but cannot determine scores or core outcomes.
 - Generated AI output is persisted and reused; every core flow has a
   deterministic fallback when Groq is unavailable.
@@ -119,6 +135,54 @@ dev table, or `/dev` SSM hierarchy.
   snapshot for character-limit review; the reporting identity intentionally
   lacks the store-listing edit permission. Actual ASO listing changes belong to
   `TASK-79` after the social MVP and require explicit human approval.
+- GA4 is optional and web-only. The Google tag must not be requested before
+  explicit consent stored in the first-party `mtm_web_analytics_consent` cookie
+  (180 days). The deployment pipeline injects `GA4_MEASUREMENT_ID` only into
+  the web build. All Google advertising-related consent states remain denied,
+  Google signals and ad-personalisation signals are disabled, and consent can
+  be changed from the persistent Privacy preferences control. The native app
+  continues to use only the existing first-party analytics pipeline.
+- The `configure_ga4_retention` input of
+  `.github/workflows/growth-intelligence.yml` enables a manual-only, narrowly
+  scoped administration job. The scheduled report remains read-only; this
+  separately gated job exchanges GitHub OIDC for the existing Google service
+  account, updates only GA4 event and user retention fields to `TWO_MONTHS`,
+  then reads them back to verify the result. It never deploys the web app or
+  APK.
+
+## Organic discovery architecture
+
+- Non-brand organic discovery is served by six hand-authored, intent-led React
+  routes: English and Italian versions of the moral-dilemma test, ethical
+  dilemmas, and moral-dilemma game. Content lives in
+  `frontend/src/content/seoLandings.js`; the shared screen is
+  `frontend/src/screens/SeoLandingScreen.jsx`.
+- Each landing has its own canonical URL, reciprocal `hreflang` pair,
+  visible FAQ, internal links, FAQ/WebPage/Breadcrumb structured data, and a
+  matching `sitemap.xml` entry. These routes must remain editorial pages, not
+  programmatically scaled keyword variants, and must not claim to diagnose a
+  person or determine moral worth.
+- GA4 remains web-only and optional. Once its tag was loaded after affirmative
+  consent, the first displayed result sends only the parameter-free
+  `result_viewed` event to GA4. First-party analytics remains the complete
+  product telemetry source; no email, user ID, answer, token, or event
+  property is sent to GA4.
+- The scheduled Growth Intelligence report also contains a zero-AWS-cost demand
+  radar. It starts from a small, checked-in bilingual seed set, uses a
+  read-only autocomplete signal for wording, compares candidates with current
+  coverage and Search Console rows, and can optionally enrich exact queries
+  from a human-exported Keyword Planner CSV. Directional suggestions are never
+  presented as volume or certain demand; no Google Ads credential, campaign,
+  or mutation capability exists in the workflow.
+- Search Console is collected twice in the same read-only window: a detailed
+  query/page/device/country dataset for diagnosis and a query/page aggregate
+  for thresholds, ranking and radar matching. The workflow retains compact,
+  private aggregate report artifacts for 90 days and reads prior artifacts only
+  through the GitHub Actions read permission; unavailable history is non-fatal.
+- PageSpeed is measured for home plus every configured bilingual discovery
+  landing, with mobile/desktop results named by route. Play Vitals retries only
+  transient rate/server failures with bounded backoff; it never performs a
+  Play mutation or turns a source outage into a product failure.
 
 ## Cost and operational constraints
 

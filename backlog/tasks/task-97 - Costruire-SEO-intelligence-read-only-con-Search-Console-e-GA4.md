@@ -1,7 +1,7 @@
 ---
 id: TASK-97
 title: Costruire SEO intelligence read-only con Search Console e GA4
-status: In Progress
+status: Blocked
 assignee: []
 created_date: '2026-07-29 13:57'
 updated_date: '2026-07-29 15:08'

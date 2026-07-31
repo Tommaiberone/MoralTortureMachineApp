@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { getApiHeaders } from '../utils/session';
 import SEO from '../components/SEO';
 import { trackEvent } from '../utils/analytics';
+import { trackGoogleAnalyticsEvent } from '../utils/googleAnalytics';
 import './ResultsScreen.css';
 
 const ResultsScreen = () => {
@@ -14,6 +15,7 @@ const ResultsScreen = () => {
   const { t, i18n } = useTranslation();
   const { answers, dilemmasWithChoices } = location.state || { answers: [], dilemmasWithChoices: [] };
   const [aiAnalysis, setAiAnalysis] = useState('');
+  const [archetype, setArchetype] = useState(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const resultTracked = useRef(false);
   const hasResults = Boolean(answers && answers.length > 0);
@@ -25,6 +27,10 @@ const ResultsScreen = () => {
     }
     return acc;
   }, {});
+
+  const archetypeShareLine = archetype
+    ? `${archetype.visual?.emoji || ''} ${archetype.name}: "${archetype.sharePhrase}"\n\n`
+    : '';
 
   const labels = Object.keys(aggregated);
   const maxAverage = labels.length > 0
@@ -43,6 +49,7 @@ const ResultsScreen = () => {
       mode: 'evaluation',
       completed_dilemmas: answers.length,
     });
+    trackGoogleAnalyticsEvent('result_viewed');
   }, [answers, hasResults]);
 
   useEffect(() => {
@@ -92,6 +99,7 @@ const ResultsScreen = () => {
           setAiAnalysis(t('results.analysis_error'));
         } else {
           setAiAnalysis(result.analysis);
+          setArchetype(result.archetype || null);
         }
       } catch (error) {
         console.error("Error fetching AI analysis:", error);
@@ -164,6 +172,22 @@ const ResultsScreen = () => {
           </ResponsiveContainer>
         </div>
 
+        {archetype && (
+          <div className="results-archetype" style={{ borderColor: archetype.visual?.color }}>
+            <h2 className="results-archetype-title">{t('results.archetype_title')}</h2>
+            <p className="results-archetype-name">
+              <span className="results-archetype-emoji">{archetype.visual?.emoji}</span> {archetype.name}
+            </p>
+            <p className="results-archetype-description">{archetype.description}</p>
+            <p className="results-archetype-strength">
+              <strong>{t('results.archetype_strength')}:</strong> {archetype.strength}
+            </p>
+            <p className="results-archetype-blind-spot">
+              <strong>{t('results.archetype_blind_spot')}:</strong> {archetype.blindSpot}
+            </p>
+          </div>
+        )}
+
         <div className="results-ai-analysis">
           <h2 className="results-ai-title">{t('results.verdict')}</h2>
           {loadingAnalysis ? (
@@ -186,7 +210,7 @@ const ResultsScreen = () => {
                 const shareText = t('results.share_text');
                 const shareChallenge = t('results.share_challenge');
                 const url = window.location.origin;
-                const message = `${shareText}\n\n${aiAnalysis}\n\n${shareChallenge} ${url}`;
+                const message = `${shareText}\n\n${archetypeShareLine}${aiAnalysis}\n\n${shareChallenge} ${url}`;
                 window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`);
               }}
             >
@@ -199,7 +223,7 @@ const ResultsScreen = () => {
                 const shareText = t('results.share_text');
                 const shareChallenge = t('results.share_challenge');
                 const url = window.location.origin;
-                const message = `${shareText}\n\n${aiAnalysis}\n\n${shareChallenge} ${url}`;
+                const message = `${shareText}\n\n${archetypeShareLine}${aiAnalysis}\n\n${shareChallenge} ${url}`;
                 navigator.clipboard.writeText(message);
                 alert(t('results.facebook_share_alert'));
                 window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`);

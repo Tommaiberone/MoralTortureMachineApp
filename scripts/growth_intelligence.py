@@ -13,8 +13,13 @@ import argparse
 import csv
 import io
 import json
+import math
 import os
+import re
+import time
+import zipfile
 from datetime import date, timedelta
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -42,10 +47,12 @@ def empty_data() -> dict[str, Any]:
     return {
         "generated_at": date.today().isoformat(),
         "configuration": {"missing": []},
-        "search_console": {"rows": []},
+        "search_console": {"rows": [], "aggregated_rows": []},
         "ga4": {"rows": []},
         "pagespeed": {},
         "play": {"acquisition_rows": [], "vitals": {}, "listings": {}},
+        "demand_radar": {"candidates": [], "quantitative_source": None},
+        "history": {"reports": [], "status": "not collected"},
     }
 
 
@@ -63,14 +70,270 @@ def add_error(data: dict[str, Any], source: str, error: Exception) -> None:
     errors.append(f"{source}: {detail}")
 
 
+def aggregate_query_metrics(rows: list[dict[str, Any]]) -> dict[str, dict[str, float]]:
+    """Summarize a report for trend comparison without retaining raw drill-down."""
+    totals: dict[str, dict[str, float]] = {}
+    for row in rows:
+        keys = row.get("keys", [])
+        query = keys[0] if keys else row.get("query", "")
+        if not query:
+            continue
+        aggregate = totals.setdefault(query, {"impressions": 0, "clicks": 0, "position_weight": 0})
+        impressions = number(row.get("impressions"))
+        aggregate["impressions"] += impressions
+        aggregate["clicks"] += number(row.get("clicks"))
+        aggregate["position_weight"] += number(row.get("position")) * impressions
+    return {
+        query: {
+            "impressions": values["impressions"],
+            "clicks": values["clicks"],
+            "position": values["position_weight"] / values["impressions"] if values["impressions"] else 0,
+        }
+        for query, values in totals.items()
+    }
+
+
+def history_snapshot(report: dict[str, Any]) -> dict[str, Any]:
+    rows = report.get("search_console", {}).get("aggregated_rows") or report.get("search_console", {}).get("rows", [])
+    return {
+        "generated_at": report.get("generated_at", "unknown"),
+        "query_metrics": aggregate_query_metrics(rows),
+        "pagespeed": report.get("pagespeed", {}),
+    }
+
+
+def collect_artifact_history(repository: str, token: str | None, limit: int = 8) -> dict[str, Any]:
+    """Download recent private report artifacts through GitHub's read-only API."""
+    if not token:
+        return {"reports": [], "status": "GITHUB_TOKEN unavailable"}
+    import requests
+
+    headers = {"Accept": "application/vnd.github+json", "Authorization": f"Bearer {token}"}
+    try:
+        response = requests.get(
+            f"https://api.github.com/repos/{repository}/actions/artifacts",
+            params={"name": "growth-intelligence-report", "per_page": limit * 3},
+            headers=headers,
+            timeout=30,
+        )
+        response.raise_for_status()
+        reports = []
+        for artifact in response.json().get("artifacts", []):
+            if artifact.get("expired") or len(reports) >= limit:
+                continue
+            archive = requests.get(artifact["archive_download_url"], headers=headers, timeout=30)
+            archive.raise_for_status()
+            with zipfile.ZipFile(BytesIO(archive.content)) as bundle:
+                report_file = next((name for name in bundle.namelist() if name.endswith("growth-intelligence-report.json")), None)
+                if not report_file:
+                    continue
+                reports.append(history_snapshot(json.loads(bundle.read(report_file))))
+        return {"reports": reports, "status": "ok"}
+    except Exception as error:
+        return {"reports": [], "status": f"history unavailable: {type(error).__name__}"}
+
+
 def recommendation(title: str, source: str, evidence: str, action: str, risk: str = "low") -> dict[str, str]:
     return {"title": title, "source": source, "evidence": evidence, "action": action, "risk": risk}
+
+
+def normalize_query(value: str) -> str:
+    """Use a conservative comparison key, never as a language classifier."""
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", value.lower())).strip()
+
+
+def number_from_csv(value: Any) -> float:
+    """Parse common Keyword Planner exports without assuming one locale format."""
+    if value is None:
+        return 0
+    cleaned = str(value).replace("\u00a0", " ").replace(" ", "").replace(",", "")
+    return number(cleaned)
+
+
+def optional_keyword_planner_rows(path: str | None) -> list[dict[str, Any]]:
+    """Read a human-exported CSV; no Google Ads API credential is ever used."""
+    if not path or not Path(path).exists():
+        return []
+    aliases = {
+        "keyword": ("keyword", "keyword text", "parola chiave"),
+        "monthly_searches": ("avg monthly searches", "average monthly searches", "ricerche mensili medie"),
+        "competition": ("competition", "concorrenza"),
+        "market": ("market", "country", "mercato", "paese"),
+    }
+    rows = []
+    with Path(path).open(newline="", encoding="utf-8-sig") as csv_file:
+        for raw in csv.DictReader(csv_file):
+            normalized = {normalize_query(key): value for key, value in raw.items() if key}
+            row = {}
+            for field, names in aliases.items():
+                row[field] = next((normalized.get(name) for name in names if name in normalized), "")
+            if row["keyword"]:
+                rows.append({
+                    "query": row["keyword"].strip(),
+                    "monthly_searches": number_from_csv(row["monthly_searches"]),
+                    "competition": row["competition"].strip() or "unknown",
+                    "market": row["market"].strip().upper() or "ALL",
+                })
+    return rows
+
+
+def collect_google_autocomplete(seed: dict[str, str]) -> list[str]:
+    """Collect a small, rate-limited discovery signal, never a volume estimate."""
+    import requests
+
+    response = requests.get(
+        "https://suggestqueries.google.com/complete/search",
+        params={
+            "client": "firefox",
+            "q": seed["query"],
+            "hl": seed.get("locale", "en"),
+            "gl": seed.get("market", "US"),
+        },
+        headers={"User-Agent": "MoralTortureMachine-growth-radar/1.0 (read-only)"},
+        timeout=15,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    return [item for item in payload[1] if isinstance(item, str)][:10] if len(payload) > 1 else []
+
+
+def demand_radar_candidates(
+    seeds: list[dict[str, str]],
+    suggestions: list[dict[str, Any]],
+    keyword_rows: list[dict[str, Any]],
+    search_console_rows: list[dict[str, Any]],
+    policy_risk_terms: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Rank gaps while keeping directional and quantitative evidence separate."""
+    volumes = {(row["market"], normalize_query(row["query"])): row for row in keyword_rows}
+    observed = {}
+    for row in search_console_rows:
+        keys = row.get("keys", [])
+        query = keys[0] if keys else row.get("query", "")
+        if query:
+            observed[normalize_query(query)] = number(row.get("impressions"))
+
+    candidates: dict[tuple[str, str], dict[str, Any]] = {}
+    for suggestion in suggestions:
+        query = suggestion["query"].strip()
+        key = (suggestion["market"], normalize_query(query))
+        if not query:
+            continue
+        if key in candidates:
+            existing = candidates[key]
+            if suggestion["source"] not in existing["sources"]:
+                existing["sources"].append(suggestion["source"])
+                existing["source"] = ", ".join(existing["sources"])
+            continue
+        covered = any(normalize_query(term) in normalize_query(query) for term in suggestion.get("covered_terms", []))
+        volume = volumes.get((suggestion["market"], key[1]), volumes.get(("ALL", key[1]), {}))
+        impressions = observed.get(key[1], 0)
+        monthly_searches = number(volume.get("monthly_searches"))
+        normalized_query = normalize_query(query)
+        policy_risk = suggestion.get("policy_risk")
+        if not policy_risk:
+            policy_risk = next((risk for term, risk in (policy_risk_terms or {}).items() if normalize_query(term) in normalized_query), None)
+        evidence = "quantified" if monthly_searches else "observed" if impressions else "directional"
+        score = (3 if not covered else 0) + (2 if suggestion.get("product_fit") == "current" else 1)
+        if monthly_searches:
+            score += min(6, math.log10(monthly_searches + 1) * 2)
+        elif impressions:
+            score += min(3, math.log10(impressions + 1))
+        else:
+            score += 1
+        if policy_risk:
+            score -= 1
+        candidates[key] = {
+            "query": query,
+            "market": suggestion["market"],
+            "locale": suggestion["locale"],
+            "intent": suggestion["intent"],
+            "product_fit": "review required" if policy_risk else suggestion.get("product_fit", "future"),
+            "coverage": "covered" if covered else "gap",
+            "source": suggestion["source"],
+            "sources": [suggestion["source"]],
+            "evidence": evidence,
+            "monthly_searches": monthly_searches or None,
+            "competition": volume.get("competition") if monthly_searches else None,
+            "search_console_impressions": impressions or None,
+            "policy_risk": policy_risk,
+            "opportunity_score": round(score, 2),
+        }
+    return sorted(candidates.values(), key=lambda item: (-item["opportunity_score"], item["query"]))
+
+
+def collect_demand_radar(config: dict[str, Any], search_console_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    radar = config.get("demand_radar", {})
+    seeds = radar.get("seeds", [])
+    keyword_rows = optional_keyword_planner_rows(radar.get("keyword_planner_csv"))
+    suggestions = []
+    autocomplete_successes = 0
+    for seed in seeds:
+        suggestions.append({**seed, "source": "Configured research seed"})
+        try:
+            discovered = collect_google_autocomplete(seed)
+        except Exception:
+            # A discovery source must never make the weekly report fail.
+            discovered = []
+        else:
+            autocomplete_successes += 1
+        for query in discovered:
+            suggestions.append({**seed, "query": query, "source": "Google autocomplete"})
+    return {
+        "candidates": demand_radar_candidates(
+            seeds, suggestions, keyword_rows, search_console_rows, radar.get("policy_risk_terms"),
+        ),
+        "quantitative_source": "Keyword Planner CSV" if keyword_rows else None,
+        "seed_count": len(seeds),
+        "autocomplete_successes": autocomplete_successes,
+    }
+
+
+def history_recommendations(data: dict[str, Any]) -> list[dict[str, str]]:
+    """Recommend only material week-over-week query changes with enough volume."""
+    reports = data.get("history", {}).get("reports", [])
+    if not reports:
+        return []
+    current_rows = data.get("search_console", {}).get("aggregated_rows") or data.get("search_console", {}).get("rows", [])
+    current = aggregate_query_metrics(current_rows)
+    previous = reports[0].get("query_metrics", {})
+    brand_terms = [normalize_query(term) for term in data.get("configuration", {}).get("brand_terms", [])]
+    changes = []
+    for query, metrics in current.items():
+        normalized = normalize_query(query)
+        if any(term and term in normalized for term in brand_terms):
+            continue
+        prior = previous.get(query)
+        if not prior:
+            continue
+        impressions, prior_impressions = metrics["impressions"], number(prior.get("impressions"))
+        if min(impressions, prior_impressions) < 10:
+            continue
+        ratio = impressions / prior_impressions
+        if ratio >= 1.5 and impressions - prior_impressions >= 10:
+            changes.append((ratio, recommendation(
+                f"Investigate rising non-brand demand for “{query}”",
+                "Weekly report history",
+                f"Impressions rose from {prior_impressions:.0f} to {impressions:.0f} across consecutive reports.",
+                "Verify intent and conversion before expanding the matching original landing content; do not infer volume beyond Search Console coverage.",
+                "medium",
+            )))
+        elif ratio <= 0.5 and prior_impressions - impressions >= 10:
+            changes.append((1 / ratio if ratio else float("inf"), recommendation(
+                f"Investigate falling non-brand visibility for “{query}”",
+                "Weekly report history",
+                f"Impressions fell from {prior_impressions:.0f} to {impressions:.0f} across consecutive reports.",
+                "Check indexing, page changes, seasonality and ranking before reacting with new content.",
+                "medium",
+            )))
+    return [lead for _, lead in sorted(changes, key=lambda item: item[0], reverse=True)[:3]]
 
 
 def build_recommendations(data: dict[str, Any]) -> list[dict[str, str]]:
     """Use explicit, conservative thresholds to turn aggregate reports into leads."""
     leads: list[dict[str, str]] = []
-    for row in data.get("search_console", {}).get("rows", []):
+    search_rows = data.get("search_console", {}).get("aggregated_rows") or data.get("search_console", {}).get("rows", [])
+    for row in search_rows:
         keys = row.get("keys", [])
         query = keys[0] if keys else row.get("query", "(query hidden)")
         page = keys[1] if len(keys) > 1 else row.get("page", "(page hidden)")
@@ -105,17 +368,23 @@ def build_recommendations(data: dict[str, Any]) -> list[dict[str, str]]:
                 "medium",
             ))
 
-    for strategy, metrics in data.get("pagespeed", {}).items():
-        score = number(metrics.get("performance"))
-        lcp = number(metrics.get("lcp_ms"))
-        if score and score < 70 or lcp and lcp > 2500:
-            leads.append(recommendation(
-                f"Fix {strategy} page experience regression",
-                "PageSpeed Insights",
-                f"Performance {score:.0f}/100, LCP {lcp:.0f} ms.",
-                "Inspect the rendered landing page, JavaScript payload and blocking assets before making content changes.",
-                "low",
-            ))
+    for page, page_metrics in data.get("pagespeed", {}).items():
+        # Supports old single-page artifacts while new reports keep every URL.
+        strategies = {page: page_metrics} if "performance" in page_metrics else page_metrics
+        for strategy, metrics in strategies.items():
+            if not isinstance(metrics, dict):
+                continue
+            score = number(metrics.get("performance"))
+            lcp = number(metrics.get("lcp_ms"))
+            if score and score < 70 or lcp and lcp > 2500:
+                label = strategy if "performance" in page_metrics else f"{page} ({strategy})"
+                leads.append(recommendation(
+                    f"Fix {label} page experience regression",
+                    "PageSpeed Insights",
+                    f"Performance {score:.0f}/100, LCP {lcp:.0f} ms.",
+                    "Inspect the rendered landing page, JavaScript payload and blocking assets before making content changes.",
+                    "low",
+                ))
 
     for row in data.get("play", {}).get("acquisition_rows", []):
         keyword = row.get("keyword", "(keyword unavailable)")
@@ -153,6 +422,27 @@ def build_recommendations(data: dict[str, Any]) -> list[dict[str, str]]:
                     "Shorten the draft before any human review or Play Console edit.",
                     "high",
                 ))
+    brief_counts: dict[str, int] = {}
+    for candidate in data.get("demand_radar", {}).get("candidates", []):
+        market = candidate.get("market")
+        if brief_counts.get(market, 0) >= 2:
+            continue
+        if (
+            candidate.get("coverage") != "gap"
+            or candidate.get("product_fit") != "current"
+            or candidate.get("policy_risk")
+            or "Google autocomplete" not in candidate.get("sources", [candidate.get("source")])
+        ):
+            continue
+        brief_counts[market] = brief_counts.get(market, 0) + 1
+        leads.append(recommendation(
+            f"Validate a non-brand content brief for “{candidate['query']}”",
+            "Demand radar",
+            f"{candidate['market']}/{candidate['locale']}; intent: {candidate['intent']}; current product fit; confirmed by Google autocomplete.",
+            "Check Keyword Planner volume and the existing landing promise, then draft one original section or FAQ only if the product fulfils the intent. Do not publish automatically.",
+            "medium",
+        ))
+    leads.extend(history_recommendations(data))
     return leads
 
 
@@ -172,6 +462,9 @@ def markdown_report(data: dict[str, Any]) -> str:
     lines.extend([f"- Missing configuration: {', '.join(missing)}" if missing else "- All configured sources returned data."])
     for error in data.get("configuration", {}).get("errors", []):
         lines.append(f"- Source error (report continues): {error}")
+    history = data.get("history", {})
+    if history.get("status") and history.get("status") != "not collected":
+        lines.append(f"- Weekly history: {len(history.get('reports', []))} prior report(s) ({history['status']}).")
     lines.extend(["", "## Recommended reviews", ""])
     if not leads:
         lines.append("No threshold-based opportunity was found. This is not proof that no improvement exists; review source coverage and sample size.")
@@ -184,10 +477,48 @@ def markdown_report(data: dict[str, Any]) -> str:
             f"- Risk: {lead['risk']}",
             "",
         ])
+    radar = data.get("demand_radar", {})
+    candidates = radar.get("candidates", [])
+    lines.extend(["## Demand radar: queries and intents beyond current coverage", ""])
+    if not candidates:
+        lines.append("No directional candidates were collected. This does not mean there is no demand; review the configured seeds and source availability.")
+    else:
+        lines.append("This is an outside-in discovery list, not a keyword-volume claim. `Directional` rows come from configured research seeds or autocomplete; `observed` rows also have Search Console impressions; `quantified` rows have a human-exported Keyword Planner volume.")
+        successes = radar.get("autocomplete_successes")
+        if successes is not None:
+            lines.append(f"Autocomplete responded for {successes}/{radar.get('seed_count', 0)} configured seeds.")
+        for evidence in ("quantified", "observed", "directional"):
+            group = [item for item in candidates if item["evidence"] == evidence and item["coverage"] == "gap"]
+            if not group:
+                continue
+            label = {"quantified": "Quantified gaps", "observed": "Observed gaps", "directional": "Directional gaps to validate"}[evidence]
+            lines.extend(["", f"### {label}", ""])
+            for market in sorted({item["market"] for item in group}):
+                lines.extend(["", f"#### {market}", ""])
+                for item in [candidate for candidate in group if candidate["market"] == market][:8]:
+                    details = [
+                        f"{item['market']}/{item['locale']}",
+                        f"intent: {item['intent']}",
+                        f"product fit: {item['product_fit']}",
+                        f"source: {item['source']}",
+                    ]
+                    if item["monthly_searches"] is not None:
+                        details.append(f"monthly searches: {item['monthly_searches']:.0f}")
+                        details.append(f"competition: {item['competition']}")
+                    if item["search_console_impressions"] is not None:
+                        details.append(f"Search Console impressions: {item['search_console_impressions']:.0f}")
+                    if item.get("policy_risk"):
+                        details.append(f"policy review required: {item['policy_risk']}")
+                    lines.append(f"- **{item['query']}** — {'; '.join(details)}.")
+        if not any(item["coverage"] == "gap" for item in candidates):
+            lines.append("All collected candidates map to existing coverage. Add or refine discovery seeds before expanding content.")
     lines.extend([
         "## Guardrails",
         "",
         "- Search Console query rows are aggregate/top-row data, not a complete keyword export.",
+        "- Autocomplete suggestions show wording, not search volume or guaranteed demand. Treat directional rows as research prompts only.",
+        "- A candidate marked `policy review required` must not become a page, claim, or feature promise without an explicit product/policy review.",
+        "- A Keyword Planner CSV is an optional, human-provided quantitative source; the workflow has no Google Ads credential, campaign, or mutation capability.",
         "- Treat recommendations as hypotheses and validate one material change at a time.",
         "- Do not create scaled or keyword-only pages. Content must be useful, original and reviewed.",
         "- Store-listing edits and releases require an explicit human action in Play Console or a separately approved manual workflow.",
@@ -211,14 +542,22 @@ def authorized_session(credentials):
     return AuthorizedSession(credentials)
 
 
-def collect_search_console(session, site_url: str, start_date: str, end_date: str) -> list[dict[str, Any]]:
+def search_console_rows(session, site_url: str, start_date: str, end_date: str, dimensions: list[str]) -> list[dict[str, Any]]:
     response = session.post(
         f"https://www.googleapis.com/webmasters/v3/sites/{quote(site_url, safe='')}/searchAnalytics/query",
-        json={"startDate": start_date, "endDate": end_date, "dimensions": ["query", "page", "device", "country"], "rowLimit": 5000},
+        json={"startDate": start_date, "endDate": end_date, "dimensions": dimensions, "rowLimit": 5000},
         timeout=30,
     )
     response.raise_for_status()
     return response.json().get("rows", [])
+
+
+def collect_search_console(session, site_url: str, start_date: str, end_date: str) -> dict[str, list[dict[str, Any]]]:
+    """Keep diagnostic dimensions, but use query/page aggregates for decisions."""
+    return {
+        "rows": search_console_rows(session, site_url, start_date, end_date, ["query", "page", "device", "country"]),
+        "aggregated_rows": search_console_rows(session, site_url, start_date, end_date, ["query", "page"]),
+    }
 
 
 def collect_ga4(session, property_id: str, start_date: str, end_date: str) -> list[dict[str, Any]]:
@@ -249,21 +588,27 @@ def collect_ga4(session, property_id: str, start_date: str, end_date: str) -> li
     return list(pages.values())
 
 
-def collect_pagespeed(url: str, api_key: str | None) -> dict[str, Any]:
+def collect_pagespeed(urls: dict[str, str], api_key: str | None) -> dict[str, Any]:
     import requests
 
     result = {}
-    for strategy in ("mobile", "desktop"):
-        params = {"url": url, "strategy": strategy, "category": "performance"}
-        if api_key:
-            params["key"] = api_key
-        response = requests.get("https://www.googleapis.com/pagespeedonline/v5/runPagespeed", params=params, timeout=60)
-        response.raise_for_status()
-        audits = response.json().get("lighthouseResult", {}).get("audits", {})
-        result[strategy] = {
-            "performance": number(response.json().get("lighthouseResult", {}).get("categories", {}).get("performance", {}).get("score")) * 100,
-            "lcp_ms": number(audits.get("largest-contentful-paint", {}).get("numericValue")),
-        }
+    for label, url in urls.items():
+        page_result = {}
+        try:
+            for strategy in ("mobile", "desktop"):
+                params = {"url": url, "strategy": strategy, "category": "performance"}
+                if api_key:
+                    params["key"] = api_key
+                response = requests.get("https://www.googleapis.com/pagespeedonline/v5/runPagespeed", params=params, timeout=60)
+                response.raise_for_status()
+                audits = response.json().get("lighthouseResult", {}).get("audits", {})
+                page_result[strategy] = {
+                    "performance": number(response.json().get("lighthouseResult", {}).get("categories", {}).get("performance", {}).get("score")) * 100,
+                    "lcp_ms": number(audits.get("largest-contentful-paint", {}).get("numericValue")),
+                }
+        except Exception as error:
+            page_result = {"error": type(error).__name__}
+        result[label] = page_result
     return result
 
 
@@ -299,15 +644,27 @@ def collect_play_report(credentials, uri: str) -> list[dict[str, Any]]:
     return rows
 
 
+def post_with_retry(session, url: str, payload: dict[str, Any], attempts: int = 3) -> Any:
+    """Retry only transient rate/server failures; caller still receives final errors."""
+    retryable = {429, 500, 502, 503, 504}
+    response = None
+    for attempt in range(attempts):
+        response = session.post(url, json=payload, timeout=30)
+        if getattr(response, "status_code", 0) not in retryable or attempt == attempts - 1:
+            response.raise_for_status()
+            return response
+        time.sleep(2 ** attempt)
+    raise RuntimeError("unreachable retry state")
+
+
 def collect_play_vitals(session, package_name: str, start_date: str, end_date: str) -> dict[str, Any]:
     result = {}
     for metric_set, metric in (("crashRateMetricSet", "userPerceivedCrashRate"), ("anrRateMetricSet", "anrRate")):
-        response = session.post(
+        response = post_with_retry(
+            session,
             f"https://playdeveloperreporting.googleapis.com/v1beta1/apps/{package_name}/{metric_set}:query",
-            json={"timelineSpec": {"aggregationPeriod": "DAILY", "startTime": {"year": int(start_date[:4]), "month": int(start_date[5:7]), "day": int(start_date[8:])}, "endTime": {"year": int(end_date[:4]), "month": int(end_date[5:7]), "day": int(end_date[8:])}}, "metrics": [metric], "pageSize": 100},
-            timeout=30,
+            {"timelineSpec": {"aggregationPeriod": "DAILY", "startTime": {"year": int(start_date[:4]), "month": int(start_date[5:7]), "day": int(start_date[8:])}, "endTime": {"year": int(end_date[:4]), "month": int(end_date[5:7]), "day": int(end_date[8:])}}, "metrics": [metric], "pageSize": 100},
         )
-        response.raise_for_status()
         values = [number(item.get("decimalValue")) for row in response.json().get("rows", []) for item in row.get("metrics", []) if item.get("metric") == metric]
         if values:
             result[metric] = sum(values) / len(values)
@@ -316,12 +673,14 @@ def collect_play_vitals(session, package_name: str, start_date: str, end_date: s
 
 def collect(config: dict[str, Any]) -> dict[str, Any]:
     data = empty_data()
+    data["configuration"]["brand_terms"] = config.get("brand_terms", [])
     end = date.today() - timedelta(days=3)
     start = end - timedelta(days=27)
     credential_file = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     site_url = config.get("site_url") or os.environ.get("SEARCH_CONSOLE_SITE_URL")
     ga4_property_id = config.get("ga4_property_id") or os.environ.get("GA4_PROPERTY_ID")
     page_url = config.get("page_url") or os.environ.get("GROWTH_PAGE_URL")
+    page_urls = config.get("page_urls") or ({"home": page_url} if page_url else {})
     play_uri = config.get("play_acquisition_report_uri") or os.environ.get("GOOGLE_PLAY_ACQUISITION_REPORT_URI")
     play_package = config.get("play_package_name") or os.environ.get("GOOGLE_PLAY_PACKAGE_NAME")
     listing_snapshot = config.get("play_listing_snapshot")
@@ -336,7 +695,7 @@ def collect(config: dict[str, Any]) -> dict[str, Any]:
         if session:
             if site_url:
                 try:
-                    data["search_console"]["rows"] = collect_search_console(session, site_url, start.isoformat(), end.isoformat())
+                    data["search_console"].update(collect_search_console(session, site_url, start.isoformat(), end.isoformat()))
                 except Exception as error:  # Report failures should never block the scheduled report.
                     add_error(data, "Search Console", error)
             else:
@@ -365,9 +724,12 @@ def collect(config: dict[str, Any]) -> dict[str, Any]:
     else:
         add_missing(data, "GOOGLE_APPLICATION_CREDENTIALS (GitHub OIDC)")
 
-    if page_url:
+    if page_urls:
         try:
-            data["pagespeed"] = collect_pagespeed(page_url, os.environ.get("PAGESPEED_API_KEY"))
+            data["pagespeed"] = collect_pagespeed(page_urls, os.environ.get("PAGESPEED_API_KEY"))
+            for label, result in data["pagespeed"].items():
+                if result.get("error"):
+                    data["configuration"].setdefault("errors", []).append(f"PageSpeed Insights {label}: {result['error']}")
         except Exception as error:
             add_error(data, "PageSpeed Insights", error)
     else:
@@ -382,6 +744,7 @@ def collect(config: dict[str, Any]) -> dict[str, Any]:
             add_missing(data, "PLAY_LISTING_SNAPSHOT")
     else:
         add_missing(data, "PLAY_LISTING_SNAPSHOT")
+    data["demand_radar"] = collect_demand_radar(config, data["search_console"]["aggregated_rows"] or data["search_console"]["rows"])
     return data
 
 
@@ -394,6 +757,11 @@ def main() -> None:
     analyze_parser = subcommands.add_parser("analyze")
     analyze_parser.add_argument("--input", type=Path, required=True)
     analyze_parser.add_argument("--output-dir", type=Path, required=True)
+    analyze_parser.add_argument("--history", type=Path)
+    history_parser = subcommands.add_parser("history")
+    history_parser.add_argument("--repository", required=True)
+    history_parser.add_argument("--output", type=Path, required=True)
+    history_parser.add_argument("--limit", type=int, default=8)
     args = parser.parse_args()
 
     if args.command == "collect":
@@ -402,7 +770,14 @@ def main() -> None:
         args.output.write_text(json.dumps(collect(config), indent=2) + "\n")
         return
 
+    if args.command == "history":
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(collect_artifact_history(args.repository, os.environ.get("GITHUB_TOKEN"), args.limit), indent=2) + "\n")
+        return
+
     data = json.loads(args.input.read_text())
+    if args.history and args.history.exists():
+        data["history"] = json.loads(args.history.read_text())
     args.output_dir.mkdir(parents=True, exist_ok=True)
     (args.output_dir / "growth-intelligence-report.json").write_text(json.dumps(data, indent=2) + "\n")
     (args.output_dir / "growth-intelligence-report.md").write_text(markdown_report(data))

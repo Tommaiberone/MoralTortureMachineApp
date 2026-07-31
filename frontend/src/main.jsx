@@ -7,6 +7,7 @@ import App from './App.jsx'
 import { initializeMobileFeatures } from './utils/mobileInit'
 import { initializeIdentity } from './utils/session'
 import { initializeAnalytics } from './utils/analytics'
+import { initializeGoogleAnalytics } from './utils/googleAnalytics'
 import AuthProvider from './auth/AuthProvider'
 
 // Inizializza feature mobile (status bar, splash screen, etc.)
@@ -15,6 +16,7 @@ initializeMobileFeatures();
 const bootstrap = async () => {
   await initializeIdentity();
   initializeAnalytics();
+  initializeGoogleAnalytics();
 
   createRoot(document.getElementById('root')).render(
     <StrictMode>
