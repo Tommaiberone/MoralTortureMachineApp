@@ -242,7 +242,7 @@ resource "aws_dynamodb_table" "moral_profiles" {
     Name        = "Moral Torture Machine Moral Profiles"
     Environment = var.environment
     ManagedBy   = "Terraform"
-    Purpose     = "Persistent shareable moral archetype profiles, publicId is non-enumerable"
+    Purpose     = "Persistent shareable moral archetype profiles keyed by a non-enumerable publicId"
   }
 }
 
@@ -270,7 +270,7 @@ resource "aws_dynamodb_table" "challenges" {
     Name        = "Moral Torture Machine Challenges"
     Environment = var.environment
     ManagedBy   = "Terraform"
-    Purpose     = "Moral Duel challenge state, TTL for abandoned challenges"
+    Purpose     = "Moral Duel challenge state with TTL for abandoned challenges"
   }
 }
 
@@ -305,7 +305,7 @@ resource "aws_dynamodb_table" "challenge_participants" {
     Name        = "Moral Torture Machine Challenge Participants"
     Environment = var.environment
     ManagedBy   = "Terraform"
-    Purpose     = "Per-participant Moral Duel state (role = creator|invitee)"
+    Purpose     = "Per-participant Moral Duel state where role is creator or invitee"
   }
 }
 
