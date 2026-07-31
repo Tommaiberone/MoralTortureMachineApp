@@ -13,7 +13,9 @@ import argparse
 import csv
 import io
 import json
+import math
 import os
+import re
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -46,6 +48,7 @@ def empty_data() -> dict[str, Any]:
         "ga4": {"rows": []},
         "pagespeed": {},
         "play": {"acquisition_rows": [], "vitals": {}, "listings": {}},
+        "demand_radar": {"candidates": [], "quantitative_source": None},
     }
 
 
@@ -65,6 +68,151 @@ def add_error(data: dict[str, Any], source: str, error: Exception) -> None:
 
 def recommendation(title: str, source: str, evidence: str, action: str, risk: str = "low") -> dict[str, str]:
     return {"title": title, "source": source, "evidence": evidence, "action": action, "risk": risk}
+
+
+def normalize_query(value: str) -> str:
+    """Use a conservative comparison key, never as a language classifier."""
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", value.lower())).strip()
+
+
+def number_from_csv(value: Any) -> float:
+    """Parse common Keyword Planner exports without assuming one locale format."""
+    if value is None:
+        return 0
+    cleaned = str(value).replace("\u00a0", " ").replace(" ", "").replace(",", "")
+    return number(cleaned)
+
+
+def optional_keyword_planner_rows(path: str | None) -> list[dict[str, Any]]:
+    """Read a human-exported CSV; no Google Ads API credential is ever used."""
+    if not path or not Path(path).exists():
+        return []
+    aliases = {
+        "keyword": ("keyword", "keyword text", "parola chiave"),
+        "monthly_searches": ("avg monthly searches", "average monthly searches", "ricerche mensili medie"),
+        "competition": ("competition", "concorrenza"),
+        "market": ("market", "country", "mercato", "paese"),
+    }
+    rows = []
+    with Path(path).open(newline="", encoding="utf-8-sig") as csv_file:
+        for raw in csv.DictReader(csv_file):
+            normalized = {normalize_query(key): value for key, value in raw.items() if key}
+            row = {}
+            for field, names in aliases.items():
+                row[field] = next((normalized.get(name) for name in names if name in normalized), "")
+            if row["keyword"]:
+                rows.append({
+                    "query": row["keyword"].strip(),
+                    "monthly_searches": number_from_csv(row["monthly_searches"]),
+                    "competition": row["competition"].strip() or "unknown",
+                    "market": row["market"].strip().upper() or "ALL",
+                })
+    return rows
+
+
+def collect_google_autocomplete(seed: dict[str, str]) -> list[str]:
+    """Collect a small, rate-limited discovery signal, never a volume estimate."""
+    import requests
+
+    response = requests.get(
+        "https://suggestqueries.google.com/complete/search",
+        params={
+            "client": "firefox",
+            "q": seed["query"],
+            "hl": seed.get("locale", "en"),
+            "gl": seed.get("market", "US"),
+        },
+        headers={"User-Agent": "MoralTortureMachine-growth-radar/1.0 (read-only)"},
+        timeout=15,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    return [item for item in payload[1] if isinstance(item, str)][:10] if len(payload) > 1 else []
+
+
+def demand_radar_candidates(
+    seeds: list[dict[str, str]],
+    suggestions: list[dict[str, Any]],
+    keyword_rows: list[dict[str, Any]],
+    search_console_rows: list[dict[str, Any]],
+    policy_risk_terms: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Rank gaps while keeping directional and quantitative evidence separate."""
+    volumes = {(row["market"], normalize_query(row["query"])): row for row in keyword_rows}
+    observed = {}
+    for row in search_console_rows:
+        keys = row.get("keys", [])
+        query = keys[0] if keys else row.get("query", "")
+        if query:
+            observed[normalize_query(query)] = number(row.get("impressions"))
+
+    candidates: dict[tuple[str, str], dict[str, Any]] = {}
+    for suggestion in suggestions:
+        query = suggestion["query"].strip()
+        key = (suggestion["market"], normalize_query(query))
+        if not query or key in candidates:
+            continue
+        covered = any(normalize_query(term) in normalize_query(query) for term in suggestion.get("covered_terms", []))
+        volume = volumes.get((suggestion["market"], key[1]), volumes.get(("ALL", key[1]), {}))
+        impressions = observed.get(key[1], 0)
+        monthly_searches = number(volume.get("monthly_searches"))
+        normalized_query = normalize_query(query)
+        policy_risk = suggestion.get("policy_risk")
+        if not policy_risk:
+            policy_risk = next((risk for term, risk in (policy_risk_terms or {}).items() if normalize_query(term) in normalized_query), None)
+        evidence = "quantified" if monthly_searches else "observed" if impressions else "directional"
+        score = (3 if not covered else 0) + (2 if suggestion.get("product_fit") == "current" else 1)
+        if monthly_searches:
+            score += min(6, math.log10(monthly_searches + 1) * 2)
+        elif impressions:
+            score += min(3, math.log10(impressions + 1))
+        else:
+            score += 1
+        if policy_risk:
+            score -= 1
+        candidates[key] = {
+            "query": query,
+            "market": suggestion["market"],
+            "locale": suggestion["locale"],
+            "intent": suggestion["intent"],
+            "product_fit": "review required" if policy_risk else suggestion.get("product_fit", "future"),
+            "coverage": "covered" if covered else "gap",
+            "source": suggestion["source"],
+            "evidence": evidence,
+            "monthly_searches": monthly_searches or None,
+            "competition": volume.get("competition") if monthly_searches else None,
+            "search_console_impressions": impressions or None,
+            "policy_risk": policy_risk,
+            "opportunity_score": round(score, 2),
+        }
+    return sorted(candidates.values(), key=lambda item: (-item["opportunity_score"], item["query"]))
+
+
+def collect_demand_radar(config: dict[str, Any], search_console_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    radar = config.get("demand_radar", {})
+    seeds = radar.get("seeds", [])
+    keyword_rows = optional_keyword_planner_rows(radar.get("keyword_planner_csv"))
+    suggestions = []
+    autocomplete_successes = 0
+    for seed in seeds:
+        suggestions.append({**seed, "source": "Configured research seed"})
+        try:
+            discovered = collect_google_autocomplete(seed)
+        except Exception:
+            # A discovery source must never make the weekly report fail.
+            discovered = []
+        else:
+            autocomplete_successes += 1
+        for query in discovered:
+            suggestions.append({**seed, "query": query, "source": "Google autocomplete"})
+    return {
+        "candidates": demand_radar_candidates(
+            seeds, suggestions, keyword_rows, search_console_rows, radar.get("policy_risk_terms"),
+        ),
+        "quantitative_source": "Keyword Planner CSV" if keyword_rows else None,
+        "seed_count": len(seeds),
+        "autocomplete_successes": autocomplete_successes,
+    }
 
 
 def build_recommendations(data: dict[str, Any]) -> list[dict[str, str]]:
@@ -184,10 +332,48 @@ def markdown_report(data: dict[str, Any]) -> str:
             f"- Risk: {lead['risk']}",
             "",
         ])
+    radar = data.get("demand_radar", {})
+    candidates = radar.get("candidates", [])
+    lines.extend(["## Demand radar: queries and intents beyond current coverage", ""])
+    if not candidates:
+        lines.append("No directional candidates were collected. This does not mean there is no demand; review the configured seeds and source availability.")
+    else:
+        lines.append("This is an outside-in discovery list, not a keyword-volume claim. `Directional` rows come from configured research seeds or autocomplete; `observed` rows also have Search Console impressions; `quantified` rows have a human-exported Keyword Planner volume.")
+        successes = radar.get("autocomplete_successes")
+        if successes is not None:
+            lines.append(f"Autocomplete responded for {successes}/{radar.get('seed_count', 0)} configured seeds.")
+        for evidence in ("quantified", "observed", "directional"):
+            group = [item for item in candidates if item["evidence"] == evidence and item["coverage"] == "gap"]
+            if not group:
+                continue
+            label = {"quantified": "Quantified gaps", "observed": "Observed gaps", "directional": "Directional gaps to validate"}[evidence]
+            lines.extend(["", f"### {label}", ""])
+            for market in sorted({item["market"] for item in group}):
+                lines.extend(["", f"#### {market}", ""])
+                for item in [candidate for candidate in group if candidate["market"] == market][:8]:
+                    details = [
+                        f"{item['market']}/{item['locale']}",
+                        f"intent: {item['intent']}",
+                        f"product fit: {item['product_fit']}",
+                        f"source: {item['source']}",
+                    ]
+                    if item["monthly_searches"] is not None:
+                        details.append(f"monthly searches: {item['monthly_searches']:.0f}")
+                        details.append(f"competition: {item['competition']}")
+                    if item["search_console_impressions"] is not None:
+                        details.append(f"Search Console impressions: {item['search_console_impressions']:.0f}")
+                    if item.get("policy_risk"):
+                        details.append(f"policy review required: {item['policy_risk']}")
+                    lines.append(f"- **{item['query']}** — {'; '.join(details)}.")
+        if not any(item["coverage"] == "gap" for item in candidates):
+            lines.append("All collected candidates map to existing coverage. Add or refine discovery seeds before expanding content.")
     lines.extend([
         "## Guardrails",
         "",
         "- Search Console query rows are aggregate/top-row data, not a complete keyword export.",
+        "- Autocomplete suggestions show wording, not search volume or guaranteed demand. Treat directional rows as research prompts only.",
+        "- A candidate marked `policy review required` must not become a page, claim, or feature promise without an explicit product/policy review.",
+        "- A Keyword Planner CSV is an optional, human-provided quantitative source; the workflow has no Google Ads credential, campaign, or mutation capability.",
         "- Treat recommendations as hypotheses and validate one material change at a time.",
         "- Do not create scaled or keyword-only pages. Content must be useful, original and reviewed.",
         "- Store-listing edits and releases require an explicit human action in Play Console or a separately approved manual workflow.",
@@ -382,6 +568,7 @@ def collect(config: dict[str, Any]) -> dict[str, Any]:
             add_missing(data, "PLAY_LISTING_SNAPSHOT")
     else:
         add_missing(data, "PLAY_LISTING_SNAPSHOT")
+    data["demand_radar"] = collect_demand_radar(config, data["search_console"]["rows"])
     return data
 
 

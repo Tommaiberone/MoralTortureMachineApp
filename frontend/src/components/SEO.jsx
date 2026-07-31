@@ -14,9 +14,11 @@ const SEO = ({
   type = 'website',
   structuredData = null,
   noindex = false,
+  language,
+  alternateUrls,
 }) => {
   const { i18n } = useTranslation();
-  const currentLang = i18n.language || 'en';
+  const currentLang = language || i18n.language || 'en';
   const baseUrl = 'https://moraltorturemachine.com';
   const fullUrl = url ? `${baseUrl}${url}` : baseUrl;
 
@@ -49,9 +51,20 @@ const SEO = ({
       <link rel="canonical" href={fullUrl} />
 
       {/* Language alternates for multilingual SEO */}
-      <link rel="alternate" hrefLang="en" href={`${baseUrl}${url || '/'}`} />
-      <link rel="alternate" hrefLang="it" href={`${baseUrl}${url || '/'}`} />
-      <link rel="alternate" hrefLang="x-default" href={`${baseUrl}${url || '/'}`} />
+      {alternateUrls ? (
+        <>
+          {Object.entries(alternateUrls).map(([locale, path]) => (
+            <link key={locale} rel="alternate" hrefLang={locale} href={`${baseUrl}${path}`} />
+          ))}
+          <link rel="alternate" hrefLang="x-default" href={`${baseUrl}${alternateUrls.en || url || '/'}`} />
+        </>
+      ) : (
+        <>
+          <link rel="alternate" hrefLang="en" href={`${baseUrl}${url || '/'}`} />
+          <link rel="alternate" hrefLang="it" href={`${baseUrl}${url || '/'}`} />
+          <link rel="alternate" hrefLang="x-default" href={`${baseUrl}${url || '/'}`} />
+        </>
+      )}
 
       {/* Open Graph / Facebook */}
       <meta property="og:type" content={type} />

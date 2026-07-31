@@ -30,13 +30,6 @@ export const getWebApplicationSchema = () => ({
     "Multi-language support"
   ],
   "screenshot": "https://moraltorturemachine.com/og-image.png",
-  "aggregateRating": {
-    "@type": "AggregateRating",
-    "ratingValue": "4.8",
-    "ratingCount": "1247",
-    "bestRating": "5",
-    "worstRating": "1"
-  },
   "author": {
     "@type": "Organization",
     "name": "Moral Torture Machine",
@@ -157,6 +150,39 @@ export const getBreadcrumbSchema = (items) => ({
     "position": index + 1,
     "name": item.name,
     "item": `https://moraltorturemachine.com${item.path}`
+  }))
+});
+
+/**
+ * WebPage schema for the editorial, intent-led discovery pages. These pages
+ * deliberately describe the experience without claiming diagnostic outcomes.
+ */
+export const getSeoLandingSchema = ({ title, description, path, locale }) => ({
+  "@type": "WebPage",
+  "name": title,
+  "description": description,
+  "url": `https://moraltorturemachine.com${path}`,
+  "inLanguage": locale,
+  "isPartOf": {
+    "@type": "WebSite",
+    "name": "Moral Torture Machine",
+    "url": "https://moraltorturemachine.com"
+  }
+});
+
+/**
+ * FAQ schema mirrors visible editorial FAQs. It must never be used for
+ * hidden or automatically generated questions.
+ */
+export const getFAQSchemaFromItems = (items) => ({
+  "@type": "FAQPage",
+  "mainEntity": items.map(([question, answer]) => ({
+    "@type": "Question",
+    "name": question,
+    "acceptedAnswer": {
+      "@type": "Answer",
+      "text": answer
+    }
   }))
 });
 

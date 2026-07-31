@@ -1,5 +1,86 @@
 {
-  "site_url": "https://moraltorturemachine.com/",
+  "site_url": "sc-domain:moraltorturemachine.com",
   "page_url": "https://moraltorturemachine.com/",
-  "play_listing_snapshot": "growth-intelligence/play-listings.json"
+  "play_listing_snapshot": "growth-intelligence/play-listings.json",
+  "demand_radar": {
+    "keyword_planner_csv": "growth-intelligence/keyword-planner.csv",
+    "policy_risk_terms": {
+      "psychology": "psychological claim risk",
+      "psicologia": "psychological claim risk",
+      "diagnosis": "psychological claim risk",
+      "diagnosi": "psychological claim risk",
+      "iq": "test-score claim risk",
+      "answers": "answer-key intent review",
+      "risposte": "answer-key intent review",
+      "kohlberg": "academic attribution review",
+      "for teenagers": "minors audience review",
+      "per adolescenti": "minors audience review"
+    },
+    "seeds": [
+      {
+        "query": "moral dilemma test",
+        "market": "US",
+        "locale": "en",
+        "intent": "solo reflection game",
+        "product_fit": "current",
+        "covered_terms": ["moral dilemma test", "ethical dilemmas", "moral dilemma game"]
+      },
+      {
+        "query": "ethical dilemmas",
+        "market": "US",
+        "locale": "en",
+        "intent": "learn and reflect",
+        "product_fit": "current",
+        "covered_terms": ["moral dilemma test", "ethical dilemmas", "moral dilemma game"]
+      },
+      {
+        "query": "questions for friends game",
+        "market": "US",
+        "locale": "en",
+        "intent": "social conversation",
+        "product_fit": "current",
+        "covered_terms": ["moral dilemma game", "pass the phone"]
+      },
+      {
+        "query": "questions for couples game",
+        "market": "US",
+        "locale": "en",
+        "intent": "couple compatibility",
+        "product_fit": "future",
+        "covered_terms": []
+      },
+      {
+        "query": "dilemmi morali",
+        "market": "IT",
+        "locale": "it",
+        "intent": "gioco di riflessione individuale",
+        "product_fit": "current",
+        "covered_terms": ["test di dilemmi morali", "dilemmi etici", "gioco di dilemmi morali"]
+      },
+      {
+        "query": "dilemmi etici",
+        "market": "IT",
+        "locale": "it",
+        "intent": "imparare e riflettere",
+        "product_fit": "current",
+        "covered_terms": ["test di dilemmi morali", "dilemmi etici", "gioco di dilemmi morali"]
+      },
+      {
+        "query": "domande per amici gioco",
+        "market": "IT",
+        "locale": "it",
+        "intent": "conversazione sociale",
+        "product_fit": "current",
+        "covered_terms": ["gioco di dilemmi morali", "passa il telefono"]
+      },
+      {
+        "query": "domande per coppie gioco",
+        "market": "IT",
+        "locale": "it",
+        "intent": "compatibilità di coppia",
+        "product_fit": "future",
+        "covered_terms": []
+      }
+    ]
+  }
 }

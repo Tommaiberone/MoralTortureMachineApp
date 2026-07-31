@@ -1,6 +1,6 @@
 // screens/HomeScreen.jsx
 import React, { useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import LanguageSelector from '../components/LanguageSelector';
 import SEO from '../components/SEO';
@@ -11,7 +11,7 @@ import './HomeScreen.css';
 
 const HomeScreen = () => {
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const landingTracked = useRef(false);
 
   useEffect(() => {
@@ -42,6 +42,18 @@ const HomeScreen = () => {
     }
   };
 
+  const seoPaths = i18n.language === 'it'
+    ? {
+      test: '/it/test-dilemmi-morali',
+      ethical: '/it/dilemmi-etici',
+      game: '/it/gioco-dilemmi-morali',
+    }
+    : {
+      test: '/moral-dilemma-test',
+      ethical: '/ethical-dilemmas',
+      game: '/moral-dilemma-game',
+    };
+
   return (
     <div className="screen-container home-container">
       <SEO
@@ -60,6 +72,16 @@ const HomeScreen = () => {
       </h1>
 
         <p className="home-subtitle">{t('home.subtitle')}</p>
+
+        <section className="home-seo-resources" aria-labelledby="home-seo-resources-title">
+          <h2 id="home-seo-resources-title">{t('home.seo_resources_title')}</h2>
+          <p>{t('home.seo_resources_intro')}</p>
+          <div className="home-seo-resource-links">
+            <Link to={seoPaths.test}>{t('home.seo_resource_test')}</Link>
+            <Link to={seoPaths.ethical}>{t('home.seo_resource_ethical')}</Link>
+            <Link to={seoPaths.game}>{t('home.seo_resource_game')}</Link>
+          </div>
+        </section>
 
         <button
           className="home-button recommended-button"

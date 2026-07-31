@@ -20,6 +20,7 @@ const AboutScreen = lazy(() => import('./screens/AboutScreen'));
 const AnalyticsAdminScreen = lazy(() => import('./screens/AnalyticsAdminScreen'));
 const AuthCallbackScreen = lazy(() => import('./screens/AuthCallbackScreen'));
 const LegalScreen = lazy(() => import('./screens/LegalScreen'));
+const SeoLandingScreen = lazy(() => import('./screens/SeoLandingScreen'));
 
 import './styles/shared.css';
 import './App.css';
@@ -54,6 +55,12 @@ const App = () => {
             {/* <Route path="/story-mode" element={<StoryModeScreen />} /> */}
             <Route path="/results" element={<ResultsScreen />} />
             <Route path="/about" element={<AboutScreen />} />
+            <Route path="/moral-dilemma-test" element={<SeoLandingScreen landingId="moralDilemmaTest" locale="en" />} />
+            <Route path="/it/test-dilemmi-morali" element={<SeoLandingScreen landingId="moralDilemmaTest" locale="it" />} />
+            <Route path="/ethical-dilemmas" element={<SeoLandingScreen landingId="ethicalDilemmas" locale="en" />} />
+            <Route path="/it/dilemmi-etici" element={<SeoLandingScreen landingId="ethicalDilemmas" locale="it" />} />
+            <Route path="/moral-dilemma-game" element={<SeoLandingScreen landingId="moralDilemmaGame" locale="en" />} />
+            <Route path="/it/gioco-dilemmi-morali" element={<SeoLandingScreen landingId="moralDilemmaGame" locale="it" />} />
             {/* Intentionally unlinked: protected by a server-side admin credential. */}
             <Route path="/admin/analytics" element={<AnalyticsAdminScreen />} />
             <Route path="/auth/callback" element={<AuthCallbackScreen />} />

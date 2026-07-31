@@ -54,6 +54,27 @@ Do not scale paid acquisition until referral and retention loops are measured.
 A subscription is not eligible for launch until the product demonstrates weekly
 recurring value and sufficient retention.
 
+## Organic discovery experiment
+
+Non-brand search is a measured acquisition experiment, not an automated content
+factory. The initial content cluster has three user intents in English and
+Italian: a moral-dilemma test, an ethical-dilemmas explainer, and a
+pass-the-phone moral-dilemma game. It must earn visibility through useful,
+original pages and a clear first-play CTA; it must not create generic keyword
+variants or psychological claims.
+
+The weekly SEO report is the decision input. Review Search Console impressions,
+position and CTR by non-brand query/page alongside consented GA4 organic
+`result_viewed` conversions. After eight weeks of indexed traffic, decide which
+one or two pages merit an editorial expansion only when there is evidence of
+impressions or qualified completion; do not optimize simply for branded rank.
+
+The demand radar complements this measurement with outside-in signals. It
+labels autocomplete wording as directional, Search Console matches as observed,
+and Keyword Planner rows as quantified. Prioritize a non-brand idea only after
+considering its evidence level, whether the current product truly fulfils the
+intent, social-loop potential, and the cost of an original useful experience.
+
 ## Delivery sequence
 
 1. Foundation: finish event coverage, validate web/Android attribution, budgets,

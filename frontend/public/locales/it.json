@@ -11,7 +11,12 @@
     "infinite_description": "DILEMMI MORALI DA CONDIVIDERE CON GLI AMICI. PASSA IL TELEFONO E SCOPRI LE LORO SCELTE.",
     "story_button": "MODALITÀ STORIA",
     "story_description": "VIVI UNA STORIA RAMIFICATA. OGNI SCELTA PLASMA IL TUO DESTINO.",
-    "warning_footer": "[ QUESTO SVELERÀ I TUOI CONFINI PIÙ OSCURI ]"
+    "warning_footer": "[ QUESTO SVELERÀ I TUOI CONFINI PIÙ OSCURI ]",
+    "seo_resources_title": "Esplora i dilemmi morali",
+    "seo_resources_intro": "Inizia da una guida, da un test o da un gioco per scelte difficili.",
+    "seo_resource_test": "Test di dilemmi morali",
+    "seo_resource_ethical": "Dilemmi etici",
+    "seo_resource_game": "Gioco di dilemmi morali"
   },
   "evaluation": {
     "back_button": "[ INDIETRO ]",

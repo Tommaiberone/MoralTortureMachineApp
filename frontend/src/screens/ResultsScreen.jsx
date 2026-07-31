@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { getApiHeaders } from '../utils/session';
 import SEO from '../components/SEO';
 import { trackEvent } from '../utils/analytics';
+import { trackGoogleAnalyticsEvent } from '../utils/googleAnalytics';
 import './ResultsScreen.css';
 
 const ResultsScreen = () => {
@@ -43,6 +44,7 @@ const ResultsScreen = () => {
       mode: 'evaluation',
       completed_dilemmas: answers.length,
     });
+    trackGoogleAnalyticsEvent('result_viewed');
   }, [answers, hasResults]);
 
   useEffect(() => {

@@ -15,6 +15,8 @@ modifying a Play listing, uploading assets, or releasing an Android bundle.
 | Google Play acquisition CSV | Organic Play search keyword, listing visitors and visitor-to-installer conversion | Live keyword rank scraping |
 | Google Play Developer Reporting API | Crash and ANR signals | Publishing releases or listings |
 | First-party analytics | Product funnel, web/Android comparison | Raw search query collection |
+| Google autocomplete | Wording and adjacent intent discovery from a small configured seed set | Search volume, keyword rank, or proof of demand |
+| Keyword Planner CSV (optional) | Human-supplied monthly-volume and competition signal for exact queries | Automated Google Ads access, campaign management, or account changes |
 
 Search Console exposes aggregate/top rows, so an absent row must never be
 treated as proof of zero demand. Google Play acquisition reports are produced
@@ -26,6 +28,11 @@ assuming a particular month exists.
 These are the only external actions required from the account owner:
 
 1. Verify `https://moraltorturemachine.com/` in Google Search Console.
+   For this repository's **Domain property**, keep `site_url` in
+   `.github/growth-intelligence.json` as the exact API identifier
+   `sc-domain:moraltorturemachine.com`, not the URL-prefix form. The report
+   queries the property identifier, while `page_url` remains the normal web URL
+   for PageSpeed.
 2. Create a GA4 property and web data stream, then configure consent and the
    privacy notice before enabling the GA4 browser tag. Do not send email,
    Cognito subject, answer text, tokens, or custom user IDs.
@@ -50,6 +57,13 @@ These are the only external actions required from the account owner:
    grant the store-listing edit scope needed to obtain it through an edit.
 7. Optionally add `PAGESPEED_API_KEY` as a GitHub secret to use an allocated
    PageSpeed quota.
+8. To quantify the demand radar, export the selected keyword ideas from Google
+   Keyword Planner and save a reviewed CSV as
+   `growth-intelligence/keyword-planner.csv`, using the headers shown in
+   `keyword-planner.example.csv`. Include the market (`US` or `IT`) when it is
+   available. The file contains no user data or credentials. This is optional:
+   without it, the report correctly labels discoveries as directional rather
+   than pretending they have a monthly volume.
 
 GitHub exchanges its own short-lived OIDC token for the configured Google
 service account; no static Google credential is stored in the repository or
@@ -69,3 +83,29 @@ description 4,000.
 
 The later `TASK-79` remains responsible for actually revising the Play listing
 after the social MVP is stable. Its publication must remain explicitly manual.
+
+## Demand radar
+
+The configured EN/IT seeds represent both current product intents (reflection
+and pass-the-phone conversation) and explicitly marked future-fit intents
+(couples compatibility). The weekly report expands those seeds through a small,
+read-only autocomplete request and marks every candidate as:
+
+- **Directional** — phrasing discovered from a configured seed or autocomplete;
+  it has no quantitative demand claim.
+- **Observed** — the exact phrase also has Search Console impressions; this is
+  evidence that the site has encountered it, not a market-size estimate.
+- **Quantified** — a matching, human-exported Keyword Planner CSV row contains
+  monthly searches and competition.
+
+The report separates a currently covered phrase from a gap and labels product
+fit as `current` or `future`. A future-fit gap is a roadmap signal, not a reason
+to promise an unavailable feature or publish a page. The job remains read-only
+and a scheduled run cannot change a site, campaign, store listing, asset, or
+release.
+
+Candidates are shown separately for each market so that one language cannot
+hide the other behind a global top-N limit. Configured risk terms mark phrases
+such as psychology/diagnosis or minors-oriented wording as `policy review
+required`; those rows are research signals only and cannot justify a product,
+medical, psychological, or age-related claim.

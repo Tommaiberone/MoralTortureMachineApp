@@ -11,7 +11,12 @@
     "infinite_description": "MORAL DILEMMAS TO SHARE WITH FRIENDS. PASS THE PHONE AND DISCOVER THEIR CHOICES.",
     "story_button": "STORY MODE",
     "story_description": "LIVE A BRANCHING STORY. EVERY CHOICE SHAPES YOUR FATE.",
-    "warning_footer": "[ THIS WILL EXPOSE YOUR DARKEST BOUNDARIES ]"
+    "warning_footer": "[ THIS WILL EXPOSE YOUR DARKEST BOUNDARIES ]",
+    "seo_resources_title": "Explore moral dilemmas",
+    "seo_resources_intro": "Start with a guide, a test, or a game for difficult choices.",
+    "seo_resource_test": "Moral dilemma test",
+    "seo_resource_ethical": "Ethical dilemmas",
+    "seo_resource_game": "Moral dilemma game"
   },
   "evaluation": {
     "back_button": "[ BACK ]",

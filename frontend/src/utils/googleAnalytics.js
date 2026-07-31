@@ -39,6 +39,13 @@ export const initializeGoogleAnalytics = () => {
   if (consent() === 'granted') loadGoogleAnalytics();
 };
 
+// This intentionally accepts no event parameters. Product analytics stays
+// first-party; GA4 receives only the aggregate conversion after consent.
+export const trackGoogleAnalyticsEvent = (eventName) => {
+  if (!isWeb() || !ID || consent() !== 'granted' || !document.getElementById('mtm-ga4')) return;
+  gtag('event', eventName);
+};
+
 export const revokeGoogleAnalytics = () => {
   saveConsent('denied');
   document.cookie.split(';').forEach((entry) => {

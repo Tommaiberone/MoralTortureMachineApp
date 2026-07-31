@@ -134,6 +134,31 @@ dev table, or `/dev` SSM hierarchy.
   then reads them back to verify the result. It never deploys the web app or
   APK.
 
+## Organic discovery architecture
+
+- Non-brand organic discovery is served by six hand-authored, intent-led React
+  routes: English and Italian versions of the moral-dilemma test, ethical
+  dilemmas, and moral-dilemma game. Content lives in
+  `frontend/src/content/seoLandings.js`; the shared screen is
+  `frontend/src/screens/SeoLandingScreen.jsx`.
+- Each landing has its own canonical URL, reciprocal `hreflang` pair,
+  visible FAQ, internal links, FAQ/WebPage/Breadcrumb structured data, and a
+  matching `sitemap.xml` entry. These routes must remain editorial pages, not
+  programmatically scaled keyword variants, and must not claim to diagnose a
+  person or determine moral worth.
+- GA4 remains web-only and optional. Once its tag was loaded after affirmative
+  consent, the first displayed result sends only the parameter-free
+  `result_viewed` event to GA4. First-party analytics remains the complete
+  product telemetry source; no email, user ID, answer, token, or event
+  property is sent to GA4.
+- The scheduled Growth Intelligence report also contains a zero-AWS-cost demand
+  radar. It starts from a small, checked-in bilingual seed set, uses a
+  read-only autocomplete signal for wording, compares candidates with current
+  coverage and Search Console rows, and can optionally enrich exact queries
+  from a human-exported Keyword Planner CSV. Directional suggestions are never
+  presented as volume or certain demand; no Google Ads credential, campaign,
+  or mutation capability exists in the workflow.
+
 ## Cost and operational constraints
 
 - AWS Free Tier is a mandatory architecture default. For every new AWS

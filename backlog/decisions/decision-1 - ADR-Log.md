@@ -198,6 +198,60 @@ This avoids local OAuth client credentials and limits the temporary GA4 Editor
 role to one auditable change; the account owner should restore the service
 account to Viewer afterwards.
 
+### ADR-020 — Intent-led bilingual landing cluster before scaled SEO
+
+The first non-brand SEO implementation consists of six hand-authored routes:
+English and Italian pages for a moral dilemma test, ethical dilemmas, and a
+moral dilemma game. Each page has a distinct canonical URL, reciprocal
+`hreflang`, sitemap entry, visible FAQ, internal links, and a CTA into the
+existing anonymous flow. Search Console and consented GA4 are used only to
+evaluate these pages; the scheduled intelligence workflow remains read-only.
+Options considered: creating many keyword/city/question variants (rejected as
+thin or scaled content risk) and waiting for server rendering before publishing
+any useful content (rejected for now because the existing application already
+uses React routing and the small static cluster can be crawled and validated
+without infrastructure or AWS cost). Consequence: future landing expansion is
+editorial and evidence-gated; a pre-rendering evaluation remains appropriate if
+crawl/indexation evidence shows the SPA is a material limit.
+
+### ADR-021 — Demand radar separates discovery signals from demand claims
+
+The Growth Intelligence report gains an outside-in demand radar using a small
+checked-in EN/IT intent seed set and a read-only autocomplete request. It marks
+candidate phrases as directional by default, observed only when the exact term
+has Search Console impressions, and quantified only when a human-exported
+Keyword Planner CSV supplies monthly volume and competition. It also marks
+whether an idea is already covered and whether the current product or only a
+future roadmap item can fulfil it. Options considered: an automated Google Ads
+API integration (rejected for now because it needs a developer token and a
+user-authorized Ads account) and treating autocomplete as keyword volume
+(rejected as misleading). Consequence: the weekly report discovers adjacent
+intent without AWS cost, Google Ads credentials, campaigns, or publication;
+the owner may add a reviewed CSV later to quantify only the candidates worth
+investigating.
+
+### ADR-022 — Preserve market coverage and product-safety context in the radar
+
+The radar renders its top candidates independently for each market rather than
+using one global truncation, because a dense Italian or English suggestion set
+must not make the other market disappear. Configured term rules can also mark a
+candidate as requiring policy review, including psychological-claim and
+minors-audience wording. Options considered: a single global ranking (rejected
+after the first live run hid English entries) and silently dropping sensitive
+phrases (rejected because they are useful research signals but unsafe content
+instructions). Consequence: risky candidates remain visible with an explicit
+do-not-publish-without-review label, and market comparison stays possible.
+
+### ADR-023 — Search Console access failure is a property-identifier regression
+
+The full report run `30619056214` successfully exchanged GitHub OIDC credentials
+but received HTTP 403 from Search Console. The owner confirmed the service
+account already has access to the Domain property, so the fault is the URL-prefix
+identifier in the workflow configuration. The report must use the exact domain
+property identifier `sc-domain:moraltorturemachine.com`; it must not widen the
+workload identity, add a static key, or remove the source. A new run must confirm
+the absence of 403. The related remediation is `TASK-97.5`.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
