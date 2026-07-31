@@ -10,6 +10,11 @@ on:
         required: false
         default: false
         type: boolean
+      configure_ga4_retention:
+        description: 'Set and verify GA4 event and user data retention to two months'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -66,3 +71,33 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh issue create --title "Growth intelligence review $(date -u +%F)" --body-file growth-report/growth-intelligence-report.md
+
+  configure-ga4-retention:
+    name: Set GA4 retention to two months
+    if: github.event_name == 'workflow_dispatch' && inputs.configure_ga4_retention == true
+    runs-on: ubuntu-latest
+    env:
+      GA4_PROPERTY_ID: ${{ vars.GA4_PROPERTY_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - id: ga4-retention-auth
+        name: Exchange GitHub OIDC for the GA4 edit-scoped identity
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/411799055035/locations/global/workloadIdentityPools/github-actions/providers/github
+          service_account: growth-intelligence@moraltorturemachine.iam.gserviceaccount.com
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/analytics.edit
+
+      - name: Install Google authentication client
+        run: python -m pip install --disable-pip-version-check google-auth requests
+
+      - name: Set and verify the two-month retention policy
+        env:
+          GA4_ACCESS_TOKEN: ${{ steps.ga4-retention-auth.outputs.access_token }}
+        run: python scripts/configure_ga4_retention.py

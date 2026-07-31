@@ -170,6 +170,34 @@ only be stopped by a fast-follow fix commit, a manual halt/rollback in Play
 Console, or removing this job. This intentionally trades release safety for
 release speed and must be revisited if it causes a production incident.
 
+### ADR-018 — Web-only opt-in GA4 without advertising features
+
+GA4 is introduced as a separate, optional web measurement layer, rather than
+as a replacement for the existing privacy-safe first-party product analytics.
+Before an affirmative choice, the app does not request the Google tag or set
+Google Analytics cookies. On acceptance it grants only `analytics_storage`;
+`ad_storage`, `ad_user_data`, and `ad_personalization` remain denied, while
+Google signals and ad-personalisation signals are explicitly disabled. The
+choice is retained in a first-party cookie for 180 days, and the fixed Privacy
+preferences control lets a visitor withdraw or reconsider it. The GA4
+Measurement ID is injected only into the web deployment build, so this change
+does not alter Android runtime behavior or require an APK rebuild. The public
+web privacy notice names Tommaso Bersani as controller, identifies the contact
+email, and states the selected two-month GA4 data retention.
+
+### ADR-019 — One-purpose GA4 retention administration workflow
+
+The existing growth-intelligence identity remains read-only in normal use. To
+apply the explicitly chosen two-month GA4 event and user data retention, a
+separately gated job runs only when the `configure_ga4_retention` input of the
+existing `workflow_dispatch` workflow is set to true; the scheduled report
+cannot enter this job. It requests the `analytics.edit` scope through the same
+GitHub OIDC federation, patches only the two retention fields for the
+configured property, and reads the singleton setting back before succeeding.
+This avoids local OAuth client credentials and limits the temporary GA4 Editor
+role to one auditable change; the account owner should restore the service
+account to Viewer afterwards.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

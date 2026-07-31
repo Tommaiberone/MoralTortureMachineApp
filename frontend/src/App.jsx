@@ -4,6 +4,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
 // Import Error Boundary (critical, not lazy loaded)
 import ErrorBoundary from './components/ErrorBoundary';
+import { AnalyticsConsent, PrivacyFooter } from './components/AnalyticsConsent';
 
 // Lazy load screens for better performance and Core Web Vitals
 // Home is loaded immediately as it's the first screen users see
@@ -18,6 +19,7 @@ const TutorialScreen = lazy(() => import('./screens/TutorialScreen'));
 const AboutScreen = lazy(() => import('./screens/AboutScreen'));
 const AnalyticsAdminScreen = lazy(() => import('./screens/AnalyticsAdminScreen'));
 const AuthCallbackScreen = lazy(() => import('./screens/AuthCallbackScreen'));
+const LegalScreen = lazy(() => import('./screens/LegalScreen'));
 
 import './styles/shared.css';
 import './App.css';
@@ -55,7 +57,11 @@ const App = () => {
             {/* Intentionally unlinked: protected by a server-side admin credential. */}
             <Route path="/admin/analytics" element={<AnalyticsAdminScreen />} />
             <Route path="/auth/callback" element={<AuthCallbackScreen />} />
+            <Route path="/privacy" element={<LegalScreen type="privacy" />} />
+            <Route path="/cookies" element={<LegalScreen type="cookies" />} />
           </Routes>
+          <PrivacyFooter />
+          <AnalyticsConsent />
         </Suspense>
       </Router>
     </ErrorBoundary>

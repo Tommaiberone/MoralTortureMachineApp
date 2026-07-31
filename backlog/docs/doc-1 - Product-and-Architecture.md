@@ -119,6 +119,20 @@ dev table, or `/dev` SSM hierarchy.
   snapshot for character-limit review; the reporting identity intentionally
   lacks the store-listing edit permission. Actual ASO listing changes belong to
   `TASK-79` after the social MVP and require explicit human approval.
+- GA4 is optional and web-only. The Google tag must not be requested before
+  explicit consent stored in the first-party `mtm_web_analytics_consent` cookie
+  (180 days). The deployment pipeline injects `GA4_MEASUREMENT_ID` only into
+  the web build. All Google advertising-related consent states remain denied,
+  Google signals and ad-personalisation signals are disabled, and consent can
+  be changed from the persistent Privacy preferences control. The native app
+  continues to use only the existing first-party analytics pipeline.
+- The `configure_ga4_retention` input of
+  `.github/workflows/growth-intelligence.yml` enables a manual-only, narrowly
+  scoped administration job. The scheduled report remains read-only; this
+  separately gated job exchanges GitHub OIDC for the existing Google service
+  account, updates only GA4 event and user retention fields to `TWO_MONTHS`,
+  then reads them back to verify the result. It never deploys the web app or
+  APK.
 
 ## Cost and operational constraints
 

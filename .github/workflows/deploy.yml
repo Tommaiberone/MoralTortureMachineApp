@@ -349,6 +349,7 @@ jobs:
           VITE_COGNITO_DOMAIN: ${{ needs.backend-deploy.outputs.cognito_domain }}
           VITE_COGNITO_CLIENT_ID: ${{ needs.backend-deploy.outputs.cognito_client_id }}
           VITE_COGNITO_NATIVE_CLIENT_ID: ${{ needs.backend-deploy.outputs.cognito_native_client_id }}
+          VITE_GA4_MEASUREMENT_ID: ${{ vars.GA4_MEASUREMENT_ID }}
         run: pnpm build --mode prod
 
       - name: Configure AWS credentials
