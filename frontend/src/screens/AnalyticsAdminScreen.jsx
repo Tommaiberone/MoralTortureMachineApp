@@ -123,18 +123,23 @@ const AnalyticsAdminScreen = () => {
   }).format(new Date(value));
 
   if (!data) {
+    const verifyingAccess = auth.loading || (auth.isAuthenticated && auth.isAdmin && loading);
     return (
       <main className="analytics-admin analytics-admin--access">
         <section className="analytics-access-card">
           <p className="analytics-eyebrow">Private workspace</p>
           <h1>{t('analyticsAdmin.title')}</h1>
-          <p>{auth.isAuthenticated ? t('auth.adminPending') : t('auth.adminLoginRequired')}</p>
-          {auth.available && !auth.isAuthenticated && (
+          <p>
+            {verifyingAccess
+              ? t('analyticsAdmin.loading')
+              : (auth.isAuthenticated ? t('auth.adminPending') : t('auth.adminLoginRequired'))}
+          </p>
+          {!verifyingAccess && auth.available && !auth.isAuthenticated && (
             <button type="button" onClick={() => auth.login('/admin/analytics')} disabled={auth.loading}>
               {t('auth.loginForAnalytics')}
             </button>
           )}
-          {auth.isAuthenticated && (
+          {!verifyingAccess && auth.isAuthenticated && (
             <p className="analytics-security-note">{auth.user?.email}</p>
           )}
           {error && <p className="analytics-error" role="alert">{error}</p>}
