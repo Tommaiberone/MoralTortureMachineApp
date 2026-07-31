@@ -166,7 +166,9 @@
     "quality": "Quality",
     "source": "Source",
     "identity": "Identity",
-    "details": "Details"
+    "details": "Details",
+    "propertiesCount_one": "{{count}} property",
+    "propertiesCount_other": "{{count}} properties"
   },
   "auth": {
     "loginGoogle": "Sign in with Google",
