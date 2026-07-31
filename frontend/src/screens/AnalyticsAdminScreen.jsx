@@ -21,11 +21,12 @@ import './AnalyticsAdminScreen.css';
 const PERIODS = [7, 30, 90];
 const PLATFORMS = ['all', 'web', 'android', 'unknown'];
 const PLATFORM_COLORS = {
-  web: '#2383e2',
+  web: '#1a6fc4',
   android: '#0f7b6c',
   ios: '#6940a5',
-  unknown: '#9b9a97',
+  unknown: '#8a8980',
 };
+const SECTION_IDS = ['overview', 'abuse', 'trends', 'funnel', 'events'];
 
 const AnalyticsAdminScreen = () => {
   const { t, i18n } = useTranslation();
@@ -35,12 +36,32 @@ const AnalyticsAdminScreen = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [activeSection, setActiveSection] = useState(SECTION_IDS[0]);
   const attemptedToken = useRef('');
 
   useEffect(() => {
     document.body.classList.add('analytics-page');
     return () => document.body.classList.remove('analytics-page');
   }, []);
+
+  useEffect(() => {
+    if (!data) return undefined;
+    const sections = SECTION_IDS
+      .map((id) => document.getElementById(id))
+      .filter(Boolean);
+    if (!sections.length) return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible[0]) setActiveSection(visible[0].target.id);
+      },
+      { rootMargin: '-15% 0px -70% 0px', threshold: 0 },
+    );
+    sections.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
+  }, [data]);
 
   const numberFormatter = useMemo(
     () => new Intl.NumberFormat(i18n.language || 'it'),
@@ -157,11 +178,22 @@ const AnalyticsAdminScreen = () => {
           </div>
         </div>
         <nav className="analytics-sidebar-nav" aria-label={t('analyticsAdmin.title')}>
-          <a href="#overview"><span aria-hidden="true">◫</span>{t('analyticsAdmin.summary')}</a>
-          <a href="#abuse"><span aria-hidden="true">⌁</span>{t('analyticsAdmin.abuseTitle')}</a>
-          <a href="#trends"><span aria-hidden="true">⌁</span>{t('analyticsAdmin.trend')}</a>
-          <a href="#funnel"><span aria-hidden="true">↳</span>{t('analyticsAdmin.funnel')}</a>
-          <a href="#events"><span aria-hidden="true">≡</span>{t('analyticsAdmin.recentEvents')}</a>
+          {[
+            ['overview', '◫', t('analyticsAdmin.summary')],
+            ['abuse', '⌁', t('analyticsAdmin.abuseTitle')],
+            ['trends', '⌁', t('analyticsAdmin.trend')],
+            ['funnel', '↳', t('analyticsAdmin.funnel')],
+            ['events', '≡', t('analyticsAdmin.recentEvents')],
+          ].map(([id, icon, label]) => (
+            <a
+              key={id}
+              href={`#${id}`}
+              className={activeSection === id ? 'is-active' : ''}
+              aria-current={activeSection === id ? 'true' : undefined}
+            >
+              <span aria-hidden="true">{icon}</span>{label}
+            </a>
+          ))}
         </nav>
         <div className="analytics-sidebar-account">
           <span className="analytics-account-avatar" aria-hidden="true">
@@ -174,7 +206,7 @@ const AnalyticsAdminScreen = () => {
         </div>
       </aside>
 
-      <div className="analytics-content">
+      <div className={`analytics-content${loading ? ' analytics-content--loading' : ''}`}>
       <header className="analytics-header" id="overview">
         <div>
           <p className="analytics-eyebrow">Workspace / Analytics</p>
@@ -272,10 +304,10 @@ const AnalyticsAdminScreen = () => {
               <tr>
                 <th>{t('analyticsAdmin.identity')}</th>
                 <th>{t('analyticsAdmin.abuseRisk')}</th>
-                <th>{t('analyticsAdmin.events')}</th>
-                <th>{t('analyticsAdmin.abusePeak')}</th>
-                <th>{t('analyticsAdmin.abuseFlow')}</th>
-                <th>{t('analyticsAdmin.sessions')}</th>
+                <th className="analytics-num">{t('analyticsAdmin.events')}</th>
+                <th className="analytics-num">{t('analyticsAdmin.abusePeak')}</th>
+                <th className="analytics-num">{t('analyticsAdmin.abuseFlow')}</th>
+                <th className="analytics-num">{t('analyticsAdmin.sessions')}</th>
                 <th>{t('analyticsAdmin.platform')}</th>
                 <th>{t('analyticsAdmin.abuseReasons')}</th>
                 <th>{t('analyticsAdmin.abuseLastSeen')}</th>
@@ -286,10 +318,10 @@ const AnalyticsAdminScreen = () => {
                 <tr key={row.identity}>
                   <td><code>{row.identity}</code><small className="analytics-cell-note">{row.identitySource}</small></td>
                   <td><span className={`analytics-badge analytics-badge--${row.risk}`}>{t(`analyticsAdmin.abuseRisk_${row.risk}`)}</span></td>
-                  <td>{formatNumber(row.events)}</td>
-                  <td>{formatNumber(row.peakEventsPerMinute)}/min</td>
-                  <td>{formatNumber(row.dilemmasFetched)} / {formatNumber(row.votesCast)} / {formatNumber(row.resultsAnalyzed)}</td>
-                  <td>{formatNumber(row.sessions)}</td>
+                  <td className="analytics-num">{formatNumber(row.events)}</td>
+                  <td className="analytics-num">{formatNumber(row.peakEventsPerMinute)}/min</td>
+                  <td className="analytics-num">{formatNumber(row.dilemmasFetched)} / {formatNumber(row.votesCast)} / {formatNumber(row.resultsAnalyzed)}</td>
+                  <td className="analytics-num">{formatNumber(row.sessions)}</td>
                   <td>{row.platform}</td>
                   <td className="analytics-reasons">
                     {row.reasons.map((reason) => (
@@ -317,13 +349,13 @@ const AnalyticsAdminScreen = () => {
           <div className="analytics-chart">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={data.daily} margin={{ top: 8, right: 12, left: -22, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#ececea" />
-                <XAxis dataKey="date" tickFormatter={(value) => value.slice(5)} stroke="#9b9a97" />
-                <YAxis allowDecimals={false} stroke="#9b9a97" />
-                <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e7e7e5', borderRadius: '6px', color: '#37352f' }} />
-                <Legend />
-                <Line type="monotone" dataKey="events" name={t('analyticsAdmin.events')} stroke="#2383e2" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="users" name={t('analyticsAdmin.activeIdentities')} stroke="#37352f" strokeWidth={2} dot={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e3e3e0" />
+                <XAxis dataKey="date" tickFormatter={(value) => value.slice(5)} stroke="#c9c9c5" tick={{ fill: '#5d5c58', fontSize: 12 }} />
+                <YAxis allowDecimals={false} stroke="#c9c9c5" tick={{ fill: '#5d5c58', fontSize: 12 }} />
+                <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e3e3e0', borderRadius: '6px', color: '#2b2924' }} />
+                <Legend wrapperStyle={{ fontSize: '0.82rem' }} />
+                <Line type="monotone" dataKey="events" name={t('analyticsAdmin.events')} stroke="#1a6fc4" strokeWidth={2.25} dot={false} />
+                <Line type="monotone" dataKey="users" name={t('analyticsAdmin.activeIdentities')} stroke="#2b2924" strokeWidth={2.25} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -339,14 +371,14 @@ const AnalyticsAdminScreen = () => {
           <div className="analytics-chart analytics-chart--platform">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data.platformBreakdown} margin={{ top: 8, right: 8, left: -22, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#ececea" />
-                <XAxis dataKey="platform" stroke="#9b9a97" />
-                <YAxis allowDecimals={false} stroke="#9b9a97" />
-                <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e7e7e5', borderRadius: '6px', color: '#37352f' }} />
-                <Legend />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e3e3e0" />
+                <XAxis dataKey="platform" stroke="#c9c9c5" tick={{ fill: '#5d5c58', fontSize: 12 }} />
+                <YAxis allowDecimals={false} stroke="#c9c9c5" tick={{ fill: '#5d5c58', fontSize: 12 }} />
+                <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e3e3e0', borderRadius: '6px', color: '#2b2924' }} />
+                <Legend wrapperStyle={{ fontSize: '0.82rem' }} />
                 <Bar dataKey="exact" name={t('analyticsAdmin.exact')} stackId="quality" fill="#0f7b6c" />
                 <Bar dataKey="inferred" name={t('analyticsAdmin.inferred')} stackId="quality" fill="#d9730d" />
-                <Bar dataKey="unknown" name={t('analyticsAdmin.unknown')} stackId="quality" fill="#9b9a97" />
+                <Bar dataKey="unknown" name={t('analyticsAdmin.unknown')} stackId="quality" fill="#8a8980" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -476,7 +508,23 @@ const AnalyticsAdminScreen = () => {
                   <td><span className={`analytics-badge analytics-badge--${event.platformResolution}`}>{event.platformResolution}</span></td>
                   <td>{event.source}</td>
                   <td><code>{event.identity}</code></td>
-                  <td><code>{Object.keys(event.properties).length ? JSON.stringify(event.properties) : '—'}</code></td>
+                  <td className="analytics-details-cell">
+                    {Object.keys(event.properties).length ? (
+                      <details>
+                        <summary>
+                          {t('analyticsAdmin.propertiesCount', { count: Object.keys(event.properties).length })}
+                        </summary>
+                        <dl>
+                          {Object.entries(event.properties).map(([key, value]) => (
+                            <div key={key}>
+                              <dt>{key}</dt>
+                              <dd>{typeof value === 'object' ? JSON.stringify(value) : String(value)}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </details>
+                    ) : <span className="analytics-cell-empty">—</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>

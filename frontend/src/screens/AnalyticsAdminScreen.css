@@ -1,12 +1,12 @@
 .analytics-admin {
-  --analytics-ink: #37352f;
-  --analytics-muted: #787774;
-  --analytics-faint: #9b9a97;
-  --analytics-line: #e7e7e5;
+  --analytics-ink: #2b2924;
+  --analytics-muted: #5d5c58;
+  --analytics-faint: #77766f;
+  --analytics-line: #e3e3e0;
   --analytics-panel: #ffffff;
   --analytics-sidebar: #f7f7f5;
   --analytics-hover: #efefed;
-  --analytics-blue: #2383e2;
+  --analytics-blue: #1a6fc4;
   display: grid;
   grid-template-columns: 15rem minmax(0, 1fr);
   min-height: 100vh;
@@ -15,6 +15,7 @@
   font-size: 16px;
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   line-height: 1.5;
+  font-variant-numeric: tabular-nums;
 }
 
 .analytics-page {
@@ -226,6 +227,27 @@
   text-align: center;
 }
 
+.analytics-sidebar-nav a.is-active {
+  position: relative;
+  color: var(--analytics-ink);
+  background: #fff;
+  font-weight: 600;
+  box-shadow: 0 0 0 1px var(--analytics-line);
+}
+
+.analytics-sidebar-nav a.is-active::before {
+  position: absolute;
+  top: 0.32rem;
+  bottom: 0.32rem;
+  left: -0.55rem;
+  width: 0.16rem;
+  border-radius: 999px;
+  background: var(--analytics-blue);
+  content: "";
+}
+
+.analytics-sidebar-nav a.is-active span { color: var(--analytics-blue); }
+
 .analytics-sidebar-account {
   margin-top: auto;
   border-top: 1px solid var(--analytics-line);
@@ -247,7 +269,10 @@
   min-width: 0;
   padding: clamp(1.5rem, 4vw, 4rem);
   scroll-behavior: smooth;
+  transition: opacity 150ms ease;
 }
+
+.analytics-content--loading { opacity: 0.55; pointer-events: none; }
 
 .analytics-header {
   display: flex;
@@ -326,11 +351,13 @@
 .analytics-kpis,
 .analytics-grid {
   display: grid;
-  gap: 0.8rem;
+  gap: 0.9rem;
   max-width: 96rem;
-  margin: 0 auto 0.8rem;
+  margin: 0 auto 2.5rem;
   scroll-margin-top: 1rem;
 }
+
+.analytics-kpis { margin-bottom: 1.75rem; }
 
 .analytics-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .analytics-grid--wide { grid-template-columns: minmax(0, 1.45fr) minmax(22rem, 0.8fr); }
@@ -346,17 +373,17 @@
 }
 
 .analytics-card h2 {
-  margin: 0 0 0.25rem;
-  font-size: 0.95rem;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  margin: 0 0 0.3rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
 }
 
 .analytics-card h3 {
-  margin: 1.25rem 0 0.35rem;
+  margin: 1.4rem 0 0.45rem;
   color: var(--analytics-muted);
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-size: 0.72rem;
+  font-weight: 650;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -364,23 +391,27 @@
 .analytics-card-copy,
 .analytics-section-heading p {
   margin: 0;
-  color: var(--analytics-faint);
-  font-size: 0.78rem;
+  color: var(--analytics-muted);
+  font-size: 0.83rem;
 }
 
 .analytics-kpi { min-height: 7.4rem; }
-.analytics-kpi span { color: var(--analytics-muted); font-size: 0.76rem; }
+.analytics-kpi span {
+  color: var(--analytics-muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
 .analytics-kpi strong {
   display: block;
   margin-top: 0.6rem;
-  font-size: clamp(1.65rem, 4vw, 2.35rem);
-  font-weight: 600;
+  font-size: clamp(1.75rem, 4vw, 2.4rem);
+  font-weight: 650;
   letter-spacing: -0.04em;
 }
 
 .analytics-abuse {
   max-width: 96rem;
-  margin: 0 auto 0.8rem;
+  margin: 0 auto 2.5rem;
   scroll-margin-top: 1rem;
 }
 
@@ -400,8 +431,8 @@
 
 .analytics-abuse-kpis > div:last-child { border-right: 0; }
 .analytics-abuse-kpis span,
-.analytics-cell-note { display: block; color: var(--analytics-faint); font-size: 0.68rem; }
-.analytics-abuse-kpis strong { display: block; margin-top: 0.25rem; font-size: 1.25rem; }
+.analytics-cell-note { display: block; color: var(--analytics-muted); font-size: 0.72rem; }
+.analytics-abuse-kpis strong { display: block; margin-top: 0.3rem; font-size: 1.35rem; font-weight: 650; }
 
 .analytics-abuse-note {
   display: grid;
@@ -516,20 +547,23 @@
   gap: 1rem;
 }
 
-.analytics-section-heading > span { color: var(--analytics-faint); font-size: 0.7rem; }
+.analytics-section-heading > span { color: var(--analytics-muted); font-size: 0.75rem; }
 .analytics-table-wrap { margin-top: 1rem; overflow: auto; }
 .analytics-table-wrap table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.75rem;
+  font-size: 0.85rem;
   white-space: nowrap;
 }
 
 .analytics-table-wrap th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   color: var(--analytics-muted);
   background: #fff;
-  font-size: 0.66rem;
-  font-weight: 600;
+  font-size: 0.7rem;
+  font-weight: 700;
   letter-spacing: 0.04em;
   text-align: left;
   text-transform: uppercase;
@@ -538,18 +572,58 @@
 .analytics-table-wrap th,
 .analytics-table-wrap td {
   max-width: 22rem;
-  padding: 0.65rem;
-  border-bottom: 1px solid #efefed;
+  padding: 0.75rem 0.7rem;
+  border-bottom: 1px solid var(--analytics-line);
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.analytics-table-wrap tbody tr:hover { background: #f8f8f7; }
+.analytics-table-wrap tbody tr:nth-child(even) { background: #fbfbfa; }
+.analytics-table-wrap tbody tr:hover { background: #f0f4f9; }
 .analytics-table-wrap code {
-  padding: 0.08rem 0.25rem;
-  border-radius: 3px;
-  color: #5f5e5b;
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  color: #47463f;
   background: #f1f1ef;
+  font-size: 0.82rem;
+}
+
+.analytics-num { text-align: right; font-variant-numeric: tabular-nums; }
+.analytics-details-cell { white-space: normal; }
+.analytics-cell-empty { color: var(--analytics-faint); }
+
+.analytics-details-cell details summary {
+  color: var(--analytics-blue);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  list-style: none;
+}
+
+.analytics-details-cell details summary::-webkit-details-marker { display: none; }
+.analytics-details-cell details summary::before { content: "▸ "; }
+.analytics-details-cell details[open] summary::before { content: "▾ "; }
+
+.analytics-details-cell dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.2rem 0.6rem;
+  max-width: 26rem;
+  margin: 0.5rem 0 0;
+  white-space: normal;
+}
+
+.analytics-details-cell dt {
+  color: var(--analytics-muted);
+  font-size: 0.72rem;
+}
+
+.analytics-details-cell dd {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: var(--analytics-ink);
+  font-size: 0.78rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .analytics-badge {
