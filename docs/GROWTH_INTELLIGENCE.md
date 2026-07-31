@@ -68,7 +68,7 @@ These are the only external actions required from the account owner:
 GitHub exchanges its own short-lived OIDC token for the configured Google
 service account; no static Google credential is stored in the repository or
 GitHub secrets. The workflow stores the
-aggregate report as a private GitHub Actions artifact for 14 days. A scheduled
+aggregate report as a private GitHub Actions artifact for 90 days. A scheduled
 run never creates an issue; the `create_issue` manual-dispatch option creates
 only a review issue and still cannot publish any product change.
 
