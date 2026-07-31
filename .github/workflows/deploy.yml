@@ -176,6 +176,7 @@ jobs:
           mkdir -p lambda_deployment
           cp src/backend_fastapi.py lambda_deployment/
           cp src/archetype_engine.py lambda_deployment/
+          cp src/compatibility_engine.py lambda_deployment/
           cp data/archetypes.json lambda_deployment/
 
           uv pip install \

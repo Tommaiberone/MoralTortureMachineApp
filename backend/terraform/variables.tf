@@ -132,6 +132,17 @@ variable "abuse_auth_write_requests_per_minute" {
   }
 }
 
+variable "abuse_duel_write_requests_per_minute" {
+  description = "Maximum Moral Duel write requests (profile/challenge create, join, submit, rematch) per minute per transient network source in each Lambda container"
+  type        = number
+  default     = 15
+
+  validation {
+    condition     = var.abuse_duel_write_requests_per_minute > 0
+    error_message = "The Moral Duel write burst limit must be positive."
+  }
+}
+
 variable "populate_db" {
   description = "Whether to populate the database with initial dilemmas via Terraform (not recommended - use GitHub Actions step instead)"
   type        = bool

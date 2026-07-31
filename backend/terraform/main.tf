@@ -201,6 +201,114 @@ resource "aws_dynamodb_table" "users" {
   }
 }
 
+# TASK-28: persistent, shareable moral profiles. Owner is the anonymous_user_id
+# (anonymous-first, per ADR-002), not the Cognito sub, so a profile can exist
+# before any login. No TTL: profiles are core shareable product content, not
+# ephemeral analytics; retention is revisited by the per-domain policy in
+# TASK-64. Provisioned capacity within the shared Free Tier, no PITR by
+# default, matching the TASK-12 Users table precedent.
+resource "aws_dynamodb_table" "moral_profiles" {
+  name           = "${var.environment}-${var.stack_name}-moral-profiles"
+  billing_mode   = "PROVISIONED"
+  read_capacity  = 1
+  write_capacity = 1
+  hash_key       = "publicId"
+
+  attribute {
+    name = "publicId"
+    type = "S"
+  }
+
+  attribute {
+    name = "ownerAnonymousUserId"
+    type = "S"
+  }
+
+  attribute {
+    name = "createdAt"
+    type = "N"
+  }
+
+  global_secondary_index {
+    name               = "OwnerIndex"
+    hash_key           = "ownerAnonymousUserId"
+    range_key          = "createdAt"
+    projection_type    = "ALL"
+    read_capacity      = 1
+    write_capacity     = 1
+  }
+
+  tags = {
+    Name        = "Moral Torture Machine Moral Profiles"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+    Purpose     = "Persistent shareable moral archetype profiles, publicId is non-enumerable"
+  }
+}
+
+# TASK-34: a Moral Duel challenge. challengeToken is a non-enumerable random
+# token (never the DB key of anything guessable). TTL removes abandoned
+# challenges that nobody ever joined/completed.
+resource "aws_dynamodb_table" "challenges" {
+  name           = "${var.environment}-${var.stack_name}-challenges"
+  billing_mode   = "PROVISIONED"
+  read_capacity  = 1
+  write_capacity = 1
+  hash_key       = "challengeToken"
+
+  attribute {
+    name = "challengeToken"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "expirationTime"
+    enabled        = true
+  }
+
+  tags = {
+    Name        = "Moral Torture Machine Challenges"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+    Purpose     = "Moral Duel challenge state, TTL for abandoned challenges"
+  }
+}
+
+# TASK-34: one row per participant (creator/invitee) per challenge. Answers
+# and the derived profile are only attached once a participant submits, and
+# are never returned to the other participant before the challenge is
+# completed (enforced in application code, not by this schema).
+resource "aws_dynamodb_table" "challenge_participants" {
+  name           = "${var.environment}-${var.stack_name}-challenge-participants"
+  billing_mode   = "PROVISIONED"
+  read_capacity  = 1
+  write_capacity = 1
+  hash_key       = "challengeToken"
+  range_key      = "role"
+
+  attribute {
+    name = "challengeToken"
+    type = "S"
+  }
+
+  attribute {
+    name = "role"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "expirationTime"
+    enabled        = true
+  }
+
+  tags = {
+    Name        = "Moral Torture Machine Challenge Participants"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+    Purpose     = "Per-participant Moral Duel state (role = creator|invitee)"
+  }
+}
+
 # SSM Parameter for Groq API Key (migrato da Secrets Manager - risparmio $0.40/mese)
 # Se già creato via CLI, importare con:
 # terraform import aws_ssm_parameter.groq_api_key /prod/moral-torture-machine/groq-api-key
@@ -430,6 +538,7 @@ resource "aws_iam_role_policy" "lambda_permissions" {
         Action = [
           "dynamodb:PutItem",
           "dynamodb:GetItem",
+          "dynamodb:BatchGetItem",
           "dynamodb:UpdateItem",
           "dynamodb:DeleteItem",
           "dynamodb:BatchWriteItem",
@@ -443,7 +552,11 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           aws_dynamodb_table.product_events.arn,
           "${aws_dynamodb_table.product_events.arn}/index/*",
           aws_dynamodb_table.story_flows.arn,
-          aws_dynamodb_table.users.arn
+          aws_dynamodb_table.users.arn,
+          aws_dynamodb_table.moral_profiles.arn,
+          "${aws_dynamodb_table.moral_profiles.arn}/index/*",
+          aws_dynamodb_table.challenges.arn,
+          aws_dynamodb_table.challenge_participants.arn
         ]
       },
       {
@@ -454,7 +567,10 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           aws_dynamodb_table.user_analytics.arn,
           aws_dynamodb_table.product_events.arn,
           aws_dynamodb_table.story_flows.arn,
-          aws_dynamodb_table.users.arn
+          aws_dynamodb_table.users.arn,
+          aws_dynamodb_table.moral_profiles.arn,
+          aws_dynamodb_table.challenges.arn,
+          aws_dynamodb_table.challenge_participants.arn
         ]
       },
       {
@@ -499,6 +615,9 @@ resource "aws_lambda_function" "api" {
       STORY_FLOWS_TABLE                     = aws_dynamodb_table.story_flows.name
       PRODUCT_EVENTS_TABLE                  = aws_dynamodb_table.product_events.name
       USERS_TABLE                           = aws_dynamodb_table.users.name
+      MORAL_PROFILES_TABLE                  = aws_dynamodb_table.moral_profiles.name
+      CHALLENGES_TABLE                      = aws_dynamodb_table.challenges.name
+      CHALLENGE_PARTICIPANTS_TABLE           = aws_dynamodb_table.challenge_participants.name
       GROQ_API_KEY_SSM_NAME                 = aws_ssm_parameter.groq_api_key.name
       ANALYTICS_FINGERPRINT_SECRET_SSM_NAME = aws_ssm_parameter.analytics_fingerprint_pepper.name
       COGNITO_USER_POOL_ID                  = aws_cognito_user_pool.users.id
@@ -509,6 +628,7 @@ resource "aws_lambda_function" "api" {
       ABUSE_AI_REQUESTS_PER_MINUTE          = tostring(var.abuse_ai_requests_per_minute)
       ABUSE_ANALYTICS_BATCHES_PER_MINUTE    = tostring(var.abuse_analytics_batches_per_minute)
       ABUSE_AUTH_WRITE_REQUESTS_PER_MINUTE  = tostring(var.abuse_auth_write_requests_per_minute)
+      ABUSE_DUEL_WRITE_REQUESTS_PER_MINUTE  = tostring(var.abuse_duel_write_requests_per_minute)
     }
   }
 

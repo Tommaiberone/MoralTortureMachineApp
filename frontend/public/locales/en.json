@@ -55,7 +55,15 @@
     "share_challenge": "If you're brave enough, try it too:",
     "facebook_share_alert": "Text copied to clipboard! Paste it into your Facebook post.",
     "download_card_stories": "Download card (Stories)",
-    "download_card_square": "Download card (Square)"
+    "download_card_square": "Download card (Square)",
+    "challenge_title": "[ CHALLENGE SOMEONE ]",
+    "challenge_intro": "Send this to someone you know. They answer the same dilemmas without seeing your choices, then you both unlock how morally compatible you really are.",
+    "challenge_button": "Challenge a friend",
+    "challenge_creating": "Preparing your challenge...",
+    "challenge_error": "Could not create the challenge. Please try again.",
+    "challenge_share_text": "I judged these moral dilemmas. Think you'd choose differently? Prove it:",
+    "challenge_link_copied": "Challenge link copied to clipboard!",
+    "copy_link": "Copy link"
   },
   "tutorial": {
     "previous": "Previous",
@@ -192,6 +200,36 @@
   },
   "common": {
     "backToHome": "Back to Home"
+  },
+  "profile": {
+    "loading": "Loading...",
+    "not_found_title": "[ PROFILE NOT FOUND ]",
+    "not_found": "This profile does not exist or is no longer available.",
+    "take_the_test": "Take the test yourself"
+  },
+  "challenge": {
+    "loading": "Loading the challenge...",
+    "submitting": "Unlocking your comparison...",
+    "seo_description": "Someone challenged you to a Moral Duel. Answer the same dilemmas and find out how compatible you really are.",
+    "error_title": "[ CHALLENGE UNAVAILABLE ]",
+    "error_not_found": "This challenge does not exist.",
+    "error_expired": "This challenge has expired or was revoked.",
+    "error_unknown": "Something went wrong. Please try again.",
+    "teaser_title": "{{name}} is challenging you",
+    "teaser_intro": "Answer the same {{count}} moral dilemmas without seeing their choices. Then you both unlock how compatible you really are.",
+    "accept_button": "Accept the challenge"
+  },
+  "challengeCompare": {
+    "loading": "Unlocking your comparison...",
+    "error": "Could not load this comparison.",
+    "seo_description": "See how morally compatible two people really are, dilemma by dilemma.",
+    "title": "[ MORAL COMPATIBILITY ]",
+    "overall": "{{pct}}% compatible",
+    "most_aligned": "Most aligned on: {{dimension}}",
+    "most_divergent": "Most divided on: {{dimension}}",
+    "rematch_button": "Rematch someone else",
+    "rematch_creating": "Preparing your rematch...",
+    "share_rematch": "Share rematch on WhatsApp"
   },
   "account": {
     "title": "Your account",

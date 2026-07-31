@@ -209,7 +209,10 @@ const EvaluationDilemmasScreen = () => {
       firstAnswer: dilemma.firstAnswer,
       secondAnswer: dilemma.secondAnswer,
       chosenAnswer: choice === "first" ? dilemma.firstAnswer : dilemma.secondAnswer,
-      chosenValues: answerValues
+      chosenValues: answerValues,
+      // baseId is language-neutral (shared across en/it) so a Moral Duel
+      // invitee can be served the exact same dilemma in their own language.
+      dilemmaBaseId: dilemma.baseId || dilemma._id,
     };
     setDilemmasWithChoices([...dilemmasWithChoices, dilemmaWithChoice]);
 

@@ -107,6 +107,36 @@ dev table, or `/dev` SSM hierarchy.
   both try the flat Lambda layout first and fall back to the repository's
   `backend/src/` + `backend/data/` layout, so the same code runs unmodified
   locally, in tests, and deployed.
+- **Moral Duel** (`TASK-28`/`34`-`40`) adds three tables, all provisioned 1/1
+  within the shared Free Tier: `moral_profiles` (persistent, shareable
+  profile, PK `publicId` — a `secrets.token_urlsafe(16)` token, GSI
+  `OwnerIndex` on `ownerAnonymousUserId`+`createdAt` to find the caller's
+  latest profile; no TTL, since a profile is core shareable content, not
+  ephemeral analytics), `challenges` (PK `challengeToken`, same token scheme,
+  TTL on `expirationTime` so an abandoned challenge expires), and
+  `challenge_participants` (PK `challengeToken`, SK `role` = `creator`|
+  `invitee`). A profile stores its `dilemmaBaseIds` (the language-neutral IDs
+  shared across `dilemmas_en.json`/`dilemmas_it.json`, per
+  `scripts/populate_dynamodb_multilang.py`'s `{baseId}-{lang}` composite key)
+  so a Duel invitee can be served the exact same dilemmas in their own
+  language via `GET /dilemmas/by-ids`.
+- The Duel API (`POST /profiles`, `GET /profiles/{publicId}`,
+  `POST /challenges`, `GET /challenges/{token}`, `POST .../join`,
+  `POST .../submit`, `GET .../compare`, `POST .../rematch`,
+  `POST .../revoke`) never requires authentication, only the existing
+  `X-Anonymous-User-Id` identity. Every state transition is validated
+  (`ensure_challenge_is_actionable`) and idempotent at the DynamoDB level via
+  `ConditionExpression`, not just an application-level check: a repeated join
+  by the same invitee is a no-op, a second distinct invitee gets 409, and a
+  second submit is rejected because `submittedAt` already exists. The
+  opponent's dimension averages and archetype are never returned before the
+  challenge reaches `completed`; the pre-unlock `open_challenge` response is
+  a teaser (archetype name/visual/share phrase only).
+- `backend/src/compatibility_engine.py` computes Duel compatibility from two
+  participants' dimension averages by per-dimension distance, with no AI and
+  no dependency on which dilemmas were used. `compute_compatibility(A, B)`
+  always equals `compute_compatibility(B, A)` (only the `a`/`b` per-dimension
+  labels swap); `COMPATIBILITY_VERSION` is returned in every comparison.
 - AI can enrich presentation but cannot determine scores or core outcomes.
 - Generated AI output is persisted and reused; every core flow has a
   deterministic fallback when Groq is unavailable.

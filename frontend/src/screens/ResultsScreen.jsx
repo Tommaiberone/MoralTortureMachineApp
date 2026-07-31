@@ -18,6 +18,9 @@ const ResultsScreen = () => {
   const [aiAnalysis, setAiAnalysis] = useState('');
   const [archetype, setArchetype] = useState(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+  const [challengeUrl, setChallengeUrl] = useState('');
+  const [creatingChallenge, setCreatingChallenge] = useState(false);
+  const [challengeError, setChallengeError] = useState('');
   const resultTracked = useRef(false);
   const hasResults = Boolean(answers && answers.length > 0);
 
@@ -112,6 +115,43 @@ const ResultsScreen = () => {
 
     fetchAiAnalysis();
   }, [answers, dilemmasWithChoices, i18n.language, t]);
+
+  const handleChallengeAFriend = async () => {
+    if (!dilemmasWithChoices || dilemmasWithChoices.length === 0) return;
+    setCreatingChallenge(true);
+    setChallengeError('');
+    try {
+      const API_URL = import.meta.env.VITE_API_URL;
+      const profileAnswers = dilemmasWithChoices.map((entry) => ({
+        dilemmaBaseId: entry.dilemmaBaseId,
+        chosenValues: entry.chosenValues,
+      }));
+
+      const profileResponse = await fetch(`${API_URL}/profiles`, {
+        method: 'POST',
+        headers: getApiHeaders(),
+        body: JSON.stringify({ answers: profileAnswers, language: i18n.language }),
+      });
+      if (!profileResponse.ok) throw new Error(`profile creation failed: ${profileResponse.status}`);
+      const profile = await profileResponse.json();
+
+      const challengeResponse = await fetch(`${API_URL}/challenges`, {
+        method: 'POST',
+        headers: getApiHeaders(),
+        body: JSON.stringify({ profilePublicId: profile.publicId }),
+      });
+      if (!challengeResponse.ok) throw new Error(`challenge creation failed: ${challengeResponse.status}`);
+      const challenge = await challengeResponse.json();
+
+      trackEvent('challenge_share_ready', { object_type: 'result', challenge_token: challenge.challengeToken });
+      setChallengeUrl(`${window.location.origin}/challenge/${challenge.challengeToken}`);
+    } catch (error) {
+      console.error('Error creating challenge:', error);
+      setChallengeError(t('results.challenge_error'));
+    } finally {
+      setCreatingChallenge(false);
+    }
+  };
 
   if (!hasResults) {
     return (
@@ -256,6 +296,55 @@ const ResultsScreen = () => {
             )}
           </div>
         </div>
+
+        {archetype && (
+          <div className="results-challenge-container">
+            <h2 className="results-challenge-title">{t('results.challenge_title')}</h2>
+            <p className="results-challenge-intro">{t('results.challenge_intro')}</p>
+            {!challengeUrl ? (
+              <button
+                className="btn-primary results-challenge-button"
+                onClick={handleChallengeAFriend}
+                disabled={creatingChallenge}
+              >
+                {creatingChallenge ? t('results.challenge_creating') : t('results.challenge_button')}
+              </button>
+            ) : (
+              <div className="results-challenge-link">
+                <input
+                  className="results-challenge-url"
+                  type="text"
+                  readOnly
+                  value={challengeUrl}
+                  onFocus={(event) => event.target.select()}
+                />
+                <div className="results-share-buttons">
+                  <button
+                    className="results-share-button whatsapp"
+                    onClick={() => {
+                      trackEvent('share_clicked', { channel: 'whatsapp', object_type: 'challenge' });
+                      const message = `${t('results.challenge_share_text')}\n\n${challengeUrl}`;
+                      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`);
+                    }}
+                  >
+                    WhatsApp
+                  </button>
+                  <button
+                    className="results-share-button card-download"
+                    onClick={() => {
+                      trackEvent('share_clicked', { channel: 'copy_link', object_type: 'challenge' });
+                      navigator.clipboard.writeText(challengeUrl);
+                      alert(t('results.challenge_link_copied'));
+                    }}
+                  >
+                    {t('results.copy_link')}
+                  </button>
+                </div>
+              </div>
+            )}
+            {challengeError && <p role="alert" className="results-challenge-error">{challengeError}</p>}
+          </div>
+        )}
     </div>
   );
 };

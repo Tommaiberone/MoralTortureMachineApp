@@ -22,6 +22,9 @@ const AuthCallbackScreen = lazy(() => import('./screens/AuthCallbackScreen'));
 const LegalScreen = lazy(() => import('./screens/LegalScreen'));
 const AccountDeleteScreen = lazy(() => import('./screens/AccountDeleteScreen'));
 const SeoLandingScreen = lazy(() => import('./screens/SeoLandingScreen'));
+const PublicProfileScreen = lazy(() => import('./screens/PublicProfileScreen'));
+const ChallengeLandingScreen = lazy(() => import('./screens/ChallengeLandingScreen'));
+const ChallengeCompareScreen = lazy(() => import('./screens/ChallengeCompareScreen'));
 
 import './styles/shared.css';
 import './App.css';
@@ -68,6 +71,9 @@ const App = () => {
             <Route path="/privacy" element={<LegalScreen type="privacy" />} />
             <Route path="/cookies" element={<LegalScreen type="cookies" />} />
             <Route path="/delete-account" element={<AccountDeleteScreen />} />
+            <Route path="/p/:publicId" element={<PublicProfileScreen />} />
+            <Route path="/challenge/:token" element={<ChallengeLandingScreen />} />
+            <Route path="/challenge/:token/compare" element={<ChallengeCompareScreen />} />
           </Routes>
           <PrivacyFooter />
           <AnalyticsConsent />

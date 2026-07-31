@@ -1,0 +1,118 @@
+.compare-screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-normal);
+}
+
+.compare-title {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 22px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-danger);
+  margin-bottom: 12px;
+}
+
+.compare-overall {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text-highlight);
+  margin-bottom: 30px;
+}
+
+.compare-archetypes {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 600px;
+  margin-bottom: 30px;
+}
+
+.compare-archetype-card {
+  flex: 1;
+  background-color: var(--creepy-charcoal);
+  border: 2px solid var(--creepy-fog);
+  padding: 20px 10px;
+}
+
+.compare-archetype-emoji {
+  font-size: 40px;
+  margin: 0 0 8px;
+}
+
+.compare-archetype-name {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-highlight);
+  margin: 0;
+}
+
+.compare-vs {
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.compare-dimensions {
+  width: 100%;
+  max-width: 600px;
+  margin-bottom: 30px;
+}
+
+.compare-dimension-highlight {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+.compare-dimension-list {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.compare-dimension-row {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 14px;
+  border-bottom: 1px solid var(--creepy-fog);
+  padding-bottom: 6px;
+}
+
+.compare-actions {
+  width: 100%;
+  max-width: 320px;
+  margin-bottom: 20px;
+}
+
+.compare-rematch-link {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.compare-rematch-url {
+  padding: 12px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 13px;
+  color: var(--text-highlight);
+  background-color: var(--creepy-dark-gray);
+  border: 2px solid var(--creepy-fog);
+  text-align: center;
+}
+
+.compare-home-link {
+  color: var(--text-dim);
+  font-family: 'Courier New', Courier, monospace;
+}

@@ -463,6 +463,86 @@ The user was explicitly warned this is an immediate, live, all-users publish
 instruction to flag hard-to-reverse actions going forward, and confirmed
 production.
 
+### ADR-037 — Moral Duel data model: profiles own dilemma sets, tokens are non-enumerable
+
+`TASK-28`/`34` implement the core social loop's data layer. A `moral_profiles`
+record is owned by `ownerAnonymousUserId` (never the Cognito sub), matching
+the anonymous-first product rule (ADR-002): a profile — and therefore a
+challenge created from it — can exist before any login. Each profile stores
+the `dilemmaBaseIds` it was built from (language-neutral, shared across
+`dilemmas_en.json`/`dilemmas_it.json`) so that creating a Duel challenge from
+that profile fixes the exact same dilemma set for the invitee, served in
+their own language via a new `GET /dilemmas/by-ids` batch lookup. Both new
+non-enumerable token families (`publicId`, `challengeToken`) use
+`secrets.token_urlsafe(16)`, matching the existing claim-lock/user-record
+pattern's cryptographic rigor. `moral_profiles` has no TTL (a profile is
+persistent, shareable product content); `challenges`/`challenge_participants`
+do (30 days), so an abandoned invite disappears without manual cleanup. All
+three tables are provisioned 1/1 within the shared Free Tier, following the
+`TASK-12` Users-table precedent rather than the legacy on-demand default.
+
+### ADR-038 — Duel state transitions are idempotent at the DynamoDB level, not just in application code
+
+`TASK-35`/`36`: every write endpoint (`join`, `submit`, `revoke`, status
+updates) uses a `ConditionExpression`, not a read-then-write check, so a
+retried request can never duplicate a participant, overwrite a submitted
+answer, or race a concurrent request into an inconsistent state. A repeated
+`join` by the same invitee succeeds as a no-op (`ConditionExpression`
+allows the same `anonymousUserId`); a second, different invitee gets a 409
+from the same conditional check failing. `submit` guards on
+`attribute_not_exists(submittedAt)`, making answers genuinely immutable
+once recorded — not just discouraged by convention. Expired/revoked
+challenges return 410 (with distinct messages); state conflicts (already
+completed, not yet completed) return 409; a non-participant gets 403. Every
+endpoint accepts only the existing anonymous identity header, so the
+invitee never needs an account, matching the growth loop in `doc-2`.
+Added `POST /challenges/{token}/revoke` during this work after noticing
+`TASK-34`'s "revocable" acceptance criterion had no actual endpoint; a
+completed challenge cannot be revoked, since that would retroactively hide
+an already-unlocked comparison from the invitee.
+
+### ADR-039 — Compatibility scoring never depends on which dilemmas were used
+
+`TASK-37`: `compute_compatibility` in the new `backend/src/compatibility_engine.py`
+compares two participants' six-dimension averages by simple per-dimension
+distance, entirely independent of AI and of the specific dilemma set behind
+those averages. This keeps it naturally symmetric
+(`compute_compatibility(A, B)` and `(B, A)` agree on every aggregate field,
+only the raw `a`/`b` per-dimension values swap) and reusable beyond the
+token-based Duel flow if a direct profile-to-profile comparison is ever
+wanted later. `COMPATIBILITY_VERSION` is returned in every comparison,
+mirroring `archetypesVersion`'s pattern.
+
+### ADR-040 — Public profile CTA scoped to attribution, not cross-owner challenge creation
+
+`TASK-29`: visiting `/p/:publicId` cannot spin up a Duel challenge *as* the
+profile owner without their consent — `POST /challenges` already rejects a
+`profilePublicId` the caller doesn't own (404, not distinguishing "not
+found" from "not yours"). The public profile's CTA therefore sends the
+visitor into their own evaluation flow instead, firing a
+`profile_cta_clicked` event with the referring `public_id` for attribution
+before navigating. Options considered: auto-creating a challenge from the
+visited profile (rejected: lets anyone spawn challenges in a stranger's
+name) and a direct profile-to-profile compare endpoint bypassing the
+Duel/token flow (rejected for this pass: adds a second comparison mechanism
+alongside the well-tested token-based one for a case doc-2's growth loop
+doesn't call for). Consequence: the one canonical way two people compare
+remains the attributable `/challenge/:token` link.
+
+### ADR-041 — Challenge deep links degrade to web; native Android opening deferred
+
+`TASK-38` ships `/challenge/:token` as a plain React Router route, reachable
+identically on web and inside the already-open Android WebView. Tapping a
+shared link from outside the app (e.g. a messaging app) opens the mobile
+browser rather than the native app — the AC's explicit "or degrades to web"
+path — because making it open the app directly would need Android App
+Links (a hosted `assetlinks.json`, signing-certificate fingerprints for
+every keystore, and Android's own asynchronous, sometimes-flaky
+verification), the same trade-off already discussed and declined for
+native auth earlier this session. Consequence: revisit only as a deliberate
+follow-up task if native-app opening on share proves to matter for
+conversion; today's web fallback is fully functional, not broken.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

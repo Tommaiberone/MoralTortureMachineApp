@@ -55,7 +55,15 @@
     "share_challenge": "Se sei coraggioso, prova anche tu:",
     "facebook_share_alert": "Testo copiato negli appunti! Incollalo nel tuo post di Facebook.",
     "download_card_stories": "Scarica la card (Stories)",
-    "download_card_square": "Scarica la card (Quadrata)"
+    "download_card_square": "Scarica la card (Quadrata)",
+    "challenge_title": "[ SFIDA QUALCUNO ]",
+    "challenge_intro": "Manda questo link a una persona che conosci. Risponderà agli stessi dilemmi senza vedere le tue scelte, poi sbloccherete insieme quanto siete davvero compatibili moralmente.",
+    "challenge_button": "Sfida un amico",
+    "challenge_creating": "Preparazione della sfida...",
+    "challenge_error": "Impossibile creare la sfida. Riprova.",
+    "challenge_share_text": "Ho giudicato questi dilemmi morali. Pensi di scegliere diversamente? Dimostralo:",
+    "challenge_link_copied": "Link della sfida copiato negli appunti!",
+    "copy_link": "Copia link"
   },
   "tutorial": {
     "previous": "Precedente",
@@ -192,6 +200,36 @@
   },
   "common": {
     "backToHome": "Torna alla Home"
+  },
+  "profile": {
+    "loading": "Caricamento...",
+    "not_found_title": "[ PROFILO NON TROVATO ]",
+    "not_found": "Questo profilo non esiste o non è più disponibile.",
+    "take_the_test": "Fai il test anche tu"
+  },
+  "challenge": {
+    "loading": "Caricamento della sfida...",
+    "submitting": "Sblocco del confronto...",
+    "seo_description": "Qualcuno ti ha sfidato a un Duello Morale. Rispondi agli stessi dilemmi e scopri quanto siete davvero compatibili.",
+    "error_title": "[ SFIDA NON DISPONIBILE ]",
+    "error_not_found": "Questa sfida non esiste.",
+    "error_expired": "Questa sfida è scaduta o è stata revocata.",
+    "error_unknown": "Qualcosa è andato storto. Riprova.",
+    "teaser_title": "{{name}} ti sta sfidando",
+    "teaser_intro": "Rispondi agli stessi {{count}} dilemmi morali senza vedere le loro scelte. Poi sbloccherete insieme quanto siete davvero compatibili.",
+    "accept_button": "Accetta la sfida"
+  },
+  "challengeCompare": {
+    "loading": "Sblocco del confronto...",
+    "error": "Impossibile caricare questo confronto.",
+    "seo_description": "Scopri quanto sono davvero compatibili moralmente due persone, dilemma per dilemma.",
+    "title": "[ COMPATIBILITÀ MORALE ]",
+    "overall": "{{pct}}% compatibili",
+    "most_aligned": "Più allineati su: {{dimension}}",
+    "most_divergent": "Più divisi su: {{dimension}}",
+    "rematch_button": "Rivincita con qualcun altro",
+    "rematch_creating": "Preparazione della rivincita...",
+    "share_rematch": "Condividi la rivincita su WhatsApp"
   },
   "account": {
     "title": "Il tuo account",

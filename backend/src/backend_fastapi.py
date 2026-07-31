@@ -14,6 +14,7 @@ import time
 import hmac
 import hashlib
 import re
+import secrets
 from collections import Counter, defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from math import ceil
@@ -28,11 +29,14 @@ import json
 # (local uvicorn), or as `backend.src.backend_fastapi` (unit tests).
 try:
     from src.archetype_engine import assign_archetype, compute_dimension_averages
+    from src.compatibility_engine import compute_compatibility
 except ImportError:
     try:
         from .archetype_engine import assign_archetype, compute_dimension_averages
+        from .compatibility_engine import compute_compatibility
     except ImportError:
         from archetype_engine import assign_archetype, compute_dimension_averages
+        from compatibility_engine import compute_compatibility
 
 # Configure logging
 logger = logging.getLogger()
@@ -80,6 +84,9 @@ ANALYTICS_TABLE = os.getenv("ANALYTICS_TABLE", "moral-torture-machine-user-analy
 STORY_FLOWS_TABLE = os.getenv("STORY_FLOWS_TABLE", "moral-torture-machine-story-flows")
 PRODUCT_EVENTS_TABLE = os.getenv("PRODUCT_EVENTS_TABLE", "prod-moral-torture-machine-product-events")
 USERS_TABLE = os.getenv("USERS_TABLE", "moral-torture-machine-users")
+MORAL_PROFILES_TABLE = os.getenv("MORAL_PROFILES_TABLE", "moral-torture-machine-moral-profiles")
+CHALLENGES_TABLE = os.getenv("CHALLENGES_TABLE", "moral-torture-machine-challenges")
+CHALLENGE_PARTICIPANTS_TABLE = os.getenv("CHALLENGE_PARTICIPANTS_TABLE", "moral-torture-machine-challenge-participants")
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
 GROQ_API_KEY_SSM_NAME = os.getenv("GROQ_API_KEY_SSM_NAME", "")
 ANALYTICS_FINGERPRINT_SECRET_SSM_NAME = os.getenv(
@@ -114,6 +121,13 @@ ABUSE_AUTH_WRITE_REQUESTS_PER_MINUTE = _env_positive_int(
     "ABUSE_AUTH_WRITE_REQUESTS_PER_MINUTE",
     10,
 )
+ABUSE_DUEL_WRITE_REQUESTS_PER_MINUTE = _env_positive_int(
+    "ABUSE_DUEL_WRITE_REQUESTS_PER_MINUTE",
+    15,
+)
+
+# TASK-34: abandoned challenges (never joined/completed) expire via TTL.
+CHALLENGE_TTL_SECONDS = 30 * 24 * 60 * 60
 
 # Model fallback strategy - ordered by rate limits (highest TPD first)
 MODEL_FALLBACK_CHAIN = [
@@ -141,6 +155,9 @@ analytics_table = dynamodb.Table(ANALYTICS_TABLE)
 story_flows_table = dynamodb.Table(STORY_FLOWS_TABLE)
 product_events_table = dynamodb.Table(PRODUCT_EVENTS_TABLE)
 users_table = dynamodb.Table(USERS_TABLE)
+moral_profiles_table = dynamodb.Table(MORAL_PROFILES_TABLE)
+challenges_table = dynamodb.Table(CHALLENGES_TABLE)
+challenge_participants_table = dynamodb.Table(CHALLENGE_PARTICIPANTS_TABLE)
 ssm_client = boto3.client('ssm', region_name=AWS_REGION)
 
 # Cache for API key (retrieved once at cold start)
@@ -327,6 +344,94 @@ def claim_anonymous_user_id(owner_sub: str, anonymous_user_id: str) -> None:
     )
 
 
+def require_anonymous_user_id(request: Request) -> str:
+    """Every Moral Duel endpoint works without login; it only needs the
+    existing anonymous identity header, never an auth token."""
+    anonymous_user_id = request.headers.get("X-Anonymous-User-Id")
+    if not anonymous_user_id:
+        raise HTTPException(status_code=400, detail="X-Anonymous-User-Id header is required")
+    return anonymous_user_id
+
+
+def generate_public_token(byte_length: int = 16) -> str:
+    """Cryptographically random, non-enumerable, URL-safe token."""
+    return secrets.token_urlsafe(byte_length)
+
+
+def create_moral_profile(anonymous_user_id: str, answers: list, language: str) -> Dict[str, Any]:
+    """Persist a shareable moral profile (TASK-28) from a completed test.
+
+    Reuses the same deterministic archetype engine as /analyze-results.
+    Archetypes/compatibility never depend on AI, so this never calls Groq.
+    """
+    dimension_answers = [answer.chosenValues for answer in answers]
+    averages = compute_dimension_averages(dimension_answers)
+    archetype = assign_archetype(averages, language=language)
+    dilemma_base_ids = [answer.dilemmaBaseId for answer in answers]
+
+    public_id = generate_public_token()
+    now = int(time.time() * 1000)
+    moral_profiles_table.put_item(Item={
+        "publicId": public_id,
+        "ownerAnonymousUserId": anonymous_user_id,
+        "dimensionAverages": json.dumps(averages, separators=(",", ":")),
+        "archetypeId": archetype["archetypeId"],
+        "archetypesVersion": archetype["archetypesVersion"],
+        "dilemmaBaseIds": dilemma_base_ids,
+        "language": language,
+        "createdAt": now,
+    })
+    return {
+        "publicId": public_id,
+        "averages": averages,
+        "dilemmaBaseIds": dilemma_base_ids,
+        "language": language,
+        **archetype,
+    }
+
+
+def get_profile_or_404(public_id: str) -> Dict[str, Any]:
+    response = moral_profiles_table.get_item(Key={"publicId": public_id})
+    item = response.get("Item")
+    if not item:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return item
+
+
+def get_latest_profile_for_anonymous_user(anonymous_user_id: str) -> Optional[Dict[str, Any]]:
+    response = moral_profiles_table.query(
+        IndexName="OwnerIndex",
+        KeyConditionExpression="ownerAnonymousUserId = :owner",
+        ExpressionAttributeValues={":owner": anonymous_user_id},
+        ScanIndexForward=False,
+        Limit=1,
+    )
+    items = response.get("Items", [])
+    return items[0] if items else None
+
+
+def get_challenge_or_404(token: str) -> Dict[str, Any]:
+    response = challenges_table.get_item(Key={"challengeToken": token})
+    item = response.get("Item")
+    if not item:
+        raise HTTPException(status_code=404, detail="Challenge not found")
+    return item
+
+
+def ensure_challenge_is_actionable(challenge: Dict[str, Any]) -> None:
+    """Distinguish revoked/expired from other errors, per TASK-35 AC2."""
+    if challenge["status"] == "revoked":
+        raise HTTPException(status_code=410, detail="This challenge has been revoked")
+    expiration = challenge.get("expirationTime")
+    if expiration and int(time.time()) > int(expiration):
+        raise HTTPException(status_code=410, detail="This challenge has expired")
+
+
+def get_participant(token: str, role: str) -> Optional[Dict[str, Any]]:
+    response = challenge_participants_table.get_item(Key={"challengeToken": token, "role": role})
+    return response.get("Item")
+
+
 def _network_fingerprint(ip_address: Optional[str]) -> Optional[str]:
     """Create a stable, non-reversible network pseudonym without storing the IP."""
     if not ip_address:
@@ -476,6 +581,7 @@ class VoteRequest(BaseModel):
 
 class DilemmaResponse(BaseModel):
     id: str = Field(..., alias="_id")
+    baseId: Optional[str] = None
     dilemma: str
     firstAnswer: str
     secondAnswer: str
@@ -514,6 +620,20 @@ class AnalyzeResultsRequest(BaseModel):
 
 class ClaimAnonymousDataRequest(BaseModel):
     anonymousUserId: str = Field(..., min_length=1, max_length=100)
+
+class DilemmaAnswer(BaseModel):
+    dilemmaBaseId: str = Field(..., min_length=1, max_length=100)
+    chosenValues: Dict[str, float] = Field(..., max_length=12)
+
+class CreateProfileRequest(BaseModel):
+    answers: list[DilemmaAnswer] = Field(..., min_length=1, max_length=20)
+    language: str = Field(default="en", min_length=2, max_length=10, pattern=r'^[a-zA-Z]+$')
+
+class CreateChallengeRequest(BaseModel):
+    profilePublicId: Optional[str] = Field(default=None, min_length=1, max_length=64)
+
+class SubmitChallengeRequest(BaseModel):
+    answers: list[DilemmaAnswer] = Field(..., min_length=1, max_length=20)
 
 class StoryNodeVoteRequest(BaseModel):
     flowId: str = Field(..., description="Story flow ID", min_length=1, max_length=100)
@@ -748,6 +868,8 @@ def _rate_limit_rules_for_request(method: str, path: str) -> list[tuple[str, int
         rules.append(("analytics_ingest", ABUSE_ANALYTICS_BATCHES_PER_MINUTE))
     elif path in {"/users/claim-anonymous-data", "/users/me", "/auth/me"}:
         rules.append(("auth_write", ABUSE_AUTH_WRITE_REQUESTS_PER_MINUTE))
+    elif method.upper() == "POST" and (path == "/profiles" or path.startswith("/challenges")):
+        rules.append(("duel_write", ABUSE_DUEL_WRITE_REQUESTS_PER_MINUTE))
     return rules
 
 
@@ -875,6 +997,315 @@ async def delete_user_account(request: Request):
         users_table.delete_item(Key={"sub": f"anon#{anonymous_user_id}"})
     users_table.delete_item(Key={"sub": sub})
     return {"deleted": True}
+
+def _track_duel_event(request: Request, action_type: str, action_data: Optional[Dict[str, Any]] = None) -> None:
+    session_id = extract_session_id(request)
+    track_analytics_event(
+        session_id=session_id,
+        action_type=action_type,
+        action_data=action_data or {},
+        user_agent=request.headers.get("User-Agent"),
+        ip_address=request.client.host if request.client else None,
+        **extract_client_analytics_context(request),
+    )
+
+@app.post("/profiles")
+async def create_profile(profile_request: CreateProfileRequest, request: Request):
+    """Create a persistent, shareable moral profile (TASK-28).
+
+    Reuses the same deterministic archetype computation as /analyze-results;
+    this never depends on Groq. Anonymous-first: only the existing
+    X-Anonymous-User-Id identity is required, matching every other endpoint.
+    """
+    anonymous_user_id = require_anonymous_user_id(request)
+    result = create_moral_profile(anonymous_user_id, profile_request.answers, profile_request.language)
+    _track_duel_event(request, "profile_created", {
+        "archetype_id": result["archetypeId"],
+        "archetypes_version": result["archetypesVersion"],
+    })
+    return result
+
+@app.get("/profiles/{public_id}")
+async def get_profile(public_id: str, request: Request, language: str = "en"):
+    """Public, unlisted profile read (TASK-28/29). Excludes the owning
+    anonymous_user_id and any other private attribute; publicId is a random,
+    non-enumerable token so this is not a listing."""
+    item = get_profile_or_404(public_id)
+    averages = json.loads(item["dimensionAverages"])
+    archetype = assign_archetype(averages, language=language)
+    return {
+        "publicId": public_id,
+        "averages": averages,
+        "createdAt": item["createdAt"],
+        **archetype,
+    }
+
+@app.get("/dilemmas/by-ids")
+async def get_dilemmas_by_ids(ids: str, request: Request, language: str = "en"):
+    """Fetch specific dilemmas by their language-neutral baseId, in order.
+
+    Used to serve a Duel invitee the exact same dilemmas the creator
+    answered, in the invitee's own language (dilemmas share one baseId
+    across languages; see scripts/populate_dynamodb_multilang.py).
+    """
+    if not language or len(language) > 10 or not language.isalpha():
+        raise HTTPException(status_code=400, detail="Invalid language parameter")
+    base_ids = [item.strip() for item in ids.split(",") if item.strip()][:20]
+    if not base_ids:
+        raise HTTPException(status_code=400, detail="No dilemma ids provided")
+
+    keys = [{"_id": f"{base_id}-{language}"} for base_id in base_ids]
+    response = dynamodb.batch_get_item(RequestItems={DYNAMODB_TABLE: {"Keys": keys}})
+    items_by_key = {
+        item["_id"]: decimal_to_native(item)
+        for item in response.get("Responses", {}).get(DYNAMODB_TABLE, [])
+    }
+    ordered = [
+        items_by_key[f"{base_id}-{language}"]
+        for base_id in base_ids
+        if f"{base_id}-{language}" in items_by_key
+    ]
+    return {"dilemmas": ordered}
+
+@app.post("/challenges")
+async def create_challenge(challenge_request: CreateChallengeRequest, request: Request):
+    """Create a Moral Duel challenge from the caller's moral profile (TASK-34/35)."""
+    anonymous_user_id = require_anonymous_user_id(request)
+
+    if challenge_request.profilePublicId:
+        profile = get_profile_or_404(challenge_request.profilePublicId)
+        if profile.get("ownerAnonymousUserId") != anonymous_user_id:
+            raise HTTPException(status_code=404, detail="Profile not found")
+    else:
+        profile = get_latest_profile_for_anonymous_user(anonymous_user_id)
+        if not profile:
+            raise HTTPException(status_code=400, detail="Complete a moral profile before creating a challenge")
+
+    token = generate_public_token()
+    now = int(time.time() * 1000)
+    challenges_table.put_item(Item={
+        "challengeToken": token,
+        "creatorProfileId": profile["publicId"],
+        "dilemmaBaseIds": profile["dilemmaBaseIds"],
+        "language": profile["language"],
+        "status": "open",
+        "createdAt": now,
+        "expirationTime": int(time.time()) + CHALLENGE_TTL_SECONDS,
+    })
+    challenge_participants_table.put_item(Item={
+        "challengeToken": token,
+        "role": "creator",
+        "anonymousUserId": anonymous_user_id,
+        "profilePublicId": profile["publicId"],
+        "submittedAt": now,
+    })
+    _track_duel_event(request, "challenge_created", {"dilemma_count": len(profile["dilemmaBaseIds"])})
+    return {"challengeToken": token, "status": "open", "dilemmaCount": len(profile["dilemmaBaseIds"])}
+
+@app.get("/challenges/{token}")
+async def open_challenge(token: str, request: Request, language: str = "en"):
+    """Open a challenge link (TASK-35/38): a teaser only, never the creator's
+    private answers or dimension averages before the invitee unlocks it
+    (TASK-34 AC3)."""
+    challenge = get_challenge_or_404(token)
+    ensure_challenge_is_actionable(challenge)
+
+    creator_participant = get_participant(token, "creator")
+    creator_profile = get_profile_or_404(creator_participant["profilePublicId"])
+    creator_averages = json.loads(creator_profile["dimensionAverages"])
+    creator_archetype = assign_archetype(creator_averages, language=language)
+
+    invitee_participant = get_participant(token, "invitee")
+
+    _track_duel_event(request, "challenge_opened", {"status": challenge["status"]})
+    return {
+        "challengeToken": token,
+        "status": challenge["status"],
+        "dilemmaCount": len(challenge["dilemmaBaseIds"]),
+        "language": challenge["language"],
+        "creatorArchetype": {
+            "name": creator_archetype["name"],
+            "visual": creator_archetype["visual"],
+            "sharePhrase": creator_archetype["sharePhrase"],
+        },
+        "alreadyJoined": bool(invitee_participant),
+    }
+
+@app.post("/challenges/{token}/join")
+async def join_challenge(token: str, request: Request):
+    """Invitee joins a challenge (TASK-35/36): idempotent for the same
+    identity, rejected for a second distinct invitee."""
+    anonymous_user_id = require_anonymous_user_id(request)
+    challenge = get_challenge_or_404(token)
+    ensure_challenge_is_actionable(challenge)
+
+    creator_participant = get_participant(token, "creator")
+    if creator_participant and creator_participant["anonymousUserId"] == anonymous_user_id:
+        raise HTTPException(status_code=400, detail="You cannot join your own challenge")
+
+    now = int(time.time() * 1000)
+    try:
+        challenge_participants_table.put_item(
+            Item={
+                "challengeToken": token,
+                "role": "invitee",
+                "anonymousUserId": anonymous_user_id,
+                "joinedAt": now,
+                "expirationTime": challenge.get("expirationTime"),
+            },
+            ConditionExpression="attribute_not_exists(challengeToken) OR anonymousUserId = :who",
+            ExpressionAttributeValues={":who": anonymous_user_id},
+        )
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            raise HTTPException(status_code=409, detail="This challenge already has a different invitee")
+        raise
+
+    if challenge["status"] == "open":
+        try:
+            challenges_table.update_item(
+                Key={"challengeToken": token},
+                UpdateExpression="SET #status = :joined",
+                ConditionExpression="#status = :open",
+                ExpressionAttributeNames={"#status": "status"},
+                ExpressionAttributeValues={":joined": "joined", ":open": "open"},
+            )
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+                raise  # Someone else already advanced the status; joining is still valid.
+
+    _track_duel_event(request, "challenge_joined")
+    return {
+        "challengeToken": token,
+        "dilemmaBaseIds": challenge["dilemmaBaseIds"],
+        "language": challenge["language"],
+    }
+
+@app.post("/challenges/{token}/submit")
+async def submit_challenge(token: str, submit_request: SubmitChallengeRequest, request: Request):
+    """Invitee submits their answers (TASK-35/36): completes the challenge and
+    creates the invitee's own persistent profile too, so both participants
+    receive an archetype from the same loop. Immutable once submitted."""
+    anonymous_user_id = require_anonymous_user_id(request)
+    challenge = get_challenge_or_404(token)
+    ensure_challenge_is_actionable(challenge)
+    if challenge["status"] == "completed":
+        raise HTTPException(status_code=409, detail="This challenge is already completed")
+
+    invitee_participant = get_participant(token, "invitee")
+    if not invitee_participant or invitee_participant["anonymousUserId"] != anonymous_user_id:
+        raise HTTPException(status_code=403, detail="Join this challenge before submitting")
+
+    profile_result = create_moral_profile(anonymous_user_id, submit_request.answers, challenge["language"])
+    now = int(time.time() * 1000)
+    try:
+        challenge_participants_table.update_item(
+            Key={"challengeToken": token, "role": "invitee"},
+            UpdateExpression="SET submittedAt = :now, profilePublicId = :pid",
+            ConditionExpression="attribute_not_exists(submittedAt)",
+            ExpressionAttributeValues={":now": now, ":pid": profile_result["publicId"]},
+        )
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            raise HTTPException(status_code=409, detail="You already submitted your answers")
+        raise
+
+    challenges_table.update_item(
+        Key={"challengeToken": token},
+        UpdateExpression="SET #status = :completed",
+        ExpressionAttributeNames={"#status": "status"},
+        ExpressionAttributeValues={":completed": "completed"},
+    )
+    _track_duel_event(request, "challenge_completed", {"archetype_id": profile_result["archetypeId"]})
+    return {"challengeToken": token, "status": "completed", "profilePublicId": profile_result["publicId"]}
+
+@app.get("/challenges/{token}/compare")
+async def compare_challenge(token: str, request: Request, language: str = "en"):
+    """Symmetric, deterministic comparison (TASK-37/39), unlocked only once
+    both participants have submitted. Never exposes raw per-dilemma answers,
+    only archetypes and aggregate dimension compatibility."""
+    challenge = get_challenge_or_404(token)
+    if challenge["status"] != "completed":
+        raise HTTPException(status_code=409, detail="This challenge is not completed yet")
+
+    creator_participant = get_participant(token, "creator")
+    invitee_participant = get_participant(token, "invitee")
+    creator_profile = get_profile_or_404(creator_participant["profilePublicId"])
+    invitee_profile = get_profile_or_404(invitee_participant["profilePublicId"])
+
+    creator_averages = json.loads(creator_profile["dimensionAverages"])
+    invitee_averages = json.loads(invitee_profile["dimensionAverages"])
+    creator_archetype = assign_archetype(creator_averages, language=language)
+    invitee_archetype = assign_archetype(invitee_averages, language=language)
+    compatibility = compute_compatibility(creator_averages, invitee_averages)
+
+    _track_duel_event(request, "challenge_compared", {"overall_agreement_pct": compatibility["overallAgreementPct"]})
+    return {
+        "challengeToken": token,
+        "creator": {"archetype": creator_archetype},
+        "invitee": {"archetype": invitee_archetype},
+        "compatibility": compatibility,
+    }
+
+@app.post("/challenges/{token}/revoke")
+async def revoke_challenge(token: str, request: Request):
+    """Let the creator revoke their own not-yet-completed challenge (TASK-34
+    AC1). Revoking a completed challenge would retroactively hide an unlocked
+    comparison from the invitee, so it is not allowed."""
+    anonymous_user_id = require_anonymous_user_id(request)
+    challenge = get_challenge_or_404(token)
+    if challenge["status"] == "completed":
+        raise HTTPException(status_code=409, detail="A completed challenge cannot be revoked")
+
+    creator_participant = get_participant(token, "creator")
+    if not creator_participant or creator_participant["anonymousUserId"] != anonymous_user_id:
+        raise HTTPException(status_code=403, detail="Only the creator can revoke this challenge")
+
+    challenges_table.update_item(
+        Key={"challengeToken": token},
+        UpdateExpression="SET #status = :revoked",
+        ExpressionAttributeNames={"#status": "status"},
+        ExpressionAttributeValues={":revoked": "revoked"},
+    )
+    _track_duel_event(request, "challenge_revoked")
+    return {"challengeToken": token, "status": "revoked"}
+
+@app.post("/challenges/{token}/rematch")
+async def rematch_challenge(token: str, request: Request):
+    """Create a new challenge attributed to a completed one (TASK-39 AC2).
+    Whichever participant calls this becomes the new challenge's creator."""
+    anonymous_user_id = require_anonymous_user_id(request)
+    challenge = get_challenge_or_404(token)
+    if challenge["status"] != "completed":
+        raise HTTPException(status_code=409, detail="Only a completed challenge can be rematched")
+
+    participant = get_participant(token, "creator")
+    if not participant or participant["anonymousUserId"] != anonymous_user_id:
+        participant = get_participant(token, "invitee")
+        if not participant or participant["anonymousUserId"] != anonymous_user_id:
+            raise HTTPException(status_code=403, detail="You were not part of this challenge")
+
+    new_token = generate_public_token()
+    now = int(time.time() * 1000)
+    challenges_table.put_item(Item={
+        "challengeToken": new_token,
+        "creatorProfileId": participant["profilePublicId"],
+        "dilemmaBaseIds": challenge["dilemmaBaseIds"],
+        "language": challenge["language"],
+        "status": "open",
+        "createdAt": now,
+        "expirationTime": int(time.time()) + CHALLENGE_TTL_SECONDS,
+        "rematchOfToken": token,
+    })
+    challenge_participants_table.put_item(Item={
+        "challengeToken": new_token,
+        "role": "creator",
+        "anonymousUserId": anonymous_user_id,
+        "profilePublicId": participant["profilePublicId"],
+        "submittedAt": now,
+    })
+    _track_duel_event(request, "challenge_rematch_created", {"rematch_of_token": token})
+    return {"challengeToken": new_token, "status": "open"}
 
 @app.get("/health")
 async def health_check():
