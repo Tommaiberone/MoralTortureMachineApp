@@ -9,9 +9,9 @@ modifying a Play listing, uploading assets, or releasing an Android bundle.
 
 | Source | Used for | Not used for |
 |---|---|---|
-| Google Search Console | Query, page, device, country, impressions, CTR, position | User behaviour after a click |
+| Google Search Console | Query/page aggregate for decisions; query/page/device/country drill-down for diagnosis | User behaviour after a click |
 | GA4 | Organic landing sessions and post-click conversion | Search-query ranking decisions |
-| PageSpeed Insights | Mobile/desktop page experience | Product funnel identity |
+| PageSpeed Insights | Mobile/desktop page experience for home and each configured discovery landing | Product funnel identity |
 | Google Play acquisition CSV | Organic Play search keyword, listing visitors and visitor-to-installer conversion | Live keyword rank scraping |
 | Google Play Developer Reporting API | Crash and ANR signals | Publishing releases or listings |
 | First-party analytics | Product funnel, web/Android comparison | Raw search query collection |
@@ -109,3 +109,25 @@ hide the other behind a global top-N limit. Configured risk terms mark phrases
 such as psychology/diagnosis or minors-oriented wording as `policy review
 required`; those rows are research signals only and cannot justify a product,
 medical, psychological, or age-related claim.
+
+## Recommendation and history rules
+
+The report has three intentionally different outputs: an evidence-backed review
+for measured Search Console/GA4/PageSpeed/Play thresholds; up to two
+**validation briefs per market** for current-fit radar gaps confirmed by
+autocomplete; and a watch list. A validation brief is not a recommendation to
+publish: it first requires a Keyword Planner check and a review of the existing
+landing promise. Future-fit and policy-review candidates cannot generate one.
+
+The workflow downloads only recent private report artifacts using the
+read-only `GITHUB_TOKEN` Actions permission, summarizes their aggregate query
+metrics, and compares the current report with the latest prior one. New report
+artifacts are retained for 90 days, still without AWS storage. A missing or
+unavailable history artifact is shown as a non-fatal data-status condition and
+never blocks the current collection. Trend recommendations require at least ten
+impressions in both comparable reports and a material absolute and relative
+change; branded queries are excluded.
+
+Play Vitals retries only transient HTTP 429/5xx responses with bounded backoff.
+An exhausted retry remains a visible non-fatal source error rather than a
+reason to retry indefinitely or alter Play Console data.

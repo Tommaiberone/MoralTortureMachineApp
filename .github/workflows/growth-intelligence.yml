@@ -17,6 +17,7 @@ on:
         type: boolean
 
 permissions:
+  actions: read
   contents: read
   id-token: write
   issues: write
@@ -30,6 +31,7 @@ jobs:
       GOOGLE_PLAY_PACKAGE_NAME: ${{ vars.GOOGLE_PLAY_PACKAGE_NAME }}
       GOOGLE_PLAY_ACQUISITION_REPORT_URI: ${{ vars.GOOGLE_PLAY_ACQUISITION_REPORT_URI }}
       PAGESPEED_API_KEY: ${{ secrets.PAGESPEED_API_KEY }}
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
 
@@ -53,8 +55,11 @@ jobs:
       - name: Collect aggregate sources
         run: python scripts/growth_intelligence.py collect --config .github/growth-intelligence.json --output "$RUNNER_TEMP/growth-data.json"
 
+      - name: Collect recent read-only report history
+        run: python scripts/growth_intelligence.py history --repository "$GITHUB_REPOSITORY" --output "$RUNNER_TEMP/growth-history.json"
+
       - name: Build review report
-        run: python scripts/growth_intelligence.py analyze --input "$RUNNER_TEMP/growth-data.json" --output-dir growth-report
+        run: python scripts/growth_intelligence.py analyze --input "$RUNNER_TEMP/growth-data.json" --history "$RUNNER_TEMP/growth-history.json" --output-dir growth-report
 
       - name: Publish workflow summary
         run: cat growth-report/growth-intelligence-report.md >> "$GITHUB_STEP_SUMMARY"
@@ -64,7 +69,7 @@ jobs:
         with:
           name: growth-intelligence-report
           path: growth-report/
-          retention-days: 14
+          retention-days: 90
 
       - name: Create a review issue only when manually requested
         if: github.event_name == 'workflow_dispatch' && inputs.create_issue == true

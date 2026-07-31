@@ -252,6 +252,21 @@ property identifier `sc-domain:moraltorturemachine.com`; it must not widen the
 workload identity, add a static key, or remove the source. A new run must confirm
 the absence of 403. The related remediation is `TASK-97.5`.
 
+### ADR-024 — Recommendation evidence is aggregated, staged, and historical
+
+Search Console retains its detailed query/page/device/country response for
+diagnosis but adds a separate query/page aggregate for recommendation thresholds
+and radar matching, avoiding small-traffic fragmentation. The demand radar can
+produce at most two current-fit, autocomplete-confirmed validation briefs per
+market; it never produces a publication instruction, and future-fit or
+policy-review ideas are excluded. Recent report artifacts are read through the
+GitHub Actions read-only API and retained for 90 days so that material,
+non-brand query changes can be compared week to week without AWS storage.
+PageSpeed runs per configured landing and Play Vitals uses bounded retry for
+transient errors. Options considered: lowering all thresholds (rejected as
+noise), a database for history (rejected for cost/privacy surface), and
+auto-publishing content from radar output (rejected as unsafe/scaled SEO).
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

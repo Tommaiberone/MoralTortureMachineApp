@@ -158,6 +158,15 @@ dev table, or `/dev` SSM hierarchy.
   from a human-exported Keyword Planner CSV. Directional suggestions are never
   presented as volume or certain demand; no Google Ads credential, campaign,
   or mutation capability exists in the workflow.
+- Search Console is collected twice in the same read-only window: a detailed
+  query/page/device/country dataset for diagnosis and a query/page aggregate
+  for thresholds, ranking and radar matching. The workflow retains compact,
+  private aggregate report artifacts for 90 days and reads prior artifacts only
+  through the GitHub Actions read permission; unavailable history is non-fatal.
+- PageSpeed is measured for home plus every configured bilingual discovery
+  landing, with mobile/desktop results named by route. Play Vitals retries only
+  transient rate/server failures with bounded backoff; it never performs a
+  Play mutation or turns a source outage into a product failure.
 
 ## Cost and operational constraints
 

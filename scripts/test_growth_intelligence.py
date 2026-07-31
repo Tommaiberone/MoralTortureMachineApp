@@ -1,13 +1,21 @@
+import json
 import unittest
+import zipfile
+from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from growth_intelligence import (
     add_error,
     build_recommendations,
+    collect_artifact_history,
+    collect_search_console,
     demand_radar_candidates,
+    history_recommendations,
     markdown_report,
     optional_keyword_planner_rows,
+    post_with_retry,
 )
 
 
@@ -122,6 +130,141 @@ class GrowthIntelligenceTests(unittest.TestCase):
         self.assertIn("#### IT", report)
         self.assertIn("#### US", report)
         self.assertIn("policy review required: psychological claim risk", report)
+
+    def test_search_console_keeps_drilldown_but_collects_aggregate(self):
+        class Response:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"rows": []}
+
+        class Session:
+            def __init__(self):
+                self.dimensions = []
+
+            def post(self, _url, json, timeout):
+                self.dimensions.append(json["dimensions"])
+                self.assertEqual(timeout, 30)
+                return Response()
+
+            def assertEqual(self, left, right):
+                self.testcase.assertEqual(left, right)
+
+        session = Session()
+        session.testcase = self
+        report = collect_search_console(session, "sc-domain:example.test", "2026-01-01", "2026-01-28")
+        self.assertEqual(report, {"rows": [], "aggregated_rows": []})
+        self.assertEqual(session.dimensions, [["query", "page", "device", "country"], ["query", "page"]])
+
+    def test_radar_briefs_are_limited_and_exclude_future_or_risky_candidates(self):
+        candidate = {
+            "locale": "en", "intent": "conversation", "coverage": "gap", "evidence": "directional",
+            "monthly_searches": None, "competition": None, "search_console_impressions": None, "opportunity_score": 4,
+            "sources": ["Google autocomplete"], "source": "Google autocomplete",
+        }
+        data = {
+            "search_console": {"rows": []}, "ga4": {"rows": []}, "pagespeed": {}, "play": {"acquisition_rows": [], "vitals": {}, "listings": {}},
+            "demand_radar": {"candidates": [
+                {**candidate, "query": "first", "market": "US", "product_fit": "current", "policy_risk": None},
+                {**candidate, "query": "second", "market": "US", "product_fit": "current", "policy_risk": None},
+                {**candidate, "query": "third", "market": "US", "product_fit": "current", "policy_risk": None},
+                {**candidate, "query": "future", "market": "IT", "product_fit": "future", "policy_risk": None},
+                {**candidate, "query": "risky", "market": "IT", "product_fit": "review required", "policy_risk": "psychological claim risk"},
+            ]},
+        }
+        titles = [lead["title"] for lead in build_recommendations(data)]
+        brief_titles = [title for title in titles if "content brief" in title]
+        self.assertEqual(len(brief_titles), 2)
+        self.assertFalse(any("future" in title or "risky" in title for title in brief_titles))
+
+    def test_history_recommendations_need_two_meaningful_samples_and_exclude_brand(self):
+        data = {
+            "configuration": {"brand_terms": ["moral torture machine"]},
+            "search_console": {"aggregated_rows": [
+                {"keys": ["ethical dilemmas"], "impressions": 30, "clicks": 3, "position": 10},
+                {"keys": ["moral torture machine"], "impressions": 40, "clicks": 20, "position": 1},
+            ]},
+            "history": {"reports": [{"query_metrics": {
+                "ethical dilemmas": {"impressions": 10, "clicks": 1, "position": 12},
+                "moral torture machine": {"impressions": 10, "clicks": 8, "position": 1},
+            }}]},
+        }
+        titles = [lead["title"] for lead in history_recommendations(data)]
+        self.assertEqual(len(titles), 1)
+        self.assertIn("ethical dilemmas", titles[0])
+
+    def test_pagespeed_recommendation_names_landing_and_strategy(self):
+        data = {
+            "search_console": {"rows": []}, "ga4": {"rows": []},
+            "pagespeed": {"moral_dilemma_test_en": {"mobile": {"performance": 60, "lcp_ms": 3200}}},
+            "play": {"acquisition_rows": [], "vitals": {}, "listings": {}},
+        }
+        titles = [lead["title"] for lead in build_recommendations(data)]
+        self.assertTrue(any("moral_dilemma_test_en (mobile)" in title for title in titles))
+
+    def test_transient_play_response_is_retried_with_bounded_backoff(self):
+        class Response:
+            def __init__(self, status_code):
+                self.status_code = status_code
+
+            def raise_for_status(self):
+                if self.status_code >= 400:
+                    raise RuntimeError(self.status_code)
+
+        class Session:
+            def __init__(self):
+                self.responses = [Response(503), Response(200)]
+
+            def post(self, _url, json, timeout):
+                self.assertEqual(timeout, 30)
+                return self.responses.pop(0)
+
+            def assertEqual(self, left, right):
+                self.testcase.assertEqual(left, right)
+
+        session = Session()
+        session.testcase = self
+        with patch("growth_intelligence.time.sleep") as sleep:
+            response = post_with_retry(session, "https://example.test", {"safe": True})
+        self.assertEqual(response.status_code, 200)
+        sleep.assert_called_once_with(1)
+
+    def test_history_download_is_read_only_and_non_fatal(self):
+        class Response:
+            def __init__(self, payload=None, content=b""):
+                self.payload = payload
+                self.content = content
+
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return self.payload
+
+        bundle = BytesIO()
+        with zipfile.ZipFile(bundle, "w") as artifact:
+            artifact.writestr("growth-intelligence-report.json", json.dumps({
+                "generated_at": "2026-07-01", "search_console": {"aggregated_rows": [
+                    {"keys": ["ethical dilemmas"], "impressions": 20, "clicks": 2, "position": 11},
+                ]},
+            }))
+        with patch("requests.get", side_effect=[
+            Response({"artifacts": [{"expired": False, "archive_download_url": "https://example.test/archive"}]}),
+            Response(content=bundle.getvalue()),
+        ]) as request:
+            history = collect_artifact_history("owner/repo", "token", limit=1)
+        self.assertEqual(history["status"], "ok")
+        self.assertEqual(history["reports"][0]["query_metrics"]["ethical dilemmas"]["impressions"], 20)
+        self.assertEqual(request.call_count, 2)
+        self.assertEqual(collect_artifact_history("owner/repo", None)["reports"], [])
+
+    def test_configuration_covers_all_discovery_landing_urls_and_keeps_history(self):
+        config = json.loads(Path(".github/growth-intelligence.json").read_text())
+        self.assertEqual(len(config["page_urls"]), 7)
+        workflow = Path(".github/workflows/growth-intelligence.yml").read_text()
+        self.assertIn("retention-days: 90", workflow)
+        self.assertIn("Collect recent read-only report history", workflow)
 
 
 if __name__ == "__main__":

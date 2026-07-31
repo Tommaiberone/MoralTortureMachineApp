@@ -3,9 +3,10 @@ id: TASK-97.5
 title: >-
   [regression] Ripristinare l accesso Search Console al service account del
   report
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-31 09:13'
+updated_date: '2026-07-31 09:32'
 labels:
   - growth
   - seo
@@ -31,6 +32,8 @@ La run completa 30619056214 del 2026-07-31 completa OIDC e le altre fonti ma Sea
 
 ## Implementation Notes
 
+<!-- SECTION:NOTES:BEGIN -->
 Risolto 2026-07-31 con `site_url: sc-domain:moraltorturemachine.com`.
 La run GitHub Actions 30619545713 ha completato OIDC e restituito 32 righe
 Search Console senza HTTP 403; il service account resta read-only.
+<!-- SECTION:NOTES:END -->

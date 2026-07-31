@@ -75,6 +75,11 @@ and Keyword Planner rows as quantified. Prioritize a non-brand idea only after
 considering its evidence level, whether the current product truly fulfils the
 intent, social-loop potential, and the cost of an original useful experience.
 
+Use the report's classes deliberately: act only on quantified or measured
+opportunities; validate a current-fit radar brief before creating material; and
+watch weak or future-fit signals. Weekly comparisons exclude branded queries
+and need meaningful samples before interpreting a change as a trend.
+
 ## Delivery sequence
 
 1. Foundation: finish event coverage, validate web/Android attribution, budgets,

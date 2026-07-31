@@ -1,6 +1,16 @@
 {
   "site_url": "sc-domain:moraltorturemachine.com",
   "page_url": "https://moraltorturemachine.com/",
+  "page_urls": {
+    "home": "https://moraltorturemachine.com/",
+    "moral_dilemma_test_en": "https://moraltorturemachine.com/moral-dilemma-test",
+    "moral_dilemma_test_it": "https://moraltorturemachine.com/it/test-dilemmi-morali",
+    "ethical_dilemmas_en": "https://moraltorturemachine.com/ethical-dilemmas",
+    "ethical_dilemmas_it": "https://moraltorturemachine.com/it/dilemmi-etici",
+    "moral_dilemma_game_en": "https://moraltorturemachine.com/moral-dilemma-game",
+    "moral_dilemma_game_it": "https://moraltorturemachine.com/it/gioco-dilemmi-morali"
+  },
+  "brand_terms": ["moral torture machine"],
   "play_listing_snapshot": "growth-intelligence/play-listings.json",
   "demand_radar": {
     "keyword_planner_csv": "growth-intelligence/keyword-planner.csv",
