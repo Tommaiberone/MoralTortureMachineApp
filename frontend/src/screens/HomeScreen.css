@@ -25,41 +25,21 @@
   text-transform: uppercase;
 }
 
-.home-seo-resources {
-  width: 100%;
-  margin: 0 0 24px;
-  padding: 16px;
-  border: 1px solid var(--creepy-fog);
-  background: rgba(18, 18, 18, 0.7);
-  text-align: center;
-}
-
-.home-seo-resources h2 {
-  margin: 0 0 8px;
-  color: var(--text-highlight);
-  font-size: 15px;
-  font-family: 'Courier New', Courier, monospace;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.home-seo-resources p {
-  margin: 0 0 12px;
-  color: var(--text-dim);
-  font-size: 13px;
-}
-
+/* Unobtrusive internal links for SEO crawlability only, not a content section. */
 .home-seo-resource-links {
+  width: 100%;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 8px 16px;
+  gap: 6px 14px;
+  margin: 0 0 16px;
 }
 
 .home-seo-resource-links a {
-  color: var(--creepy-sickly-green);
-  font-size: 13px;
+  color: var(--text-dim);
+  font-size: 11px;
   font-family: 'Courier New', Courier, monospace;
+  opacity: 0.7;
 }
 
 .home-button {

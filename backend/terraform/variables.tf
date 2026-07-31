@@ -21,6 +21,12 @@ variable "environment" {
   }
 }
 
+variable "alert_email" {
+  description = "Recipient for AWS Budget notifications and CloudWatch alarms (see docs/OPERATIONS_RUNBOOK.md)"
+  type        = string
+  default     = "tommasobersani@gmail.com"
+}
+
 variable "groq_api_key" {
   description = "Groq API Key for generating dilemmas"
   type        = string
@@ -112,6 +118,17 @@ variable "abuse_analytics_batches_per_minute" {
   validation {
     condition     = var.abuse_analytics_batches_per_minute > 0
     error_message = "The analytics ingestion burst limit must be positive."
+  }
+}
+
+variable "abuse_auth_write_requests_per_minute" {
+  description = "Maximum authenticated write requests (claim, delete, /auth/me) per minute per transient network source in each Lambda container"
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.abuse_auth_write_requests_per_minute > 0
+    error_message = "The authenticated write burst limit must be positive."
   }
 }
 

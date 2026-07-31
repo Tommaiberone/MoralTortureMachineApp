@@ -213,6 +213,11 @@ class AbuseGuardTests(unittest.TestCase):
 
         self.assertEqual([name for name, _ in rules], ["global", "ai"])
 
+    def test_authenticated_write_endpoints_get_the_auth_write_rule(self):
+        for path in ("/users/claim-anonymous-data", "/users/me", "/auth/me"):
+            rules = _rate_limit_rules_for_request("POST", path)
+            self.assertEqual([name for name, _ in rules], ["global", "auth_write"])
+
     def test_network_fingerprint_is_stable_and_peppered(self):
         with patch.object(backend_module, "get_analytics_fingerprint_secret", return_value="private-pepper"):
             first = _network_fingerprint("203.0.113.10")

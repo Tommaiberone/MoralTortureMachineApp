@@ -79,6 +79,7 @@ DYNAMODB_TABLE = os.getenv("DYNAMODB_TABLE", "moral-torture-machine-dilemmas")
 ANALYTICS_TABLE = os.getenv("ANALYTICS_TABLE", "moral-torture-machine-user-analytics")
 STORY_FLOWS_TABLE = os.getenv("STORY_FLOWS_TABLE", "moral-torture-machine-story-flows")
 PRODUCT_EVENTS_TABLE = os.getenv("PRODUCT_EVENTS_TABLE", "prod-moral-torture-machine-product-events")
+USERS_TABLE = os.getenv("USERS_TABLE", "moral-torture-machine-users")
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
 GROQ_API_KEY_SSM_NAME = os.getenv("GROQ_API_KEY_SSM_NAME", "")
 ANALYTICS_FINGERPRINT_SECRET_SSM_NAME = os.getenv(
@@ -109,6 +110,10 @@ ABUSE_ANALYTICS_BATCHES_PER_MINUTE = _env_positive_int(
     "ABUSE_ANALYTICS_BATCHES_PER_MINUTE",
     30,
 )
+ABUSE_AUTH_WRITE_REQUESTS_PER_MINUTE = _env_positive_int(
+    "ABUSE_AUTH_WRITE_REQUESTS_PER_MINUTE",
+    10,
+)
 
 # Model fallback strategy - ordered by rate limits (highest TPD first)
 MODEL_FALLBACK_CHAIN = [
@@ -135,6 +140,7 @@ table = dynamodb.Table(DYNAMODB_TABLE)
 analytics_table = dynamodb.Table(ANALYTICS_TABLE)
 story_flows_table = dynamodb.Table(STORY_FLOWS_TABLE)
 product_events_table = dynamodb.Table(PRODUCT_EVENTS_TABLE)
+users_table = dynamodb.Table(USERS_TABLE)
 ssm_client = boto3.client('ssm', region_name=AWS_REGION)
 
 # Cache for API key (retrieved once at cold start)
@@ -265,6 +271,60 @@ def require_analytics_admin(request: Request) -> None:
     claims = verify_cognito_id_token(bearer_token)
     if not _claims_are_admin(claims):
         raise HTTPException(status_code=403, detail="Administrator role required")
+
+def get_optional_user(request: Request) -> Optional[Dict[str, Any]]:
+    """Verify a bearer token if present; anonymous requests keep working with None."""
+    token = _extract_bearer_token(request)
+    if not token:
+        return None
+    try:
+        return verify_cognito_id_token(token)
+    except HTTPException:
+        return None
+
+def upsert_user_record(sub: str, claims: Dict[str, Any]) -> None:
+    """Idempotently persist a user record keyed by the immutable Cognito sub."""
+    now = int(time.time() * 1000)
+    users_table.update_item(
+        Key={"sub": sub},
+        UpdateExpression=(
+            "SET createdAt = if_not_exists(createdAt, :now), "
+            "updatedAt = :now, "
+            "email = :email"
+        ),
+        ExpressionAttributeValues={
+            ":now": now,
+            ":email": claims.get("email"),
+        },
+    )
+
+def claim_anonymous_user_id(owner_sub: str, anonymous_user_id: str) -> None:
+    """Atomically link an anonymous_user_id to a user; reject a conflicting owner.
+
+    A single-table claim-lock item (sub = "anon#<id>") makes the link
+    idempotent for the same owner and safely rejects a device/account that
+    already claimed the same anonymous activity under a different account.
+    """
+    claim_key = f"anon#{anonymous_user_id}"
+    now = int(time.time() * 1000)
+    try:
+        users_table.put_item(
+            Item={"sub": claim_key, "ownerSub": owner_sub, "claimedAt": now},
+            ConditionExpression="attribute_not_exists(sub) OR ownerSub = :owner",
+            ExpressionAttributeValues={":owner": owner_sub},
+        )
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            raise HTTPException(
+                status_code=409,
+                detail="This anonymous activity is already linked to a different account",
+            )
+        raise
+    users_table.update_item(
+        Key={"sub": owner_sub},
+        UpdateExpression="ADD claimedAnonymousUserIds :ids SET updatedAt = :now",
+        ExpressionAttributeValues={":ids": {anonymous_user_id}, ":now": now},
+    )
 
 
 def _network_fingerprint(ip_address: Optional[str]) -> Optional[str]:
@@ -451,6 +511,9 @@ class DilemmaWithChoice(BaseModel):
 class AnalyzeResultsRequest(BaseModel):
     answers: list[Dict[str, float]] = Field(..., description="List of moral category scores from user's answers")
     dilemmasWithChoices: Optional[list[DilemmaWithChoice]] = Field(default=[], description="List of dilemmas with user's choices")
+
+class ClaimAnonymousDataRequest(BaseModel):
+    anonymousUserId: str = Field(..., min_length=1, max_length=100)
 
 class StoryNodeVoteRequest(BaseModel):
     flowId: str = Field(..., description="Story flow ID", min_length=1, max_length=100)
@@ -683,6 +746,8 @@ def _rate_limit_rules_for_request(method: str, path: str) -> list[tuple[str, int
         rules.append(("ai", ABUSE_AI_REQUESTS_PER_MINUTE))
     elif path == "/analytics/events":
         rules.append(("analytics_ingest", ABUSE_ANALYTICS_BATCHES_PER_MINUTE))
+    elif path in {"/users/claim-anonymous-data", "/users/me", "/auth/me"}:
+        rules.append(("auth_write", ABUSE_AUTH_WRITE_REQUESTS_PER_MINUTE))
     return rules
 
 
@@ -749,6 +814,7 @@ async def root():
 async def authenticated_profile(request: Request):
     """Return the verified caller profile without trusting client-side claims."""
     claims = require_authenticated_user(request)
+    upsert_user_record(claims["sub"], claims)
     groups = claims.get("cognito:groups", [])
     if isinstance(groups, str):
         groups = [groups]
@@ -760,6 +826,55 @@ async def authenticated_profile(request: Request):
         "groups": groups,
         "isAdmin": "admins" in groups,
     }
+
+@app.post("/users/claim-anonymous-data")
+async def claim_anonymous_data(claim_request: ClaimAnonymousDataRequest, request: Request):
+    """Link the caller's anonymous activity to their authenticated account.
+
+    Repeating the claim from the same account is a safe no-op. Claiming an
+    anonymous_user_id already linked to a different account is rejected with
+    409 rather than silently reassigning ownership.
+    """
+    claims = require_authenticated_user(request)
+    upsert_user_record(claims["sub"], claims)
+    claim_anonymous_user_id(claims["sub"], claim_request.anonymousUserId)
+    return {"claimed": True, "anonymousUserId": claim_request.anonymousUserId}
+
+@app.get("/users/export")
+async def export_user_data(request: Request):
+    """Return the caller's own account data in a portable JSON format.
+
+    Scope is limited to what this account currently owns (the Users table
+    record); profile, duel and pack data will extend this export once those
+    domains exist (TASK-28+).
+    """
+    claims = require_authenticated_user(request)
+    response = users_table.get_item(Key={"sub": claims["sub"]})
+    item = response.get("Item", {})
+    return {
+        "sub": claims["sub"],
+        "email": item.get("email"),
+        "createdAt": item.get("createdAt"),
+        "updatedAt": item.get("updatedAt"),
+        "claimedAnonymousUserIds": sorted(item.get("claimedAnonymousUserIds", set())),
+    }
+
+@app.delete("/users/me")
+async def delete_user_account(request: Request):
+    """Delete the caller's account data.
+
+    Releases every anonymous_user_id this account claimed (so it can be
+    claimed again) and removes the user record. No other domain currently
+    stores data keyed by this account; nothing is retained.
+    """
+    claims = require_authenticated_user(request)
+    sub = claims["sub"]
+    response = users_table.get_item(Key={"sub": sub})
+    claimed_ids = response.get("Item", {}).get("claimedAnonymousUserIds", set())
+    for anonymous_user_id in claimed_ids:
+        users_table.delete_item(Key={"sub": f"anon#{anonymous_user_id}"})
+    users_table.delete_item(Key={"sub": sub})
+    return {"deleted": True}
 
 @app.get("/health")
 async def health_check():

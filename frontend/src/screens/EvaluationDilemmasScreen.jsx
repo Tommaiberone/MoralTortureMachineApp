@@ -26,6 +26,16 @@ const EvaluationDilemmasScreen = () => {
   const [voting, setVoting] = useState(false);
   const [evaluationComplete, setEvaluationComplete] = useState(false);
   const testStarted = useRef(false);
+  const prefetchInFlight = useRef(false);
+  // Prefetched next dilemma. A ref (not state) is enough: nothing renders
+  // from it directly, fetchDilemma only reads it synchronously on click.
+  const nextDilemmaRef = useRef(null);
+
+  // TASK-22: no separate click is needed to get the first dilemma.
+  useEffect(() => {
+    fetchDilemma();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (currentDilemmaCount >= MAX_DILEMMAS) {
@@ -98,12 +108,20 @@ const EvaluationDilemmasScreen = () => {
       });
     }
 
-    setLoading(true);
     // Don't clear dilemma immediately - keep it visible during loading
     setChoiceMade(false);
     setSelectedTease("");
     setChoiceCounts({ first: 0, second: 0 });
 
+    // TASK-22: the next dilemma was already prefetched in the background
+    // while the previous reveal was on screen, so this is instant.
+    if (nextDilemmaRef.current) {
+      setDilemma(nextDilemmaRef.current);
+      nextDilemmaRef.current = null;
+      return;
+    }
+
+    setLoading(true);
     try {
       const fetchedDilemma = await fetchDilemmaData();
       setDilemma(fetchedDilemma);
@@ -212,6 +230,20 @@ const EvaluationDilemmasScreen = () => {
     setCurrentDilemmaCount(nextDilemmaCount);
     setChoiceMade(true);
     setVoting(false);
+
+    // TASK-22: prefetch the next dilemma in the background while the
+    // reveal/tease for this one is on screen, so advancing feels instant.
+    if (nextDilemmaCount < MAX_DILEMMAS && !prefetchInFlight.current) {
+      prefetchInFlight.current = true;
+      fetchDilemmaData()
+        .then((prefetched) => { nextDilemmaRef.current = prefetched; })
+        .catch(() => {
+          // Best-effort: the next-dilemma click still fetches on demand.
+        })
+        .finally(() => {
+          prefetchInFlight.current = false;
+        });
+    }
   };
 
   const pieChartData = [

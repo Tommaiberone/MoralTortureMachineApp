@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
 import SEO from '../components/SEO';
 import { SEO_LANDINGS } from '../content/seoLandings';
 import { combineSchemas, getBreadcrumbSchema, getFAQSchemaFromItems, getSeoLandingSchema } from '../utils/structuredData';
@@ -14,13 +13,14 @@ const destinationForMode = {
 
 export default function SeoLandingScreen({ landingId, locale }) {
   const navigate = useNavigate();
-  const { i18n } = useTranslation();
   const viewed = useRef(false);
   const landing = SEO_LANDINGS[landingId]?.[locale];
 
-  useEffect(() => {
-    if (i18n.language !== locale) void i18n.changeLanguage(locale);
-  }, [i18n, locale]);
+  // TASK-101: this screen renders its own locale-specific content directly
+  // (no t()/useTranslation() calls) and must never call i18n.changeLanguage()
+  // here — doing so used to leak into the global i18next instance (and its
+  // cookie cache), silently switching the rest of the app to Italian after a
+  // visit to an /it/... landing page even while Italian is otherwise hidden.
 
   useEffect(() => {
     if (!landing || viewed.current) return;

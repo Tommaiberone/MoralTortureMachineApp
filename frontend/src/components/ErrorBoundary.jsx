@@ -1,5 +1,6 @@
 // components/ErrorBoundary.jsx
 import React from 'react';
+import { reportError } from '../utils/errorReporting';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -25,8 +26,7 @@ class ErrorBoundary extends React.Component {
       errorInfo: errorInfo
     });
 
-    // In production, you could send this to an error tracking service
-    // Example: Sentry.captureException(error, { extra: errorInfo });
+    reportError(error, { componentStack: errorInfo?.componentStack });
   }
 
   handleReset = () => {

@@ -12,8 +12,7 @@
     "story_button": "STORY MODE",
     "story_description": "LIVE A BRANCHING STORY. EVERY CHOICE SHAPES YOUR FATE.",
     "warning_footer": "[ THIS WILL EXPOSE YOUR DARKEST BOUNDARIES ]",
-    "seo_resources_title": "Explore moral dilemmas",
-    "seo_resources_intro": "Start with a guide, a test, or a game for difficult choices.",
+    "seo_resource_nav_label": "Related guides",
     "seo_resource_test": "Moral dilemma test",
     "seo_resource_ethical": "Ethical dilemmas",
     "seo_resource_game": "Moral dilemma game"
@@ -54,7 +53,9 @@
     "share_title": "Share your results",
     "share_text": "I have been judged by the Moral Torture Machine! This is the verdict:",
     "share_challenge": "If you're brave enough, try it too:",
-    "facebook_share_alert": "Text copied to clipboard! Paste it into your Facebook post."
+    "facebook_share_alert": "Text copied to clipboard! Paste it into your Facebook post.",
+    "download_card_stories": "Download card (Stories)",
+    "download_card_square": "Download card (Square)"
   },
   "tutorial": {
     "previous": "Previous",
@@ -191,5 +192,19 @@
   },
   "common": {
     "backToHome": "Back to Home"
+  },
+  "account": {
+    "title": "Your account",
+    "loading": "Loading…",
+    "notLoggedIn": "Sign in to export or delete your account data.",
+    "loggedInAs": "Signed in as {{email}}.",
+    "exportButton": "Export my data",
+    "exportError": "Could not export your data. Please try again.",
+    "deleteButton": "Delete my account",
+    "deleteConfirmPrompt": "This permanently deletes your account data and cannot be undone. Are you sure?",
+    "deleteConfirmButton": "Yes, delete my account",
+    "deleteCancelButton": "Cancel",
+    "deleteError": "Could not delete your account. Please try again.",
+    "deleteSuccess": "Your account data has been deleted."
   }
 }

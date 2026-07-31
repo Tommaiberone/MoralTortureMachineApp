@@ -4,13 +4,13 @@ title: Garantire fallback globale quando Groq non è disponibile
 status: To Do
 assignee: []
 created_date: '2026-07-29 11:29'
+updated_date: '2026-07-31 10:42'
 labels:
   - m10-quality
   - ai
   - resilience
   - cost
-dependencies:
-  - TASK-27
+dependencies: []
 documentation:
   - backlog/docs/doc-2
 priority: high

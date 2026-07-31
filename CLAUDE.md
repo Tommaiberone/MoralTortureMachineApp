@@ -128,7 +128,14 @@ Growth metric or strategic gate changed        -> backlog/docs/doc-2
 - Profiles are private/unlisted by default.
 - Invite tokens and public profile IDs must be non-enumerable.
 - Do not expose emails, answer details, internal IDs, or tokens through public APIs.
-- Support Italian and English for every user-facing feature.
+- Support Italian and English for every user-facing feature. **Temporary
+  exception (TASK-101, 2026-07-31):** the app itself (test/tutorial/results/
+  home/account screens) is forced English-only — Italian is hidden, not
+  removed (`frontend/src/i18n.js`, `it.json`, IT dilemmas/story flows all
+  still exist). The bilingual EN/IT SEO landing pages (ADR-020) are
+  unaffected and still render in Italian. Do not reintroduce a language
+  switcher or Italian auto-detection for the app without this line being
+  updated first.
 
 ## Cost constraints
 
@@ -210,6 +217,16 @@ Growth metric or strategic gate changed        -> backlog/docs/doc-2
 
 ## Development workflow
 
+- Never install or invoke Playwright, Puppeteer, chromium-cli, or any other
+  browser-automation tool to verify a frontend change: downloading a browser
+  binary and driving it burns excessive tokens/time in this repo. Verify UI
+  changes with lint, `pnpm build:prod`, and careful manual code review
+  instead, and say explicitly that a live browser check was not performed.
+  The user runs the manual/browser check themselves.
+- Do not create a new git branch unless it is actually necessary (e.g. the
+  current branch already has an open, unrelated PR, or the user asks for
+  one). Default to continuing work on the current branch rather than
+  branching for every task or topic change.
 - Preserve unrelated user changes in a dirty worktree.
 - Prefer small, reviewable changes aligned to one roadmap milestone.
 - Use Backlog.md for every task status, acceptance criterion, dependency, open
