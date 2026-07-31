@@ -2,7 +2,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import LanguageSelector from '../components/LanguageSelector';
 import SEO from '../components/SEO';
 import AuthButton from '../components/AuthButton';
 import { combineSchemas, getWebApplicationSchema, getFAQSchema, getHowToSchema } from '../utils/structuredData';
@@ -64,7 +63,7 @@ const HomeScreen = () => {
         structuredData={structuredData}
       />
       <AuthButton />
-      <LanguageSelector />
+      {/* TASK-101: LanguageSelector hidden while Italian is temporarily disabled app-wide. */}
       <h1 className="screen-title-large home-title">
         <span className="glitch-text">{t('home.title_moral')}</span><br />
         <span className="glitch-text">{t('home.title_torture')}</span><br />
@@ -73,15 +72,12 @@ const HomeScreen = () => {
 
         <p className="home-subtitle">{t('home.subtitle')}</p>
 
-        <section className="home-seo-resources" aria-labelledby="home-seo-resources-title">
-          <h2 id="home-seo-resources-title">{t('home.seo_resources_title')}</h2>
-          <p>{t('home.seo_resources_intro')}</p>
-          <div className="home-seo-resource-links">
-            <Link to={seoPaths.test}>{t('home.seo_resource_test')}</Link>
-            <Link to={seoPaths.ethical}>{t('home.seo_resource_ethical')}</Link>
-            <Link to={seoPaths.game}>{t('home.seo_resource_game')}</Link>
-          </div>
-        </section>
+        {/* Unobtrusive internal links for SEO crawlability only (ADR-020); not a user-facing content section. */}
+        <nav className="home-seo-resource-links" aria-label={t('home.seo_resource_nav_label')}>
+          <Link to={seoPaths.test}>{t('home.seo_resource_test')}</Link>
+          <Link to={seoPaths.ethical}>{t('home.seo_resource_ethical')}</Link>
+          <Link to={seoPaths.game}>{t('home.seo_resource_game')}</Link>
+        </nav>
 
         <button
           className="home-button recommended-button"

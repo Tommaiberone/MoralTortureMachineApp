@@ -175,6 +175,32 @@ resource "aws_dynamodb_table" "story_flows" {
   }
 }
 
+# DynamoDB Table for authenticated Users, keyed by immutable Cognito sub.
+# TASK-12: unlike the legacy PAY_PER_REQUEST tables (audited exception pending
+# TASK-88), this new low-traffic table uses provisioned capacity within the
+# always-free 25 RCU/25 WCU account allowance. PITR is left disabled by
+# default pending the per-domain retention decision in TASK-89, rather than
+# copying the existing tables' enabled-everywhere default.
+resource "aws_dynamodb_table" "users" {
+  name         = "${var.environment}-${var.stack_name}-users"
+  billing_mode = "PROVISIONED"
+  read_capacity  = 1
+  write_capacity = 1
+  hash_key     = "sub"
+
+  attribute {
+    name = "sub"
+    type = "S"
+  }
+
+  tags = {
+    Name        = "Moral Torture Machine Users"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+    Purpose     = "Authenticated user records keyed by immutable Cognito sub"
+  }
+}
+
 # SSM Parameter for Groq API Key (migrato da Secrets Manager - risparmio $0.40/mese)
 # Se già creato via CLI, importare con:
 # terraform import aws_ssm_parameter.groq_api_key /prod/moral-torture-machine/groq-api-key
@@ -405,6 +431,8 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           "dynamodb:PutItem",
           "dynamodb:GetItem",
           "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:BatchWriteItem",
           "dynamodb:Scan",
           "dynamodb:Query"
         ]
@@ -414,7 +442,8 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           "${aws_dynamodb_table.user_analytics.arn}/index/*",
           aws_dynamodb_table.product_events.arn,
           "${aws_dynamodb_table.product_events.arn}/index/*",
-          aws_dynamodb_table.story_flows.arn
+          aws_dynamodb_table.story_flows.arn,
+          aws_dynamodb_table.users.arn
         ]
       },
       {
@@ -424,7 +453,8 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           aws_dynamodb_table.dilemmas.arn,
           aws_dynamodb_table.user_analytics.arn,
           aws_dynamodb_table.product_events.arn,
-          aws_dynamodb_table.story_flows.arn
+          aws_dynamodb_table.story_flows.arn,
+          aws_dynamodb_table.users.arn
         ]
       },
       {
@@ -468,6 +498,7 @@ resource "aws_lambda_function" "api" {
       ANALYTICS_TABLE                       = aws_dynamodb_table.user_analytics.name
       STORY_FLOWS_TABLE                     = aws_dynamodb_table.story_flows.name
       PRODUCT_EVENTS_TABLE                  = aws_dynamodb_table.product_events.name
+      USERS_TABLE                           = aws_dynamodb_table.users.name
       GROQ_API_KEY_SSM_NAME                 = aws_ssm_parameter.groq_api_key.name
       ANALYTICS_FINGERPRINT_SECRET_SSM_NAME = aws_ssm_parameter.analytics_fingerprint_pepper.name
       COGNITO_USER_POOL_ID                  = aws_cognito_user_pool.users.id
@@ -477,6 +508,7 @@ resource "aws_lambda_function" "api" {
       ABUSE_GLOBAL_REQUESTS_PER_MINUTE      = tostring(var.abuse_global_requests_per_minute)
       ABUSE_AI_REQUESTS_PER_MINUTE          = tostring(var.abuse_ai_requests_per_minute)
       ABUSE_ANALYTICS_BATCHES_PER_MINUTE    = tostring(var.abuse_analytics_batches_per_minute)
+      ABUSE_AUTH_WRITE_REQUESTS_PER_MINUTE  = tostring(var.abuse_auth_write_requests_per_minute)
     }
   }
 

@@ -367,6 +367,7 @@
 
 .results-share-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 20px;
 }
 
@@ -411,4 +412,14 @@
 
 .results-share-button.facebook:hover {
   background-color: #166FE5;
+}
+
+.results-share-button.card-download {
+  background-color: var(--creepy-charcoal);
+  border-color: var(--horror-crimson);
+}
+
+.results-share-button.card-download:hover {
+  background-color: var(--creepy-mid-gray);
+  border-color: var(--horror-blood-red);
 }

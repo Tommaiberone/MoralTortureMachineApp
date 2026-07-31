@@ -309,6 +309,138 @@ deployed zip. Consequence: no Terraform or handler change was needed for this
 task; a future restructuring of the Lambda package should revisit this
 fallback.
 
+### ADR-027 — Users table with a single-table anonymous-claim lock
+
+`TASK-12`/`TASK-13` add a `users` DynamoDB table keyed by immutable Cognito
+`sub`, with two dependency shapes (`require_authenticated_user`,
+`get_optional_user`) rather than one, so anonymous endpoints can stay
+anonymous while new authenticated ones exist side by side. Claiming an
+`anonymous_user_id` uses a claim-lock item in the *same* table
+(`sub = "anon#<id>"`) with a conditional `PutItem` (`attribute_not_exists(sub)
+OR ownerSub = :owner`) instead of a second table or a read-then-write check:
+this makes a repeat claim by the same account a no-op and a claim by a
+different account an atomic, race-free 409, with one table and no additional
+IAM surface. Options considered: a GSI-based reverse lookup (rejected: more
+moving parts for the same guarantee) and read-then-write (rejected:
+race-prone). The table uses provisioned 1/1 RCU-WCU within the always-free
+allowance rather than on-demand, per the CLAUDE.md instruction not to copy
+the legacy tables' on-demand default; PITR is left disabled pending
+`TASK-89`.
+
+### ADR-028 — Account export/deletion scope matches what currently exists
+
+`TASK-15` ships `GET /users/export` and `DELETE /users/me` scoped to exactly
+the `users` table record (no other domain stores data keyed by `sub` yet), and
+a public, unlinked `/delete-account` web route that reuses the existing
+Cognito web/Android auth flow rather than building a parallel one. Deletion
+also releases every claimed `anon#<id>` lock item so that anonymous activity
+becomes claimable again rather than orphaned. Consequence: no retention
+exception exists to document today; this scope must be revisited as soon as
+`TASK-28`+ introduces account-linked data.
+
+### ADR-029 — Dedicated rate-limit bucket for authenticated writes
+
+`TASK-17` adds an `auth_write` bucket (default 10/minute) to the existing
+zero-cost sliding-window guard, applied only to
+`/users/claim-anonymous-data`, `/users/me`, and `/auth/me`. Reusing the
+existing guard (rather than a new mechanism) keeps public reads unaffected
+and keeps the 429/Retry-After behavior identical across all buckets.
+
+### ADR-030 — Production analytics ingestion was silently broken; fixed
+
+While validating web/Android funnel parity (`TASK-7`) against the real
+production account (read-only AWS CLI access), `prod-moral-torture-machine-
+product-events` was found to have zero items since launch. CloudWatch Logs
+showed why: the Lambda IAM role was missing `dynamodb:BatchWriteItem` (used
+by `product_events_table.batch_writer`), so every `POST /analytics/events`
+batch — web and Android identically — failed with `AccessDeniedException`
+and was silently requeued client-side forever. `dynamodb:DeleteItem` was also
+missing before it would have hit the same failure via `TASK-15`'s new
+`DELETE /users/me`. Both actions were added to `backend/terraform/main.tf`'s
+`lambda_permissions` policy. This is a production-config bug fix, not a
+platform-parity gap: both platforms failed identically, so today's
+essentially-zero "exact platform" coverage is an artifact of this bug, not a
+web-vs-Android instrumentation difference. Consequence: requires
+`terraform apply` to take effect; until then, every new-schema analytics
+event continues to be lost.
+
+### ADR-031 — One shared SNS topic for budget and operational alarms
+
+`TASK-8`/`TASK-9` add one AWS Cost Budget ($200/month, notifications at
+$10/$50/$200 actual spend) and four CloudWatch alarms (Lambda errors,
+Lambda duration, API Gateway 5xx, API Gateway latency), all posting to one
+new `aws_sns_topic.ops_alerts` with an email subscription
+(`backend/terraform/observability.tf`). Alarms use absolute-count thresholds
+(≥5 events/15 min) rather than an error *rate*, and `treat_missing_data =
+"notBreaching"`, specifically to avoid noise at this project's low traffic
+volume, where a rate metric's small denominator would make ordinary
+variance look alarming. Recipient and first-response steps for every
+notification are documented in the new `docs/OPERATIONS_RUNBOOK.md`, per
+`TASK-8` AC2/`TASK-9` AC2. Consequence: requires `terraform apply`; the email
+subscription remains `PendingConfirmation` until the confirmation link is
+clicked once.
+
+### ADR-032 — Auto-load and background-prefetch the evaluation dilemmas
+
+`TASK-22` removes the separate click previously required to fetch the first
+dilemma (a mount-time `useEffect` now calls it automatically) and prefetches
+the next dilemma in the background as soon as a choice is recorded, while the
+reveal/tease for the current one is on screen. The prefetched dilemma is held
+in a ref (not React state) since nothing renders from it directly; the
+"next dilemma" click consumes it instantly instead of triggering a new
+network call when it's already available. Onboarding-skip-for-returning-users
+(the third acceptance criterion) was already correctly implemented before
+this task.
+
+### ADR-033 — Frontend error reporting reuses the analytics pipeline
+
+`TASK-74` reports uncaught errors, unhandled promise rejections, and React
+error-boundary catches through the *existing* `trackEvent`/`/analytics/events`
+pipeline as a `frontend_error_reported` event, rather than introducing a
+separate error-tracking service or endpoint. This gives correlation to
+platform/appVersion/schemaVersion and non-blocking, fire-and-forget delivery
+for free, and keeps the payload to five fixed technical fields (error
+name/message/stack, component stack, route), each truncated to 200 characters
+client-side (the backend rejects rather than truncates longer property
+values). Options considered: a third-party error-tracking SDK (rejected: new
+variable-cost service requiring the same Free Tier review as any other
+addition, for a need the existing pipeline already covers).
+
+### ADR-034 — Canvas-rendered share cards omit percentile until real data exists
+
+`TASK-31` renders the Stories (9:16) and square (1:1) archetype share cards
+entirely client-side on an HTML canvas (`frontend/src/utils/shareCard.js`),
+with a font-fitting routine that shrinks text until it fits a fixed line
+count rather than shipping separate IT/EN layouts. The card deliberately
+omits a "percentile" element that the original task description mentioned:
+computing one honestly requires a real population of stored profiles
+(`TASK-28`, not built yet), and fabricating a number would conflict with the
+product rule that archetypes and any comparison built on them stay
+deterministic and testable. Consequence: revisit the card layout once
+`TASK-28` ships to add a real percentile.
+
+### ADR-035 — Italian temporarily hidden app-wide, SEO landing pages exempt
+
+`TASK-101`, at the user's explicit request: the app (test/tutorial/results/
+home/account screens) is forced English-only by removing `LanguageDetector`
+and setting `lng: 'en'`/`supportedLngs: ['en']` in `frontend/src/i18n.js`,
+and by no longer rendering `LanguageSelector` on `HomeScreen`. Nothing
+Italian is deleted — `it.json`, Italian dilemmas/story flows, and the
+component itself all still exist, so this is a config-level, reversible
+change. The user explicitly chose to exempt the bilingual EN/IT SEO landing
+pages (ADR-020): they are a running, already-indexed acquisition experiment
+with real Search Console history, and undoing their indexing for a same-day
+internal-app-only decision would discard weeks of data for no reason tied to
+the app change. Making that exemption actually work required also removing
+`SeoLandingScreen`'s `i18n.changeLanguage(locale)` call: that screen never
+used `t()`/the global i18next instance for its own rendering (its content is
+locale-prop-driven from `seoLandings.js`), but the call was silently flipping
+the whole app's cached language to Italian for any visitor who reached an
+`/it/...` landing page and then continued into the actual app. Consequence:
+re-enabling Italian later means reverting `i18n.js` (commented inline) and
+restoring the `HomeScreen` import; the SEO landing pages required no change
+either way.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

@@ -65,6 +65,27 @@ dev table, or `/dev` SSM hierarchy.
   has no key fallback.
 - Authenticated ownership is keyed by immutable provider subject, never email.
 - Public profile IDs and invite tokens are non-enumerable.
+- `backend/src/backend_fastapi.py` has two auth dependency shapes: mandatory
+  (`require_authenticated_user`, 401 if missing/invalid) and optional
+  (`get_optional_user`, returns `None` instead of raising so anonymous
+  endpoints stay anonymous). Both call the same `verify_cognito_id_token`.
+- The `users` DynamoDB table (`backend/terraform/main.tf`) is keyed by the
+  immutable Cognito `sub`, provisioned capacity (1/1 RCU-WCU, within the
+  always-free allowance) rather than on-demand, and has PITR disabled by
+  default pending `TASK-89`. `upsert_user_record` idempotently creates/updates
+  a user record on every authenticated call (wired into `GET /auth/me`).
+- `POST /users/claim-anonymous-data` links an `anonymous_user_id` to the
+  authenticated account via a single-table claim-lock item
+  (`sub = "anon#<id>"`, conditional `PutItem` on `ownerSub`): idempotent for
+  the same account, rejected with 409 for a different one.
+- `GET /users/export` / `DELETE /users/me` cover the account's current data
+  scope (the `users` table record); no other domain stores data keyed by
+  `sub` yet. `/delete-account` is a public, unlinked React route reusing the
+  existing Cognito web/Android auth flow, so it works in-app and on the web
+  without new auth plumbing.
+- The `auth_write` burst-guard bucket (`ABUSE_AUTH_WRITE_REQUESTS_PER_MINUTE`,
+  default 10/minute) rate-limits `/users/claim-anonymous-data`, `/users/me`,
+  and `/auth/me`, independent of the `global`/`ai`/`analytics_ingest` buckets.
 
 ## Data and scoring rules
 
@@ -100,6 +121,13 @@ dev table, or `/dev` SSM hierarchy.
 
 - Client analytics is buffered, batched, idempotent, non-blocking, and unable to
   break gameplay.
+- `frontend/src/utils/errorReporting.js` reports uncaught errors, unhandled
+  promise rejections, and React error-boundary catches as a
+  `frontend_error_reported` event through the same `trackEvent` pipeline. The
+  payload is a fixed set of technical fields (error name/message/stack,
+  component stack, route), each truncated client-side to 200 characters; it
+  never carries PII, tokens, dilemma/answer text, or AI output, and a
+  reporting failure can never affect the UX it describes.
 - Event names use `snake_case`; schemas are versioned; `event_id` is the
   idempotency key.
 - Never collect raw email, auth tokens, IP addresses, full dilemma response
@@ -199,18 +227,34 @@ dev table, or `/dev` SSM hierarchy.
 - Batch analytics writes and cache/persist generated content.
 - Use ordinary HTTP for asynchronous duels; WebSockets are reserved for active
   Party Rooms and must be closed when idle.
-- Generate social cards client-side or from cached deterministic templates.
+- Generate social cards client-side or from cached deterministic templates:
+  `frontend/src/utils/shareCard.js` renders the Stories (9:16) and square
+  (1:1) archetype cards on an offscreen canvas, with no AI and no server
+  round trip.
 - Avoid SMS. Use FCM only after an explicit opt-in value moment.
 - Reassess Cognito at 8,000 MAU and before exceeding the 10,000 MAU free tier.
 - Every new variable-cost service needs an owner, budget alarm, and fallback.
 - The first abuse-protection layer is an in-memory sliding-window guard in each
-  warm Lambda container: 120 total requests/minute, 12 AI requests/minute, and
-  30 analytics batches/minute per transient network source by default. It adds
-  no AWS service, is configurable through Terraform, and is deliberately
-  best-effort rather than a globally consistent distributed limit.
+  warm Lambda container: 120 total requests/minute, 12 AI requests/minute, 30
+  analytics batches/minute, and 10 authenticated-write requests/minute per
+  transient network source by default. It adds no AWS service, is
+  configurable through Terraform, and is deliberately best-effort rather than
+  a globally consistent distributed limit.
 - API Gateway access logs record the request path for diagnosis and do not store
   the raw source IP. Stronger distributed enforcement or AWS WAF requires a new
   cost/Free Tier review and explicit approval.
+- One monthly AWS Cost Budget (`backend/terraform/observability.tf`, $200
+  limit) sends progressive notifications at $10/$50/$200 actual spend, and
+  four CloudWatch alarms (Lambda errors/duration, API Gateway 5xx/latency)
+  post to the same SNS topic. Recipient and first-response steps for every
+  notification are in `docs/OPERATIONS_RUNBOOK.md`. Both require
+  `terraform apply` to take effect; they validate but were not applied in the
+  session that added them.
+- The Lambda IAM policy must grant `dynamodb:BatchWriteItem` (used by
+  `product_events_table.batch_writer`) and `dynamodb:DeleteItem` explicitly —
+  neither is implied by `PutItem`. A missing `BatchWriteItem` grant silently
+  discarded every `POST /analytics/events` batch (both platforms) from launch
+  until this was found and fixed; see the ADR log.
 
 ### AWS Free Tier audit snapshot — 2026-07-29
 

@@ -28,6 +28,16 @@ output "product_events_table_arn" {
   value       = aws_dynamodb_table.product_events.arn
 }
 
+output "users_table_name" {
+  description = "Name of the authenticated Users DynamoDB table"
+  value       = aws_dynamodb_table.users.name
+}
+
+output "users_table_arn" {
+  description = "ARN of the authenticated Users DynamoDB table"
+  value       = aws_dynamodb_table.users.arn
+}
+
 output "aws_region" {
   description = "AWS region where resources are deployed"
   value       = var.aws_region

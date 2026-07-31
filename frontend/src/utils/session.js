@@ -124,6 +124,19 @@ export const getApiHeaders = () => {
 };
 
 /**
+ * Get headers for an authenticated API request, on top of the usual
+ * anonymous/session identity headers. `idToken` comes from
+ * `getValidAuthSession()` / `useAuth().session.idToken` — the backend
+ * expects a Cognito ID token, not an access token.
+ * @param {string} idToken
+ * @returns {Object} Headers object including Authorization: Bearer
+ */
+export const getAuthenticatedApiHeaders = (idToken) => ({
+  ...getApiHeaders(),
+  Authorization: `Bearer ${idToken}`,
+});
+
+/**
  * Clear the current session (useful for testing or logout)
  */
 export const clearSession = () => {

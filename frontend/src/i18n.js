@@ -1,19 +1,22 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import LanguageDetector from 'i18next-browser-languagedetector';
 import HttpApi from 'i18next-http-backend';
 
+// TASK-101: Italian is temporarily hidden app-wide (product decision, not a
+// removal). To revert: restore `.use(LanguageDetector)`, `supportedLngs: ['en', 'it']`,
+// the `detection` block below, and re-enable LanguageSelector in HomeScreen.
+//
+// detection: {
+//   order: ['path', 'cookie', 'htmlTag', 'localStorage', 'subdomain'],
+//   caches: ['cookie'],
+// },
 i18n
   .use(HttpApi)
-  .use(LanguageDetector)
   .use(initReactI18next)
   .init({
-    supportedLngs: ['en', 'it'],
+    lng: 'en',
+    supportedLngs: ['en'],
     fallbackLng: 'en',
-    detection: {
-      order: ['path', 'cookie', 'htmlTag', 'localStorage', 'subdomain'],
-      caches: ['cookie'],
-    },
     backend: {
       loadPath: '/locales/{{lng}}.json',
     },

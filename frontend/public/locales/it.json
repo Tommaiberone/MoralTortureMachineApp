@@ -12,8 +12,7 @@
     "story_button": "MODALITÀ STORIA",
     "story_description": "VIVI UNA STORIA RAMIFICATA. OGNI SCELTA PLASMA IL TUO DESTINO.",
     "warning_footer": "[ QUESTO SVELERÀ I TUOI CONFINI PIÙ OSCURI ]",
-    "seo_resources_title": "Esplora i dilemmi morali",
-    "seo_resources_intro": "Inizia da una guida, da un test o da un gioco per scelte difficili.",
+    "seo_resource_nav_label": "Guide correlate",
     "seo_resource_test": "Test di dilemmi morali",
     "seo_resource_ethical": "Dilemmi etici",
     "seo_resource_game": "Gioco di dilemmi morali"
@@ -54,7 +53,9 @@
     "share_title": "Condividi i tuoi risultati",
     "share_text": "Sono stato giudicato dalla Moral Torture Machine! Questo è il verdetto:",
     "share_challenge": "Se sei coraggioso, prova anche tu:",
-    "facebook_share_alert": "Testo copiato negli appunti! Incollalo nel tuo post di Facebook."
+    "facebook_share_alert": "Testo copiato negli appunti! Incollalo nel tuo post di Facebook.",
+    "download_card_stories": "Scarica la card (Stories)",
+    "download_card_square": "Scarica la card (Quadrata)"
   },
   "tutorial": {
     "previous": "Precedente",
@@ -191,5 +192,19 @@
   },
   "common": {
     "backToHome": "Torna alla Home"
+  },
+  "account": {
+    "title": "Il tuo account",
+    "loading": "Caricamento…",
+    "notLoggedIn": "Accedi per esportare o cancellare i dati del tuo account.",
+    "loggedInAs": "Accesso effettuato come {{email}}.",
+    "exportButton": "Esporta i miei dati",
+    "exportError": "Impossibile esportare i dati. Riprova.",
+    "deleteButton": "Cancella il mio account",
+    "deleteConfirmPrompt": "Questa azione cancella permanentemente i dati del tuo account e non può essere annullata. Sei sicuro?",
+    "deleteConfirmButton": "Sì, cancella il mio account",
+    "deleteCancelButton": "Annulla",
+    "deleteError": "Impossibile cancellare l'account. Riprova.",
+    "deleteSuccess": "I dati del tuo account sono stati cancellati."
   }
 }

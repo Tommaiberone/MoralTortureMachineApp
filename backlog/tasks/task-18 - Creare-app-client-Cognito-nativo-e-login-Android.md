@@ -4,7 +4,7 @@ title: Creare app client Cognito nativo e login Android
 status: Blocked
 assignee: []
 created_date: '2026-07-29 11:27'
-updated_date: '2026-07-29 11:46'
+updated_date: '2026-07-31 12:58'
 labels:
   - m1-auth
   - auth
@@ -12,7 +12,6 @@ labels:
 dependencies:
   - TASK-11
   - TASK-13
-  - TASK-85
 documentation:
   - backlog/docs/doc-2
 priority: high

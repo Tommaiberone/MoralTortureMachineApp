@@ -20,6 +20,7 @@ const AboutScreen = lazy(() => import('./screens/AboutScreen'));
 const AnalyticsAdminScreen = lazy(() => import('./screens/AnalyticsAdminScreen'));
 const AuthCallbackScreen = lazy(() => import('./screens/AuthCallbackScreen'));
 const LegalScreen = lazy(() => import('./screens/LegalScreen'));
+const AccountDeleteScreen = lazy(() => import('./screens/AccountDeleteScreen'));
 const SeoLandingScreen = lazy(() => import('./screens/SeoLandingScreen'));
 
 import './styles/shared.css';
@@ -66,6 +67,7 @@ const App = () => {
             <Route path="/auth/callback" element={<AuthCallbackScreen />} />
             <Route path="/privacy" element={<LegalScreen type="privacy" />} />
             <Route path="/cookies" element={<LegalScreen type="cookies" />} />
+            <Route path="/delete-account" element={<AccountDeleteScreen />} />
           </Routes>
           <PrivacyFooter />
           <AnalyticsConsent />

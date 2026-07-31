@@ -7,6 +7,7 @@ import App from './App.jsx'
 import { initializeMobileFeatures } from './utils/mobileInit'
 import { initializeIdentity } from './utils/session'
 import { initializeAnalytics } from './utils/analytics'
+import { initializeErrorReporting } from './utils/errorReporting'
 import { initializeGoogleAnalytics } from './utils/googleAnalytics'
 import AuthProvider from './auth/AuthProvider'
 
@@ -16,6 +17,7 @@ initializeMobileFeatures();
 const bootstrap = async () => {
   await initializeIdentity();
   initializeAnalytics();
+  initializeErrorReporting();
   initializeGoogleAnalytics();
 
   createRoot(document.getElementById('root')).render(
