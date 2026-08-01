@@ -13,7 +13,7 @@
   font-size: 22px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--text-danger);
+  color: var(--text-danger-readable);
   margin-bottom: 12px;
 }
 

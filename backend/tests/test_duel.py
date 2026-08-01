@@ -189,7 +189,10 @@ class OpenChallengeTests(unittest.TestCase):
         }}
         participants_table = Mock()
         participants_table.get_item.side_effect = [
-            {"Item": {"challengeToken": "tok", "role": "creator", "profilePublicId": "profile-1"}},
+            {"Item": {
+                "challengeToken": "tok", "role": "creator", "profilePublicId": "profile-1",
+                "anonymousUserId": "creator-anon",
+            }},
             {},
         ]
         profiles_table = Mock()
@@ -202,12 +205,44 @@ class OpenChallengeTests(unittest.TestCase):
             patch.object(backend_module, "challenge_participants_table", participants_table),
             patch.object(backend_module, "moral_profiles_table", profiles_table),
         ):
-            result = asyncio.run(open_challenge("tok", request_with_headers({}), language="en"))
+            result = asyncio.run(open_challenge(
+                "tok", request_with_headers({"X-Anonymous-User-Id": "viewer-anon"}), language="en",
+            ))
 
         self.assertIn("creatorArchetype", result)
         self.assertNotIn("averages", result["creatorArchetype"])
         self.assertNotIn("dimensionAverages", json.dumps(result))
         self.assertFalse(result["alreadyJoined"])
+        self.assertFalse(result["isOwnChallenge"])
+
+    def test_own_challenge_is_flagged(self):
+        challenges_table = Mock()
+        challenges_table.get_item.return_value = {"Item": {
+            "challengeToken": "tok", "status": "open", "dilemmaBaseIds": ["d1", "d2"], "language": "en",
+        }}
+        participants_table = Mock()
+        participants_table.get_item.side_effect = [
+            {"Item": {
+                "challengeToken": "tok", "role": "creator", "profilePublicId": "profile-1",
+                "anonymousUserId": "creator-anon",
+            }},
+            {},
+        ]
+        profiles_table = Mock()
+        profiles_table.get_item.return_value = {"Item": {
+            "publicId": "profile-1",
+            "dimensionAverages": json.dumps({d: 0.85 for d in SIX_DIMENSIONS}),
+        }}
+        with (
+            patch.object(backend_module, "challenges_table", challenges_table),
+            patch.object(backend_module, "challenge_participants_table", participants_table),
+            patch.object(backend_module, "moral_profiles_table", profiles_table),
+        ):
+            result = asyncio.run(open_challenge(
+                "tok", request_with_headers({"X-Anonymous-User-Id": "creator-anon"}), language="en",
+            ))
+
+        self.assertTrue(result["isOwnChallenge"])
 
     def test_expired_challenge_returns_410(self):
         challenges_table = Mock()
@@ -216,7 +251,7 @@ class OpenChallengeTests(unittest.TestCase):
         }}
         with patch.object(backend_module, "challenges_table", challenges_table):
             with self.assertRaises(HTTPException) as raised:
-                asyncio.run(open_challenge("tok", request_with_headers({})))
+                asyncio.run(open_challenge("tok", request_with_headers({"X-Anonymous-User-Id": "anon-1"})))
         self.assertEqual(raised.exception.status_code, 410)
 
     def test_revoked_challenge_returns_410(self):
@@ -224,7 +259,7 @@ class OpenChallengeTests(unittest.TestCase):
         challenges_table.get_item.return_value = {"Item": {"challengeToken": "tok", "status": "revoked"}}
         with patch.object(backend_module, "challenges_table", challenges_table):
             with self.assertRaises(HTTPException) as raised:
-                asyncio.run(open_challenge("tok", request_with_headers({})))
+                asyncio.run(open_challenge("tok", request_with_headers({"X-Anonymous-User-Id": "anon-1"})))
         self.assertEqual(raised.exception.status_code, 410)
 
 
@@ -422,7 +457,7 @@ class RevokeChallengeTests(unittest.TestCase):
         challenges_table.get_item.return_value = {"Item": {"challengeToken": "tok", "status": "revoked"}}
         with patch.object(backend_module, "challenges_table", challenges_table):
             with self.assertRaises(HTTPException) as raised_open:
-                asyncio.run(open_challenge("tok", request_with_headers({})))
+                asyncio.run(open_challenge("tok", request_with_headers({"X-Anonymous-User-Id": "anon-2"})))
             with self.assertRaises(HTTPException) as raised_join:
                 asyncio.run(join_challenge("tok", request_with_headers({"X-Anonymous-User-Id": "anon-2"})))
         self.assertEqual(raised_open.exception.status_code, 410)

@@ -260,16 +260,35 @@ dev table, or `/dev` SSM hierarchy.
 - Generate social cards client-side or from cached deterministic templates:
   `frontend/src/utils/shareCard.js` renders the Stories (9:16) and square
   (1:1) archetype cards on an offscreen canvas, with no AI and no server
-  round trip.
+  round trip. `shareOrDownloadCard` (`TASK-32`) tries `navigator.share({files})`
+  (Web Share API) first, so the Android WebView opens the native share sheet
+  with the generated PNG instead of relying on `<a download>`, which does not
+  reliably save a file inside that WebView; it falls back to the anchor
+  download only when file sharing isn't available (mainly desktop browsers).
 - Avoid SMS. Use FCM only after an explicit opt-in value moment.
 - Reassess Cognito at 8,000 MAU and before exceeding the 10,000 MAU free tier.
 - Every new variable-cost service needs an owner, budget alarm, and fallback.
 - The first abuse-protection layer is an in-memory sliding-window guard in each
   warm Lambda container: 120 total requests/minute, 12 AI requests/minute, 30
-  analytics batches/minute, and 10 authenticated-write requests/minute per
-  transient network source by default. It adds no AWS service, is
-  configurable through Terraform, and is deliberately best-effort rather than
-  a globally consistent distributed limit.
+  analytics batches/minute, 10 authenticated-write requests/minute, 15 Moral
+  Duel write requests/minute, and 60 public unauthenticated read
+  requests/minute (profile reads, challenge teaser/compare, batch dilemma
+  lookup - `TASK-67`) per transient network source by default. It adds no AWS
+  service, is configurable through Terraform, and is deliberately best-effort
+  rather than a globally consistent distributed limit.
+- `TASK-104`: every 4xx/5xx response (including an uncaught exception) emails
+  the existing `ops_alerts` SNS topic (ADR-031) through a `notify_ops_of_errors`
+  middleware, coalesced to at most one notification per `(status_code, path)`
+  pair per `OPS_ERROR_NOTIFICATION_COOLDOWN_SECONDS` (default 600s) per warm
+  Lambda container, so an ordinary burst of the same expected 4xx (e.g. a
+  repeated Duel 409) cannot flood the owner's inbox. IAM grants only
+  `sns:Publish` on that one topic; a notification failure is caught and never
+  affects the response it describes.
+- `AnalyticsEvent.validate_properties` screens both the property *key* (blocks
+  `email`/`password`/`token`/`secret`/`ip`/`analysis` tokens) and, since
+  `TASK-65`, the property *value* (rejects a string that looks like an email
+  address or a JWT/bearer token), so an innocuously-named field can't leak PII
+  into the event store at ingestion time.
 - API Gateway access logs record the request path for diagnosis and do not store
   the raw source IP. Stronger distributed enforcement or AWS WAF requires a new
   cost/Free Tier review and explicit approval.
@@ -310,6 +329,13 @@ conflicts below.
 Task state, priority, dependencies, acceptance criteria, open questions, and
 future work are maintained with the Backlog.md CLI. `ROADMAP_SOCIAL_GROWTH.md`
 is a migration pointer only and must not be used as a second mutable task list.
+
+`.claude/commands/routine-serale.md` (`TASK-108`) is a project slash command
+(`/routine-serale`, or the trigger phrase "Vai con la routine serale") that
+works through the `To Do` column autonomously, triaging each task as safe to
+implement unattended versus needing the user, and always stops for one
+explicit confirmation before the final commit/push/SNS-recap step - see
+ADR-043 for the full protocol and why deploy stays gated.
 
 ## Release automation
 

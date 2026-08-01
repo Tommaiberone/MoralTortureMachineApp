@@ -86,7 +86,7 @@
   letter-spacing: 0.15em;
   font-family: 'Courier New', Courier, monospace;
   margin-bottom: 16px;
-  color: var(--text-danger);
+  color: var(--text-danger-readable);
   text-transform: uppercase;
   text-align: center;
 }
@@ -131,7 +131,7 @@
   letter-spacing: 0.15em;
   font-family: 'Courier New', Courier, monospace;
   margin-bottom: 20px;
-  color: var(--text-danger);
+  color: var(--text-danger-readable);
   text-shadow: 2px 2px 0 var(--creepy-void);
   text-transform: uppercase;
   text-align: center;
@@ -372,7 +372,7 @@
   letter-spacing: 0.15em;
   font-family: 'Courier New', Courier, monospace;
   margin-bottom: 16px;
-  color: var(--text-danger);
+  color: var(--text-danger-readable);
   text-transform: uppercase;
   text-align: center;
 }
@@ -412,7 +412,7 @@
 
 .results-challenge-error {
   margin-top: 16px;
-  color: var(--text-danger);
+  color: var(--text-danger-readable);
   font-family: 'Courier New', Courier, monospace;
   text-align: center;
 }
@@ -423,7 +423,7 @@
   letter-spacing: 0.15em;
   font-family: 'Courier New', Courier, monospace;
   margin-bottom: 20px;
-  color: var(--text-danger);
+  color: var(--text-danger-readable);
   text-shadow: 2px 2px 0 var(--creepy-void);
   text-transform: uppercase;
   text-align: center;

@@ -68,3 +68,31 @@
 .challenge-dilemma-text {
   margin-bottom: 20px;
 }
+
+.challenge-own-notice {
+  width: 100%;
+  max-width: 480px;
+}
+
+.challenge-own-notice-text {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 14px;
+  color: var(--text-dim);
+  margin: 0 0 16px;
+}
+
+.challenge-share-link {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.challenge-share-url {
+  width: 100%;
+  padding: 10px 12px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 13px;
+  background-color: var(--creepy-charcoal);
+  border: 1px solid var(--horror-crimson);
+  color: var(--text-normal);
+}

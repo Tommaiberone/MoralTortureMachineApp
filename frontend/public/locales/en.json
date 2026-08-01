@@ -215,9 +215,13 @@
     "error_not_found": "This challenge does not exist.",
     "error_expired": "This challenge has expired or was revoked.",
     "error_unknown": "Something went wrong. Please try again.",
+    "error_own_challenge": "You created this challenge, so you can't accept it yourself. Share the link with a friend instead.",
     "teaser_title": "{{name}} is challenging you",
     "teaser_intro": "Answer the same {{count}} moral dilemmas without seeing their choices. Then you both unlock how compatible you really are.",
-    "accept_button": "Accept the challenge"
+    "accept_button": "Accept the challenge",
+    "own_challenge_notice": "This is your challenge. Share it with a friend to see how compatible you really are.",
+    "copy_link": "Copy link",
+    "link_copied": "Link copied!"
   },
   "challengeCompare": {
     "loading": "Unlocking your comparison...",

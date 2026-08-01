@@ -182,11 +182,11 @@ resource "aws_dynamodb_table" "story_flows" {
 # default pending the per-domain retention decision in TASK-89, rather than
 # copying the existing tables' enabled-everywhere default.
 resource "aws_dynamodb_table" "users" {
-  name         = "${var.environment}-${var.stack_name}-users"
-  billing_mode = "PROVISIONED"
+  name           = "${var.environment}-${var.stack_name}-users"
+  billing_mode   = "PROVISIONED"
   read_capacity  = 1
   write_capacity = 1
-  hash_key     = "sub"
+  hash_key       = "sub"
 
   attribute {
     name = "sub"
@@ -230,12 +230,12 @@ resource "aws_dynamodb_table" "moral_profiles" {
   }
 
   global_secondary_index {
-    name               = "OwnerIndex"
-    hash_key           = "ownerAnonymousUserId"
-    range_key          = "createdAt"
-    projection_type    = "ALL"
-    read_capacity      = 1
-    write_capacity     = 1
+    name            = "OwnerIndex"
+    hash_key        = "ownerAnonymousUserId"
+    range_key       = "createdAt"
+    projection_type = "ALL"
+    read_capacity   = 1
+    write_capacity  = 1
   }
 
   tags = {
@@ -580,6 +580,14 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           aws_ssm_parameter.groq_api_key.arn,
           aws_ssm_parameter.analytics_fingerprint_pepper.arn
         ]
+      },
+      {
+        # TASK-104: the API emails the existing ops_alerts topic on every
+        # 4xx/5xx response, reusing the same topic the CloudWatch alarms and
+        # budget notifications already post to (ADR-031).
+        Effect   = "Allow"
+        Action   = ["sns:Publish"]
+        Resource = [aws_sns_topic.ops_alerts.arn]
       }
     ]
   })
@@ -610,25 +618,29 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE                        = aws_dynamodb_table.dilemmas.name
-      ANALYTICS_TABLE                       = aws_dynamodb_table.user_analytics.name
-      STORY_FLOWS_TABLE                     = aws_dynamodb_table.story_flows.name
-      PRODUCT_EVENTS_TABLE                  = aws_dynamodb_table.product_events.name
-      USERS_TABLE                           = aws_dynamodb_table.users.name
-      MORAL_PROFILES_TABLE                  = aws_dynamodb_table.moral_profiles.name
-      CHALLENGES_TABLE                      = aws_dynamodb_table.challenges.name
-      CHALLENGE_PARTICIPANTS_TABLE           = aws_dynamodb_table.challenge_participants.name
-      GROQ_API_KEY_SSM_NAME                 = aws_ssm_parameter.groq_api_key.name
-      ANALYTICS_FINGERPRINT_SECRET_SSM_NAME = aws_ssm_parameter.analytics_fingerprint_pepper.name
-      COGNITO_USER_POOL_ID                  = aws_cognito_user_pool.users.id
-      COGNITO_APP_CLIENT_ID                 = aws_cognito_user_pool_client.web.id
-      COGNITO_APP_CLIENT_IDS                = join(",", [aws_cognito_user_pool_client.web.id, aws_cognito_user_pool_client.android.id])
-      ABUSE_BURST_GUARD_ENABLED             = tostring(var.abuse_burst_guard_enabled)
-      ABUSE_GLOBAL_REQUESTS_PER_MINUTE      = tostring(var.abuse_global_requests_per_minute)
-      ABUSE_AI_REQUESTS_PER_MINUTE          = tostring(var.abuse_ai_requests_per_minute)
-      ABUSE_ANALYTICS_BATCHES_PER_MINUTE    = tostring(var.abuse_analytics_batches_per_minute)
-      ABUSE_AUTH_WRITE_REQUESTS_PER_MINUTE  = tostring(var.abuse_auth_write_requests_per_minute)
-      ABUSE_DUEL_WRITE_REQUESTS_PER_MINUTE  = tostring(var.abuse_duel_write_requests_per_minute)
+      DYNAMODB_TABLE                          = aws_dynamodb_table.dilemmas.name
+      ANALYTICS_TABLE                         = aws_dynamodb_table.user_analytics.name
+      STORY_FLOWS_TABLE                       = aws_dynamodb_table.story_flows.name
+      PRODUCT_EVENTS_TABLE                    = aws_dynamodb_table.product_events.name
+      USERS_TABLE                             = aws_dynamodb_table.users.name
+      MORAL_PROFILES_TABLE                    = aws_dynamodb_table.moral_profiles.name
+      CHALLENGES_TABLE                        = aws_dynamodb_table.challenges.name
+      CHALLENGE_PARTICIPANTS_TABLE            = aws_dynamodb_table.challenge_participants.name
+      GROQ_API_KEY_SSM_NAME                   = aws_ssm_parameter.groq_api_key.name
+      ANALYTICS_FINGERPRINT_SECRET_SSM_NAME   = aws_ssm_parameter.analytics_fingerprint_pepper.name
+      COGNITO_USER_POOL_ID                    = aws_cognito_user_pool.users.id
+      COGNITO_APP_CLIENT_ID                   = aws_cognito_user_pool_client.web.id
+      COGNITO_APP_CLIENT_IDS                  = join(",", [aws_cognito_user_pool_client.web.id, aws_cognito_user_pool_client.android.id])
+      ABUSE_BURST_GUARD_ENABLED               = tostring(var.abuse_burst_guard_enabled)
+      ABUSE_GLOBAL_REQUESTS_PER_MINUTE        = tostring(var.abuse_global_requests_per_minute)
+      ABUSE_AI_REQUESTS_PER_MINUTE            = tostring(var.abuse_ai_requests_per_minute)
+      ABUSE_ANALYTICS_BATCHES_PER_MINUTE      = tostring(var.abuse_analytics_batches_per_minute)
+      ABUSE_AUTH_WRITE_REQUESTS_PER_MINUTE    = tostring(var.abuse_auth_write_requests_per_minute)
+      ABUSE_DUEL_WRITE_REQUESTS_PER_MINUTE    = tostring(var.abuse_duel_write_requests_per_minute)
+      ABUSE_PUBLIC_READ_REQUESTS_PER_MINUTE   = tostring(var.abuse_public_read_requests_per_minute)
+      OPS_ALERTS_TOPIC_ARN                    = aws_sns_topic.ops_alerts.arn
+      OPS_ERROR_NOTIFICATIONS_ENABLED         = tostring(var.ops_error_notifications_enabled)
+      OPS_ERROR_NOTIFICATION_COOLDOWN_SECONDS = tostring(var.ops_error_notification_cooldown_seconds)
     }
   }
 

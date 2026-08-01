@@ -22,7 +22,7 @@
 .story-title {
   font-family: var(--horror-font);
   font-size: 2.5rem;
-  color: var(--horror-crimson);
+  color: var(--text-danger-readable);
   text-shadow: 0 0 15px rgba(139, 0, 0, 0.5);
   margin-bottom: 0.5rem;
 }
@@ -134,7 +134,7 @@
 
 .tease-text {
   font-size: 1.2rem;
-  color: var(--horror-crimson);
+  color: var(--text-danger-readable);
   margin-bottom: 2rem;
   font-style: italic;
   line-height: 1.6;

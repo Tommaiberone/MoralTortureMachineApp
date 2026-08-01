@@ -6,7 +6,7 @@ import { getPlatform, isNativePlatform } from './platform';
 const ANONYMOUS_USER_KEY = 'mtm_anonymous_user_id';
 const INSTALL_KEY = 'mtm_install_id';
 const SESSION_KEY = 'mtm_session_id';
-const APP_VERSION = import.meta.env.VITE_APP_VERSION || '1.4.0';
+const APP_VERSION = import.meta.env.VITE_APP_VERSION || '1.4.1';
 
 let anonymousUserId;
 let installId;

@@ -4,6 +4,7 @@ title: Aggiungere E2E primo risultato e loop Duel
 status: To Do
 assignee: []
 created_date: '2026-07-29 11:29'
+updated_date: '2026-07-31 15:06'
 labels:
   - m10-quality
   - e2e
@@ -14,6 +15,7 @@ dependencies:
 documentation:
   - backlog/docs/doc-2
 priority: high
+ordinal: 14000
 ---
 
 ## Description

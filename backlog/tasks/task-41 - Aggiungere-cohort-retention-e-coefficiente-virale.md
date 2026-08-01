@@ -4,6 +4,7 @@ title: Aggiungere cohort retention e coefficiente virale
 status: To Do
 assignee: []
 created_date: '2026-07-29 11:28'
+updated_date: '2026-07-31 15:06'
 labels:
   - m4-duel
   - analytics
@@ -13,6 +14,7 @@ dependencies:
 documentation:
   - backlog/docs/doc-2
 priority: medium
+ordinal: 8000
 ---
 
 ## Description

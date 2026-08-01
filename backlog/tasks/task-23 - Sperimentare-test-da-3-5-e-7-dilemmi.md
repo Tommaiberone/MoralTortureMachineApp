@@ -4,6 +4,7 @@ title: 'Sperimentare test da 3, 5 e 7 dilemmi'
 status: To Do
 assignee: []
 created_date: '2026-07-29 11:27'
+updated_date: '2026-07-31 15:06'
 labels:
   - m2-activation
   - experiment
@@ -14,6 +15,7 @@ dependencies:
 documentation:
   - backlog/docs/doc-2
 priority: high
+ordinal: 3000
 ---
 
 ## Description

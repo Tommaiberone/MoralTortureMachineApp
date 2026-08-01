@@ -7,7 +7,7 @@ import { getApiHeaders } from '../utils/session';
 import SEO from '../components/SEO';
 import { trackEvent } from '../utils/analytics';
 import { trackGoogleAnalyticsEvent } from '../utils/googleAnalytics';
-import { downloadShareCard } from '../utils/shareCard';
+import { shareOrDownloadCard } from '../utils/shareCard';
 import './ResultsScreen.css';
 
 const ResultsScreen = () => {
@@ -276,18 +276,18 @@ const ResultsScreen = () => {
               <>
                 <button
                   className="results-share-button card-download"
-                  onClick={() => {
-                    trackEvent('share_card_downloaded', { format: 'stories' });
-                    downloadShareCard(archetype, 'stories');
+                  onClick={async () => {
+                    const method = await shareOrDownloadCard(archetype, 'stories', t('results.share_text'));
+                    trackEvent('share_card_downloaded', { format: 'stories', method });
                   }}
                 >
                   {t('results.download_card_stories')}
                 </button>
                 <button
                   className="results-share-button card-download"
-                  onClick={() => {
-                    trackEvent('share_card_downloaded', { format: 'square' });
-                    downloadShareCard(archetype, 'square');
+                  onClick={async () => {
+                    const method = await shareOrDownloadCard(archetype, 'square', t('results.share_text'));
+                    trackEvent('share_card_downloaded', { format: 'square', method });
                   }}
                 >
                   {t('results.download_card_square')}

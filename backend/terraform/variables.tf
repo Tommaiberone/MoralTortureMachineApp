@@ -143,6 +143,34 @@ variable "abuse_duel_write_requests_per_minute" {
   }
 }
 
+variable "abuse_public_read_requests_per_minute" {
+  description = "Maximum public unauthenticated reads (profiles, challenge teaser/compare, batch dilemma lookup) per minute per transient network source in each Lambda container"
+  type        = number
+  default     = 60
+
+  validation {
+    condition     = var.abuse_public_read_requests_per_minute > 0
+    error_message = "The public read burst limit must be positive."
+  }
+}
+
+variable "ops_error_notifications_enabled" {
+  description = "TASK-104: whether every 4xx/5xx response emails the ops_alerts SNS topic"
+  type        = bool
+  default     = true
+}
+
+variable "ops_error_notification_cooldown_seconds" {
+  description = "Minimum seconds between two ops error notifications for the same (status_code, path) pair per warm Lambda container"
+  type        = number
+  default     = 600
+
+  validation {
+    condition     = var.ops_error_notification_cooldown_seconds > 0
+    error_message = "The ops error notification cooldown must be positive."
+  }
+}
+
 variable "populate_db" {
   description = "Whether to populate the database with initial dilemmas via Terraform (not recommended - use GitHub Actions step instead)"
   type        = bool

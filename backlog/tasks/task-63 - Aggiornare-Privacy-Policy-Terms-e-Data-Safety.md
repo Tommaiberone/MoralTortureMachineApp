@@ -4,6 +4,7 @@ title: Aggiornare Privacy Policy Terms e Data Safety
 status: To Do
 assignee: []
 created_date: '2026-07-29 11:29'
+updated_date: '2026-07-31 15:06'
 labels:
   - m9-privacy
   - legal
@@ -14,6 +15,7 @@ dependencies:
 documentation:
   - backlog/docs/doc-2
 priority: high
+ordinal: 9000
 ---
 
 ## Description

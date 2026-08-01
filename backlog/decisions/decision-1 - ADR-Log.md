@@ -543,6 +543,139 @@ native auth earlier this session. Consequence: revisit only as a deliberate
 follow-up task if native-app opening on share proves to matter for
 conversion; today's web fallback is fully functional, not broken.
 
+### ADR-042 — Own-challenge viewing shows a share view, not an Accept button (TASK-103)
+
+Root cause of the live `[ CHALLENGE UNAVAILABLE ]` bug report: `join_challenge`
+already correctly rejects joining your own challenge with a 400 (a creator
+opening their own just-created share link), but `GET /challenges/{token}` gave
+the frontend no way to know the viewer *was* the creator, so
+`ChallengeLandingScreen` always rendered the generic invitee teaser with an
+"Accept" button, and any non-OK `/join` response collapsed to the same generic
+"unknown" error. Options considered: (a) leave the Accept button and only
+improve the error message shown after the 400 — rejected, since it still lets
+a real user click into a dead end; (b) have the backend compare the caller's
+`X-Anonymous-User-Id` against the creator participant and return
+`isOwnChallenge`, and have the frontend render a share-your-link view (with
+WhatsApp/copy-link, matching the existing `ResultsScreen` share pattern)
+instead of Accept whenever `isOwnChallenge` is true — chosen. The 400 guard
+in `join_challenge` is kept as defense in depth, and the frontend now maps a
+400 from `/join` to a specific `error_own_challenge` message rather than the
+generic unknown-error copy, in case that path is still reached (e.g. a stale
+tab). Consequence: creators previewing their own share link now see a share
+prompt, never a broken "Accept" action; en/it locale keys added for parity
+even while Italian app UI stays hidden per TASK-101.
+
+### ADR-043 — "Routine serale" autonomous batch runner, gated only at deploy/email
+
+`TASK-108`: added `.claude/commands/routine-serale.md`, a project slash
+command (`/routine-serale`, or the trigger phrase "Vai con la routine
+serale") that works through the Backlog `To Do` column autonomously,
+prioritized High→Medium→Low then by `ordinal`, skipping `Open Points`/
+`Blocked` and tasks whose `dependencies` aren't `Done` yet. Each task is
+triaged before implementation: it proceeds unattended if it's code/tests/docs
+with an objective target, and is left in place with a reason recorded in the
+run's recap if it needs real device/manual QA, legal/content sign-off, an
+open business decision, new external credentials/paid services, or any
+irreversible production action beyond the run's own end-of-run deploy. Options
+considered: a fully unattended run including deploy/publish (rejected: this
+repo's `CLAUDE.md` already requires an explicit ask before every deploy/push,
+and ADR-017 makes a `versionCode`-bumping push to `main` auto-publish straight
+to Google Play production with zero human review, so folding that into a
+"never ask" loop risks an unattended public release); a fully manual runbook
+with no reusable artifact (rejected: defeats the point of a repeatable
+routine). Consequence: the commit/push/SNS-recap step always requires one
+explicit user confirmation in the same session even though everything before
+it runs unattended, and the routine hard-stops instead of pushing if the
+diff includes a `versionCode` bump, specifically because of ADR-017's
+no-gate Play publish. The recap email reuses the existing `aws_sns_topic.ops_alerts`
+topic (`backend/terraform/observability.tf`) via `aws sns publish`; no new
+topic, subscription, or email service is introduced.
+
+### ADR-044 — Accessible danger-red text variable, borders untouched (TASK-102/107)
+
+Both tasks reported the same measured problem: `--text-danger`/`--horror-crimson`
+(`#7a4a4a`) is used as a text color on `ResultsScreen`, `SeoLandingScreen`,
+`ChallengeCompareScreen`, and `StoryModeScreen`, at 2.1-2.6:1 against the
+theme's dark backgrounds — below WCAG AA. Rather than changing the shared
+variable (which also drives button backgrounds and borders elsewhere and
+would have altered more of the horror aesthetic than necessary), a new
+`--text-danger-readable: #ce7e7e` keeps the same red hue at >=4.5:1 against
+every dark background in use and is applied only where the color paints
+text. `--creepy-sickly-green`/`--creepy-pale-green` (used only as borders, per
+both tasks' own description) were brightened by mirroring the existing
+red pair's RGB structure (`#5a2020`/`#7a4a4a` → `#205a20`/`#4a7a4a`, swapping
+which channel dominates) rather than inventing new values, keeping the same
+low-saturation, dark horror palette while making the yes/no button and
+progress-dot color pairing distinguishable. Options considered: repainting
+`--text-danger` globally (rejected: same variable also backs Story Mode
+button backgrounds, so this would have changed non-text elements the tasks
+explicitly called lower-priority) and a full palette redesign (rejected by
+both tasks' AC4: fix values, don't redesign the theme). TASK-107 was a
+duplicate of TASK-102's more detailed report and was closed alongside it.
+
+### ADR-045 — Per-(status, path) cooldown on the new backend-error email alert (TASK-104)
+
+Every 4xx/5xx response (and any uncaught exception) now emails the existing
+`ops_alerts` SNS topic (ADR-031) through a new outermost middleware,
+`notify_ops_of_errors`, registered after the burst guard so it also observes
+429 rejections and exceptions raised further down the stack. A literal
+per-request email for every 4xx would flood the owner's inbox: this API
+raises `HTTPException` with 4xx status codes constantly as normal, expected
+business outcomes (already-joined, already-submitted, not-found, invalid
+token), not as bugs. Instead, `_should_notify_ops` coalesces to at most one
+notification per `(status_code, path)` pair every
+`OPS_ERROR_NOTIFICATION_COOLDOWN_SECONDS` (default 600s) per warm Lambda
+container, mirroring the "avoid noise" reasoning already established for the
+CloudWatch alarms in ADR-031. Options considered: emailing only 5xx
+(rejected: the task explicitly asked for 4xx too, and an unusual/unexpected
+4xx pattern is still useful signal); a global rate limit instead of per-signature
+(rejected: would suppress an unrelated new failure mode while one endpoint is
+noisy). IAM grants only `sns:Publish` on the existing topic ARN, no new AWS
+resource is created, and a notification failure is caught and logged so it
+can never affect the response it describes.
+
+### ADR-046 — Analytics PII guard extended from property keys to property values (TASK-65)
+
+Auditing TASK-65 found the architecture already correct: `users_table` (email,
+keyed by Cognito `sub`) is never read by the analytics/abuse code paths,
+which only touch `product_events`/`user_analytics` keyed by
+`anonymousUserId`/`sessionId`, and `/admin/analytics/overview` already
+returns only `_masked_identity()` hashes, never a raw identifier. The one
+gap: `AnalyticsEvent.validate_properties` only rejected a property by its
+*key* name (e.g. a field literally called `email`), so a client bug sending
+an email address or bearer token under an innocuous key (e.g. `note`) would
+have passed validation and been persisted. Added `_EMAIL_LIKE_PATTERN`/
+`_JWT_LIKE_PATTERN` checks against the property *value* as well, at the same
+ingestion-time Pydantic validator, so this is rejected before it ever reaches
+DynamoDB rather than filtered later at read time. Options considered:
+scrubbing/redacting matching values instead of rejecting the whole batch item
+(rejected: silent data mutation makes a client-side bug invisible instead of
+surfacing it) and value scanning at read/dashboard time only (rejected:
+already-stored raw rows would remain the actual privacy exposure).
+
+### ADR-047 — Share card tries the Web Share API before falling back to an anchor download (TASK-32)
+
+`downloadShareCard`'s `<a download>` approach is a fine web fallback but
+does not reliably save a file inside the Android WebView the Capacitor app
+runs in. `shareOrDownloadCard` (`frontend/src/utils/shareCard.js`) now
+converts the generated PNG data URL to a `File` and, when
+`navigator.canShare({files})` is true, calls `navigator.share({files})` to
+open the native share sheet directly - this is a standard Web Share API
+capability of the WebView's underlying Chrome engine, so it needed no new
+Capacitor plugin and therefore no native project change or Android rebuild.
+Only when file sharing isn't available (mainly desktop browsers) does it
+fall back to the existing anchor download; a user-cancelled share
+(`AbortError`) is treated as a completed interaction, not a failure that
+should also trigger a download. Options considered: adding
+`@capacitor/filesystem` plus the native `@capacitor/share` `files` option
+(rejected for this pass: a new native dependency requires `npx cap sync` and
+a fresh Android build, which `CLAUDE.md` requires warning the user about
+before doing, and the Web Share API route reaches the same outcome without
+that cost). `ResultsScreen.jsx`'s `share_card_downloaded` event now also
+records which method actually ran (`native_share`/`native_share_cancelled`/
+`download`), which is needed to tell whether Android users are actually
+getting a working share path.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

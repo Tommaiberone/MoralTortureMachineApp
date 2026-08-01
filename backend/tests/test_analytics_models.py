@@ -92,6 +92,22 @@ class AnalyticsModelTests(unittest.TestCase):
 
         self.assertEqual(event.properties["relationship_type"], "friend")
 
+    def test_rejects_email_shaped_value_even_with_a_safe_key_name(self):
+        # TASK-65: the key "note" doesn't contain any forbidden token, so
+        # this must be caught by the property *value* looking like PII.
+        with self.assertRaises(ValidationError):
+            AnalyticsEvent(**valid_event(properties={"note": "person@example.com"}))
+
+    def test_rejects_jwt_shaped_value_even_with_a_safe_key_name(self):
+        fake_jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dGhpc2lzYWZha2VzaWduYXR1cmU"
+        with self.assertRaises(ValidationError):
+            AnalyticsEvent(**valid_event(properties={"note": fake_jwt}))
+
+    def test_accepts_ordinary_string_value_with_a_dot(self):
+        event = AnalyticsEvent(**valid_event(properties={"note": "v1.2.3-beta"}))
+
+        self.assertEqual(event.properties["note"], "v1.2.3-beta")
+
     def test_rejects_oversized_batch(self):
         with self.assertRaises(ValidationError):
             AnalyticsBatchRequest(events=[valid_event() for _ in range(26)])
@@ -217,6 +233,18 @@ class AbuseGuardTests(unittest.TestCase):
         for path in ("/users/claim-anonymous-data", "/users/me", "/auth/me"):
             rules = _rate_limit_rules_for_request("POST", path)
             self.assertEqual([name for name, _ in rules], ["global", "auth_write"])
+
+    def test_public_reads_get_their_own_rule(self):
+        # TASK-67: profile/challenge reads and batch dilemma lookup are
+        # unauthenticated and abuse-prone, so they get a dedicated bucket
+        # rather than only the broad "global" one.
+        for path in ("/profiles/abc123", "/challenges/abc123", "/challenges/abc123/compare", "/dilemmas/by-ids"):
+            rules = _rate_limit_rules_for_request("GET", path)
+            self.assertEqual([name for name, _ in rules], ["global", "public_read"])
+
+    def test_writing_a_challenge_still_uses_duel_write_not_public_read(self):
+        rules = _rate_limit_rules_for_request("POST", "/challenges/abc123/join")
+        self.assertEqual([name for name, _ in rules], ["global", "duel_write"])
 
     def test_network_fingerprint_is_stable_and_peppered(self):
         with patch.object(backend_module, "get_analytics_fingerprint_secret", return_value="private-pepper"):

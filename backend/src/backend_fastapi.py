@@ -125,6 +125,27 @@ ABUSE_DUEL_WRITE_REQUESTS_PER_MINUTE = _env_positive_int(
     "ABUSE_DUEL_WRITE_REQUESTS_PER_MINUTE",
     15,
 )
+# TASK-67: public, unauthenticated reads (profiles, challenge teasers/compare,
+# batch dilemma lookup) had no bucket of their own beyond the "global" one,
+# even though they are the endpoints someone probing non-enumerable tokens
+# would hit hardest. Separate and slightly tighter than "global" so scraping
+# these specifically is throttled without touching unrelated traffic.
+ABUSE_PUBLIC_READ_REQUESTS_PER_MINUTE = _env_positive_int(
+    "ABUSE_PUBLIC_READ_REQUESTS_PER_MINUTE",
+    60,
+)
+
+# TASK-104: email every 4xx/5xx via the existing ops_alerts SNS topic
+# (ADR-031). Coalesced per (status_code, path) rather than per request, so a
+# burst of the same ordinary client error (e.g. a repeated 409/404 during
+# normal Duel usage) does not flood the owner's inbox; each distinct
+# (status_code, path) signature can notify at most once per cooldown window.
+OPS_ALERTS_TOPIC_ARN = os.getenv("OPS_ALERTS_TOPIC_ARN", "")
+OPS_ERROR_NOTIFICATIONS_ENABLED = os.getenv("OPS_ERROR_NOTIFICATIONS_ENABLED", "true").lower() == "true"
+OPS_ERROR_NOTIFICATION_COOLDOWN_SECONDS = _env_positive_int(
+    "OPS_ERROR_NOTIFICATION_COOLDOWN_SECONDS",
+    600,
+)
 
 # TASK-34: abandoned challenges (never joined/completed) expire via TTL.
 CHALLENGE_TTL_SECONDS = 30 * 24 * 60 * 60
@@ -159,6 +180,7 @@ moral_profiles_table = dynamodb.Table(MORAL_PROFILES_TABLE)
 challenges_table = dynamodb.Table(CHALLENGES_TABLE)
 challenge_participants_table = dynamodb.Table(CHALLENGE_PARTICIPANTS_TABLE)
 ssm_client = boto3.client('ssm', region_name=AWS_REGION)
+sns_client = boto3.client('sns', region_name=AWS_REGION)
 
 # Cache for API key (retrieved once at cold start)
 _api_key_cache = None
@@ -168,6 +190,8 @@ _cognito_jwks_client = None
 _burst_windows = defaultdict(deque)
 _burst_lock = Lock()
 _burst_request_count = 0
+_ops_notification_last_sent: Dict[str, float] = {}
+_ops_notification_lock = Lock()
 
 def get_groq_api_key() -> str:
     """Retrieve Groq API key from AWS SSM Parameter Store with caching"""
@@ -640,6 +664,12 @@ class StoryNodeVoteRequest(BaseModel):
     nodeId: str = Field(..., description="Current node ID", min_length=1, max_length=20)
     vote: str = Field(..., description="Vote: 'first' or 'second'", pattern=r'^(first|second)$')
 
+# TASK-65: value-level PII guard for analytics properties, independent of
+# the property key name (see validate_properties below).
+_EMAIL_LIKE_PATTERN = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+_JWT_LIKE_PATTERN = re.compile(r'^[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}$')
+
+
 class AnalyticsEvent(BaseModel):
     eventId: str = Field(
         ...,
@@ -695,8 +725,17 @@ class AnalyticsEvent(BaseModel):
                 raise ValueError("Forbidden analytics property")
             if not isinstance(item, (str, int, float, bool)) or isinstance(item, (dict, list)):
                 raise ValueError("Analytics properties must be scalar values")
-            if isinstance(item, str) and len(item) > 200:
-                raise ValueError("Analytics property is too long")
+            if isinstance(item, str):
+                if len(item) > 200:
+                    raise ValueError("Analytics property is too long")
+                # TASK-65 defense in depth: the key-name check above only
+                # catches a property named e.g. "email"; this also rejects
+                # an innocuously-named property (e.g. "note") whose *value*
+                # is an email address or a JWT/bearer-token-shaped string,
+                # so an accidental frontend bug can't leak PII into the
+                # event store just because the field name looked safe.
+                if _EMAIL_LIKE_PATTERN.match(item) or _JWT_LIKE_PATTERN.match(item):
+                    raise ValueError("Analytics property value looks like PII or a token")
 
         if len(json.dumps(value)) > 4096:
             raise ValueError("Analytics properties payload is too large")
@@ -870,6 +909,10 @@ def _rate_limit_rules_for_request(method: str, path: str) -> list[tuple[str, int
         rules.append(("auth_write", ABUSE_AUTH_WRITE_REQUESTS_PER_MINUTE))
     elif method.upper() == "POST" and (path == "/profiles" or path.startswith("/challenges")):
         rules.append(("duel_write", ABUSE_DUEL_WRITE_REQUESTS_PER_MINUTE))
+    elif method.upper() == "GET" and (
+        path.startswith(("/profiles/", "/challenges/")) or path == "/dilemmas/by-ids"
+    ):
+        rules.append(("public_read", ABUSE_PUBLIC_READ_REQUESTS_PER_MINUTE))
     return rules
 
 
@@ -926,6 +969,59 @@ async def enforce_zero_cost_burst_guard(request: Request, call_next):
             )
 
     return await call_next(request)
+
+
+def _should_notify_ops(status_code: int, path: str, now_seconds: Optional[float] = None) -> bool:
+    """One notification per (status_code, path) per cooldown window, per warm
+    container - avoids flooding the owner's inbox from an ordinary burst of
+    the same client error."""
+    now_seconds = time.time() if now_seconds is None else now_seconds
+    key = f"{status_code}:{path}"
+    with _ops_notification_lock:
+        last_sent = _ops_notification_last_sent.get(key)
+        if last_sent is not None and now_seconds - last_sent < OPS_ERROR_NOTIFICATION_COOLDOWN_SECONDS:
+            return False
+        _ops_notification_last_sent[key] = now_seconds
+        return True
+
+
+def _notify_ops_of_error(request: Request, status_code: int, detail: str) -> None:
+    """Best-effort SNS email for a 4xx/5xx response (TASK-104). Reuses the
+    existing ops_alerts topic (ADR-031/backend/terraform/observability.tf);
+    a failure here must never affect the response already produced."""
+    if not OPS_ERROR_NOTIFICATIONS_ENABLED or not OPS_ALERTS_TOPIC_ARN:
+        return
+    path = request.url.path
+    if not _should_notify_ops(status_code, path):
+        return
+    try:
+        sns_client.publish(
+            TopicArn=OPS_ALERTS_TOPIC_ARN,
+            Subject=f"[Moral Torture Machine] {status_code} on {path}"[:100],
+            Message=(
+                f"{request.method} {path} returned {status_code}.\n\n"
+                f"Detail: {detail}\n\n"
+                "This alert is coalesced: at most one email per (status code, path) "
+                f"every {OPS_ERROR_NOTIFICATION_COOLDOWN_SECONDS}s per warm Lambda container."
+            ),
+        )
+    except Exception:
+        logger.exception("Failed to publish ops error notification to SNS")
+
+
+@app.middleware("http")
+async def notify_ops_of_errors(request: Request, call_next):
+    """TASK-104: email any 4xx/5xx through SNS, including uncaught exceptions
+    (which Starlette would otherwise turn into a bare 500 further up the
+    stack). Registered after the burst guard so it also observes its 429s."""
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        _notify_ops_of_error(request, 500, f"Unhandled exception: {exc}")
+        raise
+    if response.status_code >= 400:
+        _notify_ops_of_error(request, response.status_code, "See CloudWatch logs for the request detail.")
+    return response
 
 @app.get("/")
 async def root():
@@ -1107,6 +1203,7 @@ async def open_challenge(token: str, request: Request, language: str = "en"):
     """Open a challenge link (TASK-35/38): a teaser only, never the creator's
     private answers or dimension averages before the invitee unlocks it
     (TASK-34 AC3)."""
+    anonymous_user_id = require_anonymous_user_id(request)
     challenge = get_challenge_or_404(token)
     ensure_challenge_is_actionable(challenge)
 
@@ -1116,6 +1213,7 @@ async def open_challenge(token: str, request: Request, language: str = "en"):
     creator_archetype = assign_archetype(creator_averages, language=language)
 
     invitee_participant = get_participant(token, "invitee")
+    is_own_challenge = creator_participant["anonymousUserId"] == anonymous_user_id
 
     _track_duel_event(request, "challenge_opened", {"status": challenge["status"]})
     return {
@@ -1129,6 +1227,7 @@ async def open_challenge(token: str, request: Request, language: str = "en"):
             "sharePhrase": creator_archetype["sharePhrase"],
         },
         "alreadyJoined": bool(invitee_participant),
+        "isOwnChallenge": is_own_challenge,
     }
 
 @app.post("/challenges/{token}/join")

@@ -215,9 +215,13 @@
     "error_not_found": "Questa sfida non esiste.",
     "error_expired": "Questa sfida è scaduta o è stata revocata.",
     "error_unknown": "Qualcosa è andato storto. Riprova.",
+    "error_own_challenge": "Hai creato tu questa sfida, quindi non puoi accettarla. Condividi il link con un amico.",
     "teaser_title": "{{name}} ti sta sfidando",
     "teaser_intro": "Rispondi agli stessi {{count}} dilemmi morali senza vedere le loro scelte. Poi sbloccherete insieme quanto siete davvero compatibili.",
-    "accept_button": "Accetta la sfida"
+    "accept_button": "Accetta la sfida",
+    "own_challenge_notice": "Questa è la tua sfida. Condividila con un amico per scoprire quanto siete davvero compatibili.",
+    "copy_link": "Copia link",
+    "link_copied": "Link copiato!"
   },
   "challengeCompare": {
     "loading": "Sblocco del confronto...",

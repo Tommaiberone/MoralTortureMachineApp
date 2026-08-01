@@ -73,6 +73,7 @@ const ChallengeLandingScreen = () => {
         method: 'POST',
         headers: getApiHeaders(),
       });
+      if (joinResponse.status === 400) throw new Error('own_challenge');
       if (!joinResponse.ok) throw new Error(`join failed: ${joinResponse.status}`);
       const joinData = await joinResponse.json();
       trackEvent('challenge_joined_client', { challenge_token: token });
@@ -91,7 +92,7 @@ const ChallengeLandingScreen = () => {
       setStep(STEP.ANSWERING);
     } catch (acceptError) {
       console.error('Error accepting challenge:', acceptError);
-      setError('unknown');
+      setError(acceptError.message === 'own_challenge' ? 'own_challenge' : 'unknown');
       setStep(STEP.ERROR);
     }
   };
@@ -163,6 +164,7 @@ const ChallengeLandingScreen = () => {
   }
 
   if (step === STEP.TEASER) {
+    const shareUrl = `${window.location.origin}/challenge/${token}`;
     return (
       <main className="challenge-screen">
         <SEO title="Moral Duel Challenge" description={t('challenge.seo_description')} url={`/challenge/${token}`} noindex />
@@ -172,9 +174,45 @@ const ChallengeLandingScreen = () => {
           <p className="challenge-teaser-phrase">&ldquo;{challenge.creatorArchetype.sharePhrase}&rdquo;</p>
           <p className="challenge-teaser-intro">{t('challenge.teaser_intro', { count: challenge.dilemmaCount })}</p>
         </div>
-        <button type="button" className="btn-primary challenge-accept-button" onClick={handleAccept}>
-          {t('challenge.accept_button')}
-        </button>
+        {challenge.isOwnChallenge ? (
+          <div className="challenge-own-notice">
+            <p className="challenge-own-notice-text">{t('challenge.own_challenge_notice')}</p>
+            <div className="challenge-share-link">
+              <input
+                className="challenge-share-url"
+                type="text"
+                readOnly
+                value={shareUrl}
+                onFocus={(event) => event.target.select()}
+              />
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => {
+                  trackEvent('share_clicked', { channel: 'whatsapp', object_type: 'challenge' });
+                  window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareUrl)}`);
+                }}
+              >
+                WhatsApp
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => {
+                  trackEvent('share_clicked', { channel: 'copy_link', object_type: 'challenge' });
+                  navigator.clipboard.writeText(shareUrl);
+                  alert(t('challenge.link_copied'));
+                }}
+              >
+                {t('challenge.copy_link')}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" className="btn-primary challenge-accept-button" onClick={handleAccept}>
+            {t('challenge.accept_button')}
+          </button>
+        )}
       </main>
     );
   }

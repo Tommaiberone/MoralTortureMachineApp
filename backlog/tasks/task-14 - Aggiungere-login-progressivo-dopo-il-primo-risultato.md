@@ -4,6 +4,7 @@ title: Aggiungere login progressivo dopo il primo risultato
 status: To Do
 assignee: []
 created_date: '2026-07-29 11:27'
+updated_date: '2026-07-31 15:06'
 labels:
   - m1-auth
   - auth
@@ -15,6 +16,7 @@ dependencies:
 documentation:
   - backlog/docs/doc-2
 priority: high
+ordinal: 1000
 ---
 
 ## Description

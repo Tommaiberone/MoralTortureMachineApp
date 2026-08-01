@@ -130,3 +130,41 @@ export const downloadShareCard = (archetype, format = 'stories') => {
   link.download = `moral-torture-machine-${format}.png`;
   link.click();
 };
+
+const dataUrlToFile = async (dataUrl, filename) => {
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  return new File([blob], filename, { type: blob.type });
+};
+
+/**
+ * TASK-32: `<a download>` (used by downloadShareCard) does not reliably save
+ * a file inside the Android WebView the Capacitor app runs in - there is no
+ * Downloads-folder handler by default, so a tap can silently do nothing.
+ * This tries the Web Share API's file-sharing (navigator.share({files})),
+ * which the WebView's underlying Chrome engine supports without any new
+ * Capacitor plugin/native project change (so it needs no Android rebuild),
+ * opening the native share sheet directly; only when that is unavailable
+ * (most desktop browsers) does it fall back to the plain download link.
+ * Returns the method actually used, for instrumentation.
+ */
+export const shareOrDownloadCard = async (archetype, format, shareText) => {
+  const filename = `moral-torture-machine-${format}.png`;
+
+  try {
+    const dataUrl = generateShareCardDataUrl(archetype, format);
+    const file = await dataUrlToFile(dataUrl, filename);
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file], text: shareText });
+      return 'native_share';
+    }
+  } catch (error) {
+    // AbortError means the user dismissed the share sheet - not a failure,
+    // don't fall back to also triggering a download in that case.
+    if (error?.name === 'AbortError') return 'native_share_cancelled';
+    console.warn('Native share of card failed, falling back to download:', error);
+  }
+
+  downloadShareCard(archetype, format);
+  return 'download';
+};
