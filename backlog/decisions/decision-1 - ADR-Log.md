@@ -867,6 +867,25 @@ nuisance. Consequence: the persistent privacy/cookie entry point is now one
 tap away via the profile icon (`TASK-120`) rather than always on screen;
 revisit if this proves too hard to find for a compliance-relevant control.
 
+### ADR-055 — AWS tag values reject parentheses and commas, not just the characters already documented
+
+Deploying the Party Room tables (`TASK-46`) failed `terraform apply` twice in
+a row on `aws_dynamodb_table.party_rooms`'s `Purpose` tag: first for
+containing `(`/`)`, then again after removing those for containing `,` -
+both outside DynamoDB's tag `Value` character set, which in practice is
+letters, numbers, spaces, and only `+ - = . _ : /  @`. This is the same
+class of bug as the Duel table tags fixed in `6322b8a1`, so it is now
+recorded here explicitly: **write new resource tag `Value`s (`Purpose`,
+`Name`, etc.) in plain words with only `-`/`_`/`/` as punctuation, never
+parentheses, commas, or other symbols**, and check them against the existing
+tags already applied successfully in `backend/terraform/main.tf` before
+adding a new one, rather than re-discovering this per resource. Each of the
+two bad tag values required its own `versionCode` bump (`12` then `13`, both
+never actually distributed since Terraform failed before the Android
+build/publish jobs ran) purely to make the deploy pipeline's push-triggered
+Google Play publish step re-fire on retry; the release that actually shipped
+is `versionCode 14` / `versionName 1.5.0`.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
