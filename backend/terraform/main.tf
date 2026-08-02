@@ -333,7 +333,7 @@ resource "aws_dynamodb_table" "party_rooms" {
     Name        = "Moral Torture Machine Party Rooms"
     Environment = var.environment
     ManagedBy   = "Terraform"
-    Purpose     = "Party Room state - lobby, question, reveal, completed - with TTL for abandoned rooms"
+    Purpose     = "Party Room lifecycle state with TTL for abandoned rooms"
   }
 }
 
