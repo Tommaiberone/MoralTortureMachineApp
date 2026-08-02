@@ -886,6 +886,23 @@ build/publish jobs ran) purely to make the deploy pipeline's push-triggered
 Google Play publish step re-fire on retry; the release that actually shipped
 is `versionCode 14` / `versionName 1.5.0`.
 
+### ADR-056 — Recharts legend/axis text forced readable globally, not per-chart (TASK-124)
+
+TASK-102/107 fixed low-contrast *CSS* text colors but missed this: Recharts
+renders its own legend and axis text with inline styles that default to
+each data series' own color (here `--horror-crimson`/pale-green, the exact
+values already flagged as unreadable as text) or an unstyled default,
+neither controlled by the theme's CSS variables. Since Recharts sets these
+as inline styles, only `!important` reliably overrides them; two global
+rules in `shared.css` (`.recharts-legend-item-text`, `.recharts-text`) fix
+every chart in the app (two pie charts, one radar chart) from one place
+rather than passing color props per chart instance, so a future chart gets
+readable text by default too. The pie charts' percentage labels needed a
+custom label-render function per chart instead (`renderPieLabel`, duplicated
+in `EvaluationDilemmasScreen.jsx`/`PassThePhoneScreen.jsx`) because Recharts
+does not expose a fill override when `label` is a function returning a bare
+string.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

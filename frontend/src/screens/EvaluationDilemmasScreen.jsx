@@ -11,6 +11,28 @@ import "./EvaluationDilemmasScreen.css";
 
 const MAX_DILEMMAS = 7;
 
+// TASK-124: Recharts' default pie label text has no explicit fill, which
+// reads poorly against this theme's dark background. Rendering the <text>
+// ourselves guarantees a readable color regardless of what's behind it.
+const RADIAN = Math.PI / 180;
+const renderPieLabel = ({ cx, cy, midAngle, outerRadius, percent }) => {
+  const radius = outerRadius + 18;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  return (
+    <text
+      x={x}
+      y={y}
+      fill="var(--text-highlight)"
+      textAnchor={x > cx ? 'start' : 'end'}
+      dominantBaseline="central"
+      fontSize={14}
+    >
+      {`${(percent * 100).toFixed(0)}%`}
+    </text>
+  );
+};
+
 const EvaluationDilemmasScreen = () => {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
@@ -335,9 +357,7 @@ const EvaluationDilemmasScreen = () => {
                         cx="50%"
                         cy="50%"
                         labelLine={false}
-                        label={({ percent }) =>
-                          `${(percent * 100).toFixed(0)}%`
-                        }
+                        label={renderPieLabel}
                         outerRadius={window.innerWidth < 480 ? 60 : 80}
                         fill="#8884d8"
                         dataKey="value"

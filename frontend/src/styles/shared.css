@@ -445,3 +445,18 @@
     font-size: 15px;
   }
 }
+
+/* TASK-124: Recharts legend text defaults to each series' own color (e.g.
+   --horror-crimson / --creepy-pale-green - the same low-contrast values
+   TASK-102/107 already flagged as unreadable as text), and axis tick text
+   defaults to an unstyled mid-gray. Recharts sets both as inline styles, so
+   only !important reliably overrides them; applies to every chart in the
+   app (evaluation pie chart, results radar chart) from one place instead of
+   per-chart props. */
+.recharts-legend-item-text {
+  color: var(--text-highlight) !important;
+}
+
+.recharts-text {
+  fill: var(--text-normal) !important;
+}

@@ -7,6 +7,27 @@ import { getSeenDilemmas, markDilemmaAsSeen } from '../utils/seenDilemmas';
 import SEO from '../components/SEO';
 import "./PassThePhoneScreen.css";
 
+// TASK-124: same fix as EvaluationDilemmasScreen - render the pie label text
+// ourselves so it's always readable, instead of Recharts' unstyled default.
+const RADIAN = Math.PI / 180;
+const renderPieLabel = ({ cx, cy, midAngle, outerRadius, percent }) => {
+  const radius = outerRadius + 18;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  return (
+    <text
+      x={x}
+      y={y}
+      fill="var(--text-highlight)"
+      textAnchor={x > cx ? 'start' : 'end'}
+      dominantBaseline="central"
+      fontSize={14}
+    >
+      {`${(percent * 100).toFixed(0)}%`}
+    </text>
+  );
+};
+
 const PassThePhoneScreen = () => {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
@@ -238,9 +259,7 @@ const PassThePhoneScreen = () => {
                           cx="50%"
                           cy="50%"
                           labelLine={false}
-                          label={({ percent }) =>
-                            `${(percent * 100).toFixed(0)}%`
-                          }
+                          label={renderPieLabel}
                           outerRadius={window.innerWidth < 480 ? 60 : 80}
                           fill="#8884d8"
                           dataKey="value"
