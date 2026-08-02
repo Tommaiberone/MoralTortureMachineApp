@@ -4,7 +4,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
 // Import Error Boundary (critical, not lazy loaded)
 import ErrorBoundary from './components/ErrorBoundary';
-import { AnalyticsConsent, PrivacyFooter } from './components/AnalyticsConsent';
+import { AnalyticsConsent } from './components/AnalyticsConsent';
 
 // Lazy load screens for better performance and Core Web Vitals
 // Home is loaded immediately as it's the first screen users see
@@ -25,6 +25,8 @@ const SeoLandingScreen = lazy(() => import('./screens/SeoLandingScreen'));
 const PublicProfileScreen = lazy(() => import('./screens/PublicProfileScreen'));
 const ChallengeLandingScreen = lazy(() => import('./screens/ChallengeLandingScreen'));
 const ChallengeCompareScreen = lazy(() => import('./screens/ChallengeCompareScreen'));
+const PartyRoomHomeScreen = lazy(() => import('./screens/PartyRoomHomeScreen'));
+const PartyRoomScreen = lazy(() => import('./screens/PartyRoomScreen'));
 
 import './styles/shared.css';
 import './App.css';
@@ -75,8 +77,9 @@ const App = () => {
             <Route path="/p/:publicId" element={<PublicProfileScreen />} />
             <Route path="/challenge/:token" element={<ChallengeLandingScreen />} />
             <Route path="/challenge/:token/compare" element={<ChallengeCompareScreen />} />
+            <Route path="/party" element={<PartyRoomHomeScreen />} />
+            <Route path="/party/:roomCode" element={<PartyRoomScreen />} />
           </Routes>
-          <PrivacyFooter />
           <AnalyticsConsent />
         </Suspense>
       </Router>

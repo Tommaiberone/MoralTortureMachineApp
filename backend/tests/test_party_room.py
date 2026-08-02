@@ -1,0 +1,316 @@
+import asyncio
+import json
+import os
+import unittest
+from unittest.mock import Mock, patch
+
+from botocore.exceptions import ClientError
+from starlette.requests import Request
+
+os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
+os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")
+os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
+os.environ.setdefault("AWS_DEFAULT_REGION", "eu-west-1")
+
+from backend.src.backend_fastapi import (  # noqa: E402
+    CreatePartyRoomRequest,
+    JoinPartyRoomRequest,
+    SubmitPartyVoteRequest,
+    create_party_room,
+    get_party_room,
+    join_party_room,
+    start_party_room,
+    submit_party_vote,
+)
+from backend.src import backend_fastapi as backend_module  # noqa: E402
+
+
+def request_with_headers(headers, path="/"):
+    return Request({
+        "type": "http",
+        "method": "GET",
+        "path": path,
+        "headers": [(key.lower().encode(), value.encode()) for key, value in headers.items()],
+    })
+
+
+def _conditional_check_failed():
+    return ClientError(
+        {"Error": {"Code": "ConditionalCheckFailedException", "Message": "The conditional request failed"}},
+        "PutItem",
+    )
+
+
+class _FakeTable:
+    """In-memory double for just the DynamoDB Table operations Party Room
+    uses, with real conditional-write semantics - this exercises the actual
+    advance-lazily state machine and immutability guards, not just a
+    scripted sequence of mock return values."""
+
+    def __init__(self, key_names):
+        self._key_names = key_names
+        self._items = {}
+
+    def _key(self, mapping):
+        return tuple(mapping[name] for name in self._key_names)
+
+    def get_item(self, Key):
+        item = self._items.get(self._key(Key))
+        return {"Item": dict(item)} if item is not None else {}
+
+    def put_item(self, Item, ConditionExpression=None):
+        key = self._key(Item)
+        exists = key in self._items
+        if ConditionExpression and "attribute_not_exists" in ConditionExpression and exists:
+            raise _conditional_check_failed()
+        self._items[key] = dict(Item)
+        return {}
+
+    def query(self, KeyConditionExpression, ExpressionAttributeValues):
+        room_code = ExpressionAttributeValues[":room"]
+        items = [dict(v) for k, v in self._items.items() if k[0] == room_code]
+        return {"Items": items}
+
+    def update_item(
+        self, Key, UpdateExpression, ExpressionAttributeValues,
+        ConditionExpression=None, ExpressionAttributeNames=None, ReturnValues=None,
+    ):
+        key = self._key(Key)
+        item = self._items.get(key)
+        names = ExpressionAttributeNames or {}
+
+        def resolve_path(path):
+            parts = path.strip().split(".")
+            return [names.get(p, p) for p in parts]
+
+        if ConditionExpression:
+            if not self._check_condition(item, ConditionExpression, names, ExpressionAttributeValues):
+                raise _conditional_check_failed()
+
+        if item is None:
+            item = dict(Key)
+            self._items[key] = item
+
+        assignments = UpdateExpression[len("SET "):].split(", ")
+        for assignment in assignments:
+            path_str, _, value_token = assignment.partition("=")
+            path = resolve_path(path_str)
+            value = ExpressionAttributeValues[value_token.strip()]
+            target = item
+            for part in path[:-1]:
+                target = target.setdefault(part, {})
+            target[path[-1]] = value
+
+        return {"Attributes": dict(item)}
+
+    def _check_condition(self, item, condition, names, values):
+        if condition.startswith("attribute_not_exists("):
+            path = condition[len("attribute_not_exists("):-1]
+            parts = [names.get(p, p) for p in path.strip().split(".")]
+            target = item or {}
+            for part in parts[:-1]:
+                target = target.get(part, {})
+            return parts[-1] not in target
+        if "=" in condition:
+            field, _, value_token = condition.partition("=")
+            field = names.get(field.strip(), field.strip())
+            expected = values[value_token.strip()]
+            return bool(item) and item.get(field) == expected
+        raise NotImplementedError(condition)
+
+
+class PartyRoomTestCase(unittest.TestCase):
+    def setUp(self):
+        self.rooms = _FakeTable(("roomCode",))
+        self.participants = _FakeTable(("roomCode", "participantId"))
+        self.dilemmas_table = Mock()
+        self.dilemmas_table.scan.return_value = {
+            "Items": [
+                {"_id": f"d{i}-en", "language": "en"} for i in range(10)
+            ]
+        }
+        self.dilemmas_table.get_item.return_value = {
+            "Item": {
+                "_id": "d0-en",
+                "dilemma": "Sample?",
+                "firstAnswer": "A",
+                "secondAnswer": "B",
+            }
+        }
+        self.patches = [
+            patch.object(backend_module, "party_rooms_table", self.rooms),
+            patch.object(backend_module, "party_participants_table", self.participants),
+            patch.object(backend_module, "table", self.dilemmas_table),
+        ]
+        for p in self.patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def _create_room(self, host="host-1", count=3):
+        return asyncio.run(create_party_room(
+            CreatePartyRoomRequest(displayName="Host", dilemmaCount=count),
+            request_with_headers({"X-Anonymous-User-Id": host}),
+        ))
+
+    def _join(self, room_code, participant="guest-1", name="Guest"):
+        return asyncio.run(join_party_room(
+            room_code,
+            JoinPartyRoomRequest(displayName=name),
+            request_with_headers({"X-Anonymous-User-Id": participant}),
+        ))
+
+    def _start(self, room_code, host="host-1"):
+        return asyncio.run(start_party_room(room_code, request_with_headers({"X-Anonymous-User-Id": host})))
+
+    def _get_state(self, room_code, participant):
+        return asyncio.run(get_party_room(room_code, request_with_headers({"X-Anonymous-User-Id": participant})))
+
+    def _vote(self, room_code, participant, choice, values=None):
+        values = values or {"Empathy": 1.0}
+        return asyncio.run(submit_party_vote(
+            room_code,
+            SubmitPartyVoteRequest(choice=choice, chosenValues=values),
+            request_with_headers({"X-Anonymous-User-Id": participant}),
+        ))
+
+    def test_create_room_makes_host_the_first_participant(self):
+        result = self._create_room()
+        self.assertEqual(result["status"], "lobby")
+        self.assertEqual(len(result["roomCode"]), backend_module.PARTY_ROOM_CODE_LENGTH)
+
+        state = self._get_state(result["roomCode"], "host-1")
+        self.assertTrue(state["isHost"])
+        self.assertEqual(state["participantCount"], 1)
+
+    def test_join_is_idempotent_for_the_same_participant(self):
+        room = self._create_room()
+        self._join(room["roomCode"], "guest-1")
+        self._join(room["roomCode"], "guest-1")  # repeat join, same identity
+
+        state = self._get_state(room["roomCode"], "host-1")
+        self.assertEqual(state["participantCount"], 2)
+
+    def test_join_after_start_is_rejected(self):
+        room = self._create_room()
+        self._join(room["roomCode"], "guest-1")
+        self._start(room["roomCode"])
+
+        with self.assertRaises(Exception) as raised:
+            self._join(room["roomCode"], "guest-2")
+        self.assertEqual(raised.exception.status_code, 409)
+
+    def test_room_full_rejects_a_new_participant(self):
+        room = self._create_room()
+        with patch.object(backend_module, "PARTY_ROOM_MAX_PARTICIPANTS", 2):
+            self._join(room["roomCode"], "guest-1")  # host + guest-1 = 2, at cap
+            with self.assertRaises(Exception) as raised:
+                self._join(room["roomCode"], "guest-2")
+        self.assertEqual(raised.exception.status_code, 409)
+
+    def test_only_host_can_start(self):
+        room = self._create_room()
+        self._join(room["roomCode"], "guest-1")
+        with self.assertRaises(Exception) as raised:
+            self._start(room["roomCode"], host="guest-1")
+        self.assertEqual(raised.exception.status_code, 403)
+
+    def test_start_requires_minimum_participants(self):
+        room = self._create_room()
+        with self.assertRaises(Exception) as raised:
+            self._start(room["roomCode"])
+        self.assertEqual(raised.exception.status_code, 400)
+
+    def test_vote_is_immutable_once_cast(self):
+        room = self._create_room()
+        self._join(room["roomCode"], "guest-1")
+        self._start(room["roomCode"])
+
+        self._vote(room["roomCode"], "host-1", "first")
+        with self.assertRaises(Exception) as raised:
+            self._vote(room["roomCode"], "host-1", "second")
+        self.assertEqual(raised.exception.status_code, 409)
+
+    def test_everyone_voting_advances_straight_to_reveal(self):
+        room = self._create_room()
+        self._join(room["roomCode"], "guest-1")
+        self._start(room["roomCode"])
+
+        self._vote(room["roomCode"], "host-1", "first")
+        result = self._vote(room["roomCode"], "guest-1", "second")
+
+        self.assertEqual(result["status"], "reveal")
+        state = self._get_state(room["roomCode"], "host-1")
+        self.assertEqual(state["roundResult"], {"firstVotes": 1, "secondVotes": 1})
+
+    def test_deadline_passing_advances_without_everyone_voting(self):
+        room = self._create_room()
+        self._join(room["roomCode"], "guest-1")
+        self._start(room["roomCode"])
+        self._vote(room["roomCode"], "host-1", "first")
+
+        # Force the round's deadline into the past instead of sleeping.
+        self.rooms._items[(room["roomCode"],)]["phaseEndsAt"] = 0
+
+        state = self._get_state(room["roomCode"], "host-1")
+        self.assertEqual(state["status"], "reveal")
+        self.assertEqual(state["roundResult"], {"firstVotes": 1, "secondVotes": 0})
+
+    def test_full_room_reaches_completed_and_returns_archetypes(self):
+        room = self._create_room(count=backend_module.PARTY_ROOM_MIN_DILEMMAS)
+        self._join(room["roomCode"], "guest-1")
+        self._start(room["roomCode"])
+
+        for _ in range(backend_module.PARTY_ROOM_MIN_DILEMMAS):
+            self._vote(room["roomCode"], "host-1", "first", {"Empathy": 1.0})
+            self._vote(room["roomCode"], "guest-1", "second", {"Empathy": 0.1})
+            # Voting both sides advances straight to reveal; force the reveal
+            # window shut too so the loop reaches the next question/completed.
+            self.rooms._items[(room["roomCode"],)]["phaseEndsAt"] = 0
+            self._get_state(room["roomCode"], "host-1")
+
+        state = self._get_state(room["roomCode"], "host-1")
+        self.assertEqual(state["status"], "completed")
+        self.assertEqual(len(state["participants"]), 2)
+        for participant in state["participants"]:
+            self.assertIn("archetype", participant)
+            # TASK-46 AC: never expose another participant's internal ID.
+            self.assertNotIn("participantId", participant)
+
+    def test_completed_room_includes_group_awards(self):
+        # TASK-48: 3 participants so moral_minority is also computable. Create
+        # with the minimum allowed dilemma count, then trim the stored room
+        # to a single round so one vote per participant reaches "completed".
+        room = self._create_room(count=backend_module.PARTY_ROOM_MIN_DILEMMAS)
+        self.rooms._items[(room["roomCode"],)]["dilemmaBaseIds"] = \
+            self.rooms._items[(room["roomCode"],)]["dilemmaBaseIds"][:1]
+        self._join(room["roomCode"], "guest-1")
+        self._join(room["roomCode"], "guest-2")
+        self._start(room["roomCode"])
+
+        self._vote(room["roomCode"], "host-1", "first", {"Empathy": 0.9})
+        self._vote(room["roomCode"], "guest-1", "first", {"Empathy": 0.88})
+        self._vote(room["roomCode"], "guest-2", "second", {"Empathy": 0.1})
+        self.rooms._items[(room["roomCode"],)]["phaseEndsAt"] = 0
+
+        state = self._get_state(room["roomCode"], "host-1")
+        self.assertEqual(state["status"], "completed")
+        awards = state["awards"]
+        self.assertIsNotNone(awards["closestPair"])
+        self.assertIsNotNone(awards["moralMinority"])
+        self.assertEqual(awards["mostControversialDilemma"]["roundIndex"], 0)
+        self.assertEqual(
+            (awards["mostControversialDilemma"]["firstVotes"], awards["mostControversialDilemma"]["secondVotes"]),
+            (2, 1),
+        )
+
+    def test_participant_summary_never_includes_raw_ids(self):
+        room = self._create_room()
+        self._join(room["roomCode"], "guest-1")
+        state = self._get_state(room["roomCode"], "guest-1")
+        for participant in state["participants"]:
+            self.assertNotIn("participantId", participant)
+        self.assertTrue(any(p["isCaller"] for p in state["participants"]))
+
+
+if __name__ == "__main__":
+    unittest.main()

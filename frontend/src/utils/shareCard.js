@@ -138,21 +138,18 @@ const dataUrlToFile = async (dataUrl, filename) => {
 };
 
 /**
- * TASK-32: `<a download>` (used by downloadShareCard) does not reliably save
- * a file inside the Android WebView the Capacitor app runs in - there is no
- * Downloads-folder handler by default, so a tap can silently do nothing.
- * This tries the Web Share API's file-sharing (navigator.share({files})),
- * which the WebView's underlying Chrome engine supports without any new
- * Capacitor plugin/native project change (so it needs no Android rebuild),
- * opening the native share sheet directly; only when that is unavailable
- * (most desktop browsers) does it fall back to the plain download link.
- * Returns the method actually used, for instrumentation.
+ * TASK-32: `<a download>` does not reliably save a file inside the Android
+ * WebView the Capacitor app runs in - there is no Downloads-folder handler
+ * by default, so a tap can silently do nothing. This tries the Web Share
+ * API's file-sharing (navigator.share({files})), which the WebView's
+ * underlying Chrome engine supports without any new Capacitor plugin/native
+ * project change (so it needs no Android rebuild), opening the native share
+ * sheet directly; only when that is unavailable (most desktop browsers) does
+ * it fall back to a plain download link. Returns the method actually used,
+ * for instrumentation.
  */
-export const shareOrDownloadCard = async (archetype, format, shareText) => {
-  const filename = `moral-torture-machine-${format}.png`;
-
+const shareOrDownloadDataUrl = async (dataUrl, filename, shareText) => {
   try {
-    const dataUrl = generateShareCardDataUrl(archetype, format);
     const file = await dataUrlToFile(dataUrl, filename);
     if (navigator.canShare?.({ files: [file] })) {
       await navigator.share({ files: [file], text: shareText });
@@ -165,6 +162,108 @@ export const shareOrDownloadCard = async (archetype, format, shareText) => {
     console.warn('Native share of card failed, falling back to download:', error);
   }
 
-  downloadShareCard(archetype, format);
+  const link = document.createElement('a');
+  link.href = dataUrl;
+  link.download = filename;
+  link.click();
   return 'download';
+};
+
+export const shareOrDownloadCard = async (archetype, format, shareText) => {
+  const dataUrl = generateShareCardDataUrl(archetype, format);
+  return shareOrDownloadDataUrl(dataUrl, `moral-torture-machine-${format}.png`, shareText);
+};
+
+/**
+ * TASK-48: Party Room recap card - closest pair, moral minority (when the
+ * group is big enough to have one) and the most-divided dilemma, all
+ * computed deterministically server-side (party_awards.py); this only
+ * renders them. Same canvas approach as generateShareCardDataUrl: no AI, no
+ * server round trip.
+ * @param {{closestPair: object|null, moralMinority: object|null, mostControversialDilemma: object|null}} awards
+ * @param {{displayName: string}[]} participants
+ */
+export const generatePartyRecapCardDataUrl = (awards, participants) => {
+  const width = 1080;
+  const height = 1350;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  const margin = width * 0.1;
+  const maxWidth = width - margin * 2;
+  const accent = '#8B0000';
+
+  const gradient = ctx.createLinearGradient(0, 0, 0, height);
+  gradient.addColorStop(0, '#0a0a0a');
+  gradient.addColorStop(0.5, '#151515');
+  gradient.addColorStop(1, '#0a0a0a');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = width * 0.012;
+  ctx.strokeRect(ctx.lineWidth / 2, ctx.lineWidth / 2, width - ctx.lineWidth, height - ctx.lineWidth);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#888888';
+  ctx.font = `${width * 0.024}px ${FONT_FAMILY}`;
+  ctx.fillText('MORAL TORTURE MACHINE', width / 2, height * 0.08);
+
+  ctx.fillStyle = '#f2f2f2';
+  ctx.font = `bold ${width * 0.06}px ${FONT_FAMILY}`;
+  ctx.fillText('PARTY RESULTS', width / 2, height * 0.15);
+
+  ctx.fillStyle = '#888888';
+  ctx.font = `${width * 0.028}px ${FONT_FAMILY}`;
+  ctx.fillText(`${participants.length} PLAYERS JUDGED`, width / 2, height * 0.19);
+
+  let y = height * 0.28;
+  const nameOf = (index) => participants[index]?.displayName || '?';
+
+  const drawSection = (label, lines) => {
+    ctx.fillStyle = accent;
+    ctx.font = `bold ${width * 0.032}px ${FONT_FAMILY}`;
+    ctx.fillText(label, width / 2, y);
+    y += width * 0.05;
+    ctx.fillStyle = '#f2f2f2';
+    for (const rawLine of lines) {
+      const fitted = fitText(ctx, rawLine, {
+        maxWidth, maxLines: 2, startSize: width * 0.036, minSize: width * 0.022,
+      });
+      for (const line of fitted.lines) {
+        ctx.font = `${fitted.fontSize}px ${FONT_FAMILY}`;
+        ctx.fillText(line, width / 2, y);
+        y += fitted.fontSize * 1.35;
+      }
+    }
+    y += width * 0.05;
+  };
+
+  if (awards.closestPair) {
+    const [a, b] = awards.closestPair.participantKeys;
+    drawSection('CLOSEST PAIR', [
+      `${nameOf(a)} & ${nameOf(b)}`,
+      `${awards.closestPair.agreementPct}% aligned`,
+    ]);
+  }
+
+  if (awards.moralMinority) {
+    drawSection('MORAL MINORITY', [nameOf(awards.moralMinority.participantKey)]);
+  }
+
+  if (awards.mostControversialDilemma) {
+    const { dilemma, firstVotes, secondVotes } = awards.mostControversialDilemma;
+    drawSection('MOST DIVIDED ON', [dilemma, `${firstVotes} vs ${secondVotes}`]);
+  }
+
+  ctx.fillStyle = accent;
+  ctx.font = `${width * 0.03}px ${FONT_FAMILY}`;
+  ctx.fillText(DEEP_LINK_LABEL, width / 2, height * 0.96);
+
+  return canvas.toDataURL('image/png');
+};
+
+export const sharePartyRecapCard = async (awards, participants, shareText) => {
+  const dataUrl = generatePartyRecapCardDataUrl(awards, participants);
+  return shareOrDownloadDataUrl(dataUrl, 'moral-torture-machine-party-recap.png', shareText);
 };

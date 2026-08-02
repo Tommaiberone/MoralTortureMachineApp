@@ -136,6 +136,16 @@ Growth metric or strategic gate changed        -> backlog/docs/doc-2
   unaffected and still render in Italian. Do not reintroduce a language
   switcher or Italian auto-detection for the app without this line being
   updated first.
+- **`it.json` drift exception (2026-08-02, at the user's explicit request):**
+  production analytics show Italian at under 1% of historical events (153 of
+  20,174 in `user-analytics`; ~0 of 467 in `product_events` since TASK-101).
+  New app-facing frontend work adds/updates keys in `en.json` only; do not
+  add or update matching keys in `it.json` for new features — let it drift
+  out of sync rather than spend effort keeping it current. Do not delete or
+  otherwise touch existing `it.json` content beyond this. This does not apply
+  to the bilingual EN/IT SEO landing pages (ADR-020), which stay maintained
+  in both languages. Revisit this exception if Italian is ever reactivated or
+  a decision is made to remove it entirely instead of leaving it drifted.
 
 ## Cost constraints
 

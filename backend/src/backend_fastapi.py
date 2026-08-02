@@ -15,6 +15,7 @@ import hmac
 import hashlib
 import re
 import secrets
+import random
 from collections import Counter, defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from math import ceil
@@ -30,13 +31,16 @@ import json
 try:
     from src.archetype_engine import assign_archetype, compute_dimension_averages
     from src.compatibility_engine import compute_compatibility
+    from src.party_awards import compute_party_room_awards
 except ImportError:
     try:
         from .archetype_engine import assign_archetype, compute_dimension_averages
         from .compatibility_engine import compute_compatibility
+        from .party_awards import compute_party_room_awards
     except ImportError:
         from archetype_engine import assign_archetype, compute_dimension_averages
         from compatibility_engine import compute_compatibility
+        from party_awards import compute_party_room_awards
 
 # Configure logging
 logger = logging.getLogger()
@@ -87,6 +91,8 @@ USERS_TABLE = os.getenv("USERS_TABLE", "moral-torture-machine-users")
 MORAL_PROFILES_TABLE = os.getenv("MORAL_PROFILES_TABLE", "moral-torture-machine-moral-profiles")
 CHALLENGES_TABLE = os.getenv("CHALLENGES_TABLE", "moral-torture-machine-challenges")
 CHALLENGE_PARTICIPANTS_TABLE = os.getenv("CHALLENGE_PARTICIPANTS_TABLE", "moral-torture-machine-challenge-participants")
+PARTY_ROOMS_TABLE = os.getenv("PARTY_ROOMS_TABLE", "moral-torture-machine-party-rooms")
+PARTY_PARTICIPANTS_TABLE = os.getenv("PARTY_PARTICIPANTS_TABLE", "moral-torture-machine-party-participants")
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
 GROQ_API_KEY_SSM_NAME = os.getenv("GROQ_API_KEY_SSM_NAME", "")
 ANALYTICS_FINGERPRINT_SECRET_SSM_NAME = os.getenv(
@@ -134,6 +140,14 @@ ABUSE_PUBLIC_READ_REQUESTS_PER_MINUTE = _env_positive_int(
     "ABUSE_PUBLIC_READ_REQUESTS_PER_MINUTE",
     60,
 )
+# TASK-46/47: Party Room is polled by every participant every 1-2s while a
+# room is active (ADR-050), so it needs a much higher ceiling per source than
+# the occasional "public_read" checks elsewhere - 60/min would be exhausted
+# by a single actively-polling participant alone.
+ABUSE_PARTY_ROOM_POLL_REQUESTS_PER_MINUTE = _env_positive_int(
+    "ABUSE_PARTY_ROOM_POLL_REQUESTS_PER_MINUTE",
+    90,
+)
 
 # TASK-104: email every 4xx/5xx via the existing ops_alerts SNS topic
 # (ADR-031). Coalesced per (status_code, path) rather than per request, so a
@@ -149,6 +163,22 @@ OPS_ERROR_NOTIFICATION_COOLDOWN_SECONDS = _env_positive_int(
 
 # TASK-34: abandoned challenges (never joined/completed) expire via TTL.
 CHALLENGE_TTL_SECONDS = 30 * 24 * 60 * 60
+
+# TASK-46/47: Party Room (ADR-050 - HTTP polling, not WebSocket). Rooms are a
+# short-lived, same-session activity, so a much shorter TTL than Duel
+# challenges is appropriate. The room code is short/typeable (for QR fallback
+# and verbal sharing) rather than a long opaque token like Duel's; that's
+# safe because a room carries no private data and expires quickly.
+PARTY_ROOM_TTL_SECONDS = 6 * 60 * 60
+PARTY_ROOM_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O/1/I/L
+PARTY_ROOM_CODE_LENGTH = 6
+PARTY_ROOM_MIN_DILEMMAS = 3
+PARTY_ROOM_MAX_DILEMMAS = 12
+PARTY_ROOM_DEFAULT_DILEMMAS = 6
+PARTY_ROOM_MAX_PARTICIPANTS = 20
+PARTY_ROOM_MIN_PARTICIPANTS_TO_START = 2
+PARTY_ROOM_ROUND_DURATION_MS = 20_000
+PARTY_ROOM_REVEAL_DURATION_MS = 8_000
 
 # Model fallback strategy - ordered by rate limits (highest TPD first)
 MODEL_FALLBACK_CHAIN = [
@@ -179,6 +209,8 @@ users_table = dynamodb.Table(USERS_TABLE)
 moral_profiles_table = dynamodb.Table(MORAL_PROFILES_TABLE)
 challenges_table = dynamodb.Table(CHALLENGES_TABLE)
 challenge_participants_table = dynamodb.Table(CHALLENGE_PARTICIPANTS_TABLE)
+party_rooms_table = dynamodb.Table(PARTY_ROOMS_TABLE)
+party_participants_table = dynamodb.Table(PARTY_PARTICIPANTS_TABLE)
 ssm_client = boto3.client('ssm', region_name=AWS_REGION)
 sns_client = boto3.client('sns', region_name=AWS_REGION)
 
@@ -659,6 +691,22 @@ class CreateChallengeRequest(BaseModel):
 class SubmitChallengeRequest(BaseModel):
     answers: list[DilemmaAnswer] = Field(..., min_length=1, max_length=20)
 
+class CreatePartyRoomRequest(BaseModel):
+    displayName: str = Field(..., min_length=1, max_length=40)
+    language: str = Field(default="en", min_length=2, max_length=10, pattern=r'^[a-zA-Z]+$')
+    dilemmaCount: int = Field(
+        default=PARTY_ROOM_DEFAULT_DILEMMAS,
+        ge=PARTY_ROOM_MIN_DILEMMAS,
+        le=PARTY_ROOM_MAX_DILEMMAS,
+    )
+
+class JoinPartyRoomRequest(BaseModel):
+    displayName: str = Field(..., min_length=1, max_length=40)
+
+class SubmitPartyVoteRequest(BaseModel):
+    choice: str = Field(..., pattern=r'^(first|second)$')
+    chosenValues: Dict[str, float] = Field(..., max_length=12)
+
 class StoryNodeVoteRequest(BaseModel):
     flowId: str = Field(..., description="Story flow ID", min_length=1, max_length=100)
     nodeId: str = Field(..., description="Current node ID", min_length=1, max_length=20)
@@ -913,6 +961,11 @@ def _rate_limit_rules_for_request(method: str, path: str) -> list[tuple[str, int
         path.startswith(("/profiles/", "/challenges/")) or path == "/dilemmas/by-ids"
     ):
         rules.append(("public_read", ABUSE_PUBLIC_READ_REQUESTS_PER_MINUTE))
+    elif path == "/party-rooms" or path.startswith("/party-rooms/"):
+        if method.upper() == "GET":
+            rules.append(("party_room_poll", ABUSE_PARTY_ROOM_POLL_REQUESTS_PER_MINUTE))
+        else:
+            rules.append(("duel_write", ABUSE_DUEL_WRITE_REQUESTS_PER_MINUTE))
     return rules
 
 
@@ -1405,6 +1458,390 @@ async def rematch_challenge(token: str, request: Request):
     })
     _track_duel_event(request, "challenge_rematch_created", {"rematch_of_token": token})
     return {"challengeToken": new_token, "status": "open"}
+
+
+# ===== Party Room (TASK-46/47, ADR-050: HTTP polling, no WebSocket) =====
+#
+# Rooms advance lazily: there is no dedicated "advance to next round" call.
+# Every read (GET room state) or write (join/vote) first runs
+# _advance_party_room_if_due(), which moves lobby -> question -> reveal ->
+# question... -> completed purely from stored timestamps and vote counts, so
+# no single client (in particular not the host's) needs to stay foregrounded
+# for the room to progress. A conditional DynamoDB update makes a concurrent
+# double-advance from multiple simultaneous pollers a no-op rather than a bug.
+
+def _generate_room_code() -> str:
+    return "".join(secrets.choice(PARTY_ROOM_CODE_ALPHABET) for _ in range(PARTY_ROOM_CODE_LENGTH))
+
+
+def _pick_random_dilemma_base_ids(language: str, count: int) -> list[str]:
+    """Sample `count` distinct dilemma base ids once, up front, so every
+    participant in the room answers the identical set (unlike Duel, where
+    dilemmas come from whichever profile the creator already completed)."""
+    response = table.scan(
+        FilterExpression='attribute_exists(#lang) AND #lang = :language',
+        ExpressionAttributeNames={'#lang': 'language'},
+        ExpressionAttributeValues={':language': language},
+    )
+    suffix = f"-{language}"
+    base_ids = sorted({
+        item['_id'][:-len(suffix)] for item in response.get('Items', [])
+        if item.get('_id', '').endswith(suffix)
+    })
+    if not base_ids:
+        raise HTTPException(status_code=404, detail=f"No dilemmas found for language: {language}")
+    if len(base_ids) <= count:
+        return base_ids
+    return random.sample(base_ids, count)
+
+
+def get_room_or_404(room_code: str) -> Dict[str, Any]:
+    """Normalizes DynamoDB Decimal fields (currentRoundIndex, phaseEndsAt, ...)
+    to native int/float here, once, so every caller can use them directly -
+    e.g. as a list index - without re-converting."""
+    response = party_rooms_table.get_item(Key={"roomCode": room_code})
+    item = response.get("Item")
+    if not item:
+        raise HTTPException(status_code=404, detail="Room not found")
+    expiration = item.get("expirationTime")
+    if expiration and int(time.time()) > int(expiration):
+        raise HTTPException(status_code=410, detail="This room has expired")
+    return decimal_to_native(item)
+
+
+def _list_party_participants(room_code: str) -> list[Dict[str, Any]]:
+    response = party_participants_table.query(
+        KeyConditionExpression="roomCode = :room",
+        ExpressionAttributeValues={":room": room_code},
+    )
+    return [decimal_to_native(item) for item in response.get("Items", [])]
+
+
+def _advance_party_room_if_due(room: Dict[str, Any]) -> Dict[str, Any]:
+    """Move the room to its next phase if the current one is over. Returns the
+    (possibly updated) room record. Safe to call from every read and write."""
+    if room["status"] not in ("question", "reveal"):
+        return room
+
+    now_ms = int(time.time() * 1000)
+    phase_ends_at = int(room["phaseEndsAt"])
+    due = now_ms >= phase_ends_at
+
+    if room["status"] == "question" and not due:
+        participants = _list_party_participants(room["roomCode"])
+        round_key = str(room["currentRoundIndex"])
+        voted = sum(1 for p in participants if round_key in p.get("votes", {}))
+        due = len(participants) > 0 and voted >= len(participants)
+
+    if not due:
+        return room
+
+    expected_status = room["status"]
+    if room["status"] == "question":
+        update_expression = "SET #status = :newStatus, phaseEndsAt = :ends"
+        expression_values = {
+            ":newStatus": "reveal",
+            ":ends": now_ms + PARTY_ROOM_REVEAL_DURATION_MS,
+        }
+    else:
+        next_index = room["currentRoundIndex"] + 1
+        if next_index < len(room["dilemmaBaseIds"]):
+            update_expression = "SET #status = :newStatus, currentRoundIndex = :idx, phaseEndsAt = :ends"
+            expression_values = {
+                ":newStatus": "question",
+                ":idx": next_index,
+                ":ends": now_ms + PARTY_ROOM_ROUND_DURATION_MS,
+            }
+        else:
+            update_expression = "SET #status = :newStatus"
+            expression_values = {":newStatus": "completed"}
+
+    try:
+        response = party_rooms_table.update_item(
+            Key={"roomCode": room["roomCode"]},
+            UpdateExpression=update_expression,
+            ConditionExpression="#status = :expectedStatus",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={
+                **expression_values,
+                ":expectedStatus": expected_status,
+            },
+            ReturnValues="ALL_NEW",
+        )
+        return decimal_to_native(response["Attributes"])
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            # Another concurrent poller already advanced it; re-read instead of
+            # trusting our stale in-memory copy.
+            return get_room_or_404(room["roomCode"])
+        raise
+
+
+@app.post("/party-rooms")
+async def create_party_room(create_request: CreatePartyRoomRequest, request: Request):
+    """Host creates a room (TASK-46). Anonymous-first, like every other core
+    endpoint: only the existing X-Anonymous-User-Id identity is required."""
+    anonymous_user_id = require_anonymous_user_id(request)
+    dilemma_base_ids = _pick_random_dilemma_base_ids(create_request.language, create_request.dilemmaCount)
+
+    now = int(time.time() * 1000)
+    expiration_time = int(time.time()) + PARTY_ROOM_TTL_SECONDS
+    room_code = None
+    for _ in range(10):
+        candidate = _generate_room_code()
+        try:
+            party_rooms_table.put_item(
+                Item={
+                    "roomCode": candidate,
+                    "hostParticipantId": anonymous_user_id,
+                    "status": "lobby",
+                    "language": create_request.language,
+                    "dilemmaBaseIds": dilemma_base_ids,
+                    "currentRoundIndex": 0,
+                    "phaseEndsAt": 0,
+                    "createdAt": now,
+                    "expirationTime": expiration_time,
+                },
+                ConditionExpression="attribute_not_exists(roomCode)",
+            )
+            room_code = candidate
+            break
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+                raise
+    if not room_code:
+        raise HTTPException(status_code=503, detail="Could not allocate a room code, please retry")
+
+    party_participants_table.put_item(Item={
+        "roomCode": room_code,
+        "participantId": anonymous_user_id,
+        "displayName": create_request.displayName,
+        "isHost": True,
+        "joinedAt": now,
+        "votes": {},
+        "expirationTime": expiration_time,
+    })
+    _track_duel_event(request, "party_room_created", {"dilemma_count": len(dilemma_base_ids)})
+    return {"roomCode": room_code, "participantId": anonymous_user_id, "status": "lobby"}
+
+
+@app.post("/party-rooms/{room_code}/join")
+async def join_party_room(room_code: str, join_request: JoinPartyRoomRequest, request: Request):
+    """Idempotent for the same identity (a rejoin/refresh is a no-op); rejects
+    once the room has started or is full, mirroring Duel's join guards."""
+    anonymous_user_id = require_anonymous_user_id(request)
+    room = get_room_or_404(room_code)
+    existing = party_participants_table.get_item(
+        Key={"roomCode": room_code, "participantId": anonymous_user_id}
+    ).get("Item")
+    if existing:
+        return {"roomCode": room_code, "participantId": anonymous_user_id, "status": room["status"]}
+
+    if room["status"] != "lobby":
+        raise HTTPException(status_code=409, detail="This room has already started")
+
+    participants = _list_party_participants(room_code)
+    if len(participants) >= PARTY_ROOM_MAX_PARTICIPANTS:
+        raise HTTPException(status_code=409, detail="This room is full")
+
+    party_participants_table.put_item(Item={
+        "roomCode": room_code,
+        "participantId": anonymous_user_id,
+        "displayName": join_request.displayName,
+        "isHost": False,
+        "joinedAt": int(time.time() * 1000),
+        "votes": {},
+        "expirationTime": room["expirationTime"],
+    })
+    _track_duel_event(request, "party_room_joined", {"room_code": room_code})
+    return {"roomCode": room_code, "participantId": anonymous_user_id, "status": "lobby"}
+
+
+@app.post("/party-rooms/{room_code}/start")
+async def start_party_room(room_code: str, request: Request):
+    """Host-only. Requires the minimum participant count (TASK-47)."""
+    anonymous_user_id = require_anonymous_user_id(request)
+    room = get_room_or_404(room_code)
+    if room["hostParticipantId"] != anonymous_user_id:
+        raise HTTPException(status_code=403, detail="Only the host can start this room")
+    if room["status"] != "lobby":
+        raise HTTPException(status_code=409, detail="This room has already started")
+
+    participants = _list_party_participants(room_code)
+    if len(participants) < PARTY_ROOM_MIN_PARTICIPANTS_TO_START:
+        raise HTTPException(
+            status_code=400,
+            detail=f"At least {PARTY_ROOM_MIN_PARTICIPANTS_TO_START} participants are required to start",
+        )
+
+    now_ms = int(time.time() * 1000)
+    try:
+        party_rooms_table.update_item(
+            Key={"roomCode": room_code},
+            UpdateExpression="SET #status = :question, phaseEndsAt = :ends",
+            ConditionExpression="#status = :lobby",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={
+                ":question": "question",
+                ":lobby": "lobby",
+                ":ends": now_ms + PARTY_ROOM_ROUND_DURATION_MS,
+            },
+        )
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            raise HTTPException(status_code=409, detail="This room has already started")
+        raise
+    _track_duel_event(request, "party_room_started", {"room_code": room_code, "participant_count": len(participants)})
+    return {"roomCode": room_code, "status": "question"}
+
+
+@app.post("/party-rooms/{room_code}/vote")
+async def submit_party_vote(room_code: str, vote_request: SubmitPartyVoteRequest, request: Request):
+    """Immutable once cast per round, enforced by DynamoDB (not just app
+    logic), mirroring Duel's submit guard (ADR-038)."""
+    anonymous_user_id = require_anonymous_user_id(request)
+    room = get_room_or_404(room_code)
+    room = _advance_party_room_if_due(room)
+    if room["status"] != "question":
+        raise HTTPException(status_code=409, detail="Voting is not open for this room right now")
+
+    participant = party_participants_table.get_item(
+        Key={"roomCode": room_code, "participantId": anonymous_user_id}
+    ).get("Item")
+    if not participant:
+        raise HTTPException(status_code=403, detail="Join this room before voting")
+
+    round_key = str(room["currentRoundIndex"])
+    try:
+        party_participants_table.update_item(
+            Key={"roomCode": room_code, "participantId": anonymous_user_id},
+            UpdateExpression="SET votes.#round = :vote",
+            ConditionExpression="attribute_not_exists(votes.#round)",
+            ExpressionAttributeNames={"#round": round_key},
+            ExpressionAttributeValues={
+                # chosenValues is stored as a JSON string, not a native Map -
+                # boto3's resource API rejects raw Python floats in DynamoDB
+                # attributes (they'd need converting to Decimal), and this
+                # matches the same json.dumps pattern already used for
+                # dimensionAverages on moral_profiles_table.
+                ":vote": {
+                    "choice": vote_request.choice,
+                    "chosenValues": json.dumps(vote_request.chosenValues, separators=(",", ":")),
+                },
+            },
+        )
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            raise HTTPException(status_code=409, detail="You already voted this round")
+        raise
+
+    room = _advance_party_room_if_due(get_room_or_404(room_code))
+    _track_duel_event(request, "party_room_vote_cast", {"room_code": room_code, "round_index": room["currentRoundIndex"]})
+    return {"roomCode": room_code, "status": room["status"], "currentRoundIndex": room["currentRoundIndex"]}
+
+
+def _party_room_participant_summary(
+    participant: Dict[str, Any], caller_anonymous_user_id: str, archetype: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Never returns the raw anonymous_user_id to other participants (it's an
+    internal identifier, same rule as everywhere else in the product) - only
+    whether this entry is the caller themselves."""
+    summary = {
+        "isCaller": participant["participantId"] == caller_anonymous_user_id,
+        "displayName": participant["displayName"],
+        "isHost": participant.get("isHost", False),
+    }
+    if archetype:
+        summary["archetype"] = archetype
+    return summary
+
+
+def _party_room_votes_by_round(participants: list, dilemma_count: int) -> list:
+    tallies = []
+    for round_index in range(dilemma_count):
+        round_key = str(round_index)
+        first = sum(1 for p in participants if p.get("votes", {}).get(round_key, {}).get("choice") == "first")
+        second = sum(1 for p in participants if p.get("votes", {}).get(round_key, {}).get("choice") == "second")
+        tallies.append({"first": first, "second": second})
+    return tallies
+
+
+@app.get("/party-rooms/{room_code}")
+async def get_party_room(room_code: str, request: Request, language: str = "en"):
+    """Polled repeatedly by every client in the room (lobby, each round, and
+    the final screen) - this single endpoint carries the room's entire
+    visible state so the frontend never needs a second call to stay in sync."""
+    anonymous_user_id = require_anonymous_user_id(request)
+    room = get_room_or_404(room_code)
+    room = _advance_party_room_if_due(room)
+    participants = _list_party_participants(room_code)
+    caller = next((p for p in participants if p["participantId"] == anonymous_user_id), None)
+    is_completed = room["status"] == "completed"
+
+    # TASK-48: participant-index keys, never the raw anonymous_user_id, both
+    # for the awards computation and for referencing "which participant" from
+    # the response - consistent with never exposing internal IDs.
+    participant_averages_by_index: Dict[int, Dict[str, float]] = {}
+    archetypes_by_index: Dict[int, Dict[str, Any]] = {}
+    if is_completed:
+        for index, participant in enumerate(participants):
+            answers = [json.loads(vote["chosenValues"]) for vote in participant.get("votes", {}).values()]
+            if answers:
+                averages = compute_dimension_averages(answers)
+                participant_averages_by_index[index] = averages
+                archetypes_by_index[index] = assign_archetype(averages, language=language)
+
+    response = {
+        "roomCode": room_code,
+        "status": room["status"],
+        "language": room["language"],
+        "isHost": bool(caller and caller.get("isHost")),
+        "hasJoined": caller is not None,
+        "participantCount": len(participants),
+        "dilemmaCount": len(room["dilemmaBaseIds"]),
+        "currentRoundIndex": room["currentRoundIndex"],
+        "phaseEndsAt": room["phaseEndsAt"] or None,
+        "participants": [
+            _party_room_participant_summary(p, anonymous_user_id, archetypes_by_index.get(index))
+            for index, p in enumerate(participants)
+        ],
+    }
+
+    if room["status"] in ("question", "reveal") and caller:
+        round_key = str(room["currentRoundIndex"])
+        current_base_id = room["dilemmaBaseIds"][room["currentRoundIndex"]]
+        dilemma_key = f"{current_base_id}-{language}"
+        dilemma_item = decimal_to_native(table.get_item(Key={"_id": dilemma_key}).get("Item") or {})
+        response["currentDilemma"] = dilemma_item or None
+        response["hasVotedThisRound"] = round_key in caller.get("votes", {})
+        if room["status"] == "reveal":
+            first_votes = sum(1 for p in participants if p.get("votes", {}).get(round_key, {}).get("choice") == "first")
+            second_votes = sum(1 for p in participants if p.get("votes", {}).get(round_key, {}).get("choice") == "second")
+            response["roundResult"] = {"firstVotes": first_votes, "secondVotes": second_votes}
+
+    if is_completed:
+        votes_by_round = _party_room_votes_by_round(participants, len(room["dilemmaBaseIds"]))
+        awards = compute_party_room_awards(participant_averages_by_index, votes_by_round)
+        controversial_index = awards["mostControversialRoundIndex"]
+        if controversial_index is not None:
+            base_id = room["dilemmaBaseIds"][controversial_index]
+            dilemma_item = decimal_to_native(
+                table.get_item(Key={"_id": f"{base_id}-{language}"}).get("Item") or {}
+            )
+            round_tally = votes_by_round[controversial_index]
+            awards["mostControversialDilemma"] = {
+                "roundIndex": controversial_index,
+                "dilemma": dilemma_item.get("dilemma"),
+                "firstAnswer": dilemma_item.get("firstAnswer"),
+                "secondAnswer": dilemma_item.get("secondAnswer"),
+                # Same naming as the live "reveal" phase's roundResult.
+                "firstVotes": round_tally["first"],
+                "secondVotes": round_tally["second"],
+            }
+        response["awards"] = awards
+
+    return response
+
 
 @app.get("/health")
 async def health_check():

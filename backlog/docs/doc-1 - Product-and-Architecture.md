@@ -151,6 +151,29 @@ dev table, or `/dev` SSM hierarchy.
   `TASK-88` evaluates a safe migration; new tables must first use DynamoDB
   Standard provisioned capacity within the shared Free Tier when the measured
   workload makes that configuration technically adequate.
+- **Party Room** (`TASK-46`/`47`, ADR-050/051) is the same-room live variant:
+  `party_rooms` (PK `roomCode`, a short 6-character human-shareable code, not
+  a long opaque token like Duel's, since it is read aloud/typed/QR-scanned by
+  people together in person and the room expires in hours) and
+  `party_participants` (PK `roomCode`, SK `participantId` = the caller's
+  existing `anonymous_user_id`, with per-round votes in a nested map, both
+  provisioned 1/1 with a 6h TTL). There is no WebSocket and no
+  "advance to next round" endpoint: every `GET`/`POST` first runs
+  `_advance_party_room_if_due`, which moves `lobby -> question -> reveal ->
+  question... -> completed` from a stored deadline timestamp and live vote
+  counts, via a conditional DynamoDB update so concurrent pollers never
+  double-advance. `GET /party-rooms/{code}` never returns another
+  participant's raw `anonymous_user_id`, only `isCaller` on the caller's own
+  entry. `backend/src/party_awards.py` (`TASK-48`, ADR-052) computes three
+  group awards once the room is `completed` - closest pair and moral
+  minority reuse `compatibility_engine.compute_compatibility` over
+  participant-index keys (moral minority needs 3+ participants and is `null`
+  otherwise, never fabricated), and most-controversial-dilemma picks the
+  round with the closest first/second split. `shareCard.js`'s
+  `sharePartyRecapCard` renders these client-side onto the same canvas
+  approach as the archetype share card (no AI, no server round trip).
+  A load-tested capacity/duration tuning for the round/reveal timers and the
+  polling rate limit is deliberately deferred to `TASK-49`.
 
 ## Analytics contract
 
@@ -260,8 +283,13 @@ dev table, or `/dev` SSM hierarchy.
   in Backlog.md and the ADR log.
 - Groq remains free-tier-only unless explicitly approved.
 - Batch analytics writes and cache/persist generated content.
-- Use ordinary HTTP for asynchronous duels; WebSockets are reserved for active
-  Party Rooms and must be closed when idle.
+- Use ordinary HTTP for both asynchronous Moral Duel and Party Room (ADR-050
+  supersedes the earlier WebSocket-for-Party-Room default): Party Room state
+  (presence, current dilemma, timer, votes) is read via client polling over
+  the same API Gateway HTTP + Lambda + DynamoDB pattern, with the reveal
+  countdown synchronized by a server-provided deadline timestamp rather than
+  a push per tick. This avoids API Gateway WebSocket's introductory-only
+  Free Tier and its `$connect`/`$disconnect` connection lifecycle entirely.
 - Generate social cards client-side or from cached deterministic templates:
   `frontend/src/utils/shareCard.js` renders the Stories (9:16) and square
   (1:1) archetype cards on an offscreen canvas, with no AI and no server
@@ -322,12 +350,12 @@ conflicts below.
 | API Gateway HTTP API | July cost USD 0 | Conditional: its service Free Tier is introductory, so account eligibility and expiry must be checked |
 | DynamoDB application tables | Four prod tables use `PAY_PER_REQUEST`; about 6.75 MB and 18,941 items in total | Conflict: request usage does not use the provisioned-capacity Free Tier; tracked by `TASK-88` |
 | DynamoDB state/legacy tables | Two Terraform lock tables and one unprefixed legacy dilemma table also use `PAY_PER_REQUEST` | Conflict/technical debt; included in `TASK-88`, with legacy cleanup in `TASK-90` |
-| DynamoDB PITR | Enabled on dilemmas, user analytics, and story flows | Conflict: PITR is charged by table size and has no service Free Tier; tracked by `TASK-89` |
+| DynamoDB PITR | Enabled on dilemmas, user analytics, and story flows | Accepted cost (ADR-048, `TASK-89` closed): no Free Tier allowance exists for PITR, but at current table sizes (~7MB largest) the real cost is a fraction of a cent/month, not worth the effort to change |
 | SSM Parameter Store | Two Standard SecureString parameters | Aligned; Standard tier has no additional Parameter Store charge at standard throughput |
 | CloudWatch Logs | Two groups, seven-day retention, about 3.5 MB stored; July cost USD 0 | Aligned at current usage; keep ingestion, queries, metrics, and alarms within their allowances |
 | S3 and CloudFront | About 1.45 MB frontend assets, 86,962 July CloudFront requests, and about 0.62 GB transfer; July cost effectively USD 0 | Aligned at current usage, but recheck plan/allowance before traffic campaigns |
 | Cognito for this product | Essentials is declared in Terraform but the project user pool is not deployed | Planned configuration is aligned for direct/social sign-in up to the current 10,000 MAU allowance; no SMS, M2M, Plus, or paid add-ons |
-| Party Room realtime | Not provisioned | Risk in backlog: API Gateway WebSocket Free Tier is introductory; `TASK-91` gates the architecture choice |
+| Party Room realtime | Code-complete (`TASK-46`/`47`, ADR-051), not yet deployed | Uses HTTP polling over the already-provisioned API Gateway HTTP + Lambda + DynamoDB stack (2 new provisioned 1/1 tables) instead of API Gateway WebSocket, avoiding its introductory-only Free Tier entirely (ADR-050, `TASK-91` closed) |
 
 ## Repository workflow
 

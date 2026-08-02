@@ -1,0 +1,62 @@
+.party-home-screen {
+  align-items: center;
+}
+
+.party-home-tabs {
+  display: flex;
+  gap: 8px;
+  width: 90%;
+  max-width: 420px;
+  margin: 20px 0;
+}
+
+.party-home-tab {
+  flex: 1;
+  padding: 12px;
+  background-color: var(--creepy-dark-gray);
+  border: 2px solid var(--creepy-fog);
+  color: var(--text-dim);
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.party-home-tab.active {
+  color: var(--text-highlight);
+  border-color: var(--text-danger-readable);
+  background-color: var(--creepy-charcoal);
+}
+
+.party-home-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 90%;
+  max-width: 420px;
+}
+
+.party-home-form label {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 14px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.party-home-form input {
+  padding: 14px;
+  background-color: var(--creepy-deep-black);
+  border: 1px solid var(--creepy-fog);
+  color: var(--text-highlight);
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 18px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.party-home-error {
+  color: var(--text-danger-readable);
+  margin-top: 12px;
+}

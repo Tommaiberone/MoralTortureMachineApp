@@ -309,6 +309,67 @@ resource "aws_dynamodb_table" "challenge_participants" {
   }
 }
 
+# TASK-46/47: Party Room (ADR-050 - HTTP polling, not API Gateway WebSocket).
+# A room is a short-lived, same-session activity, so a much shorter TTL than
+# Duel challenges (backend PARTY_ROOM_TTL_SECONDS = 6h) is appropriate.
+resource "aws_dynamodb_table" "party_rooms" {
+  name           = "${var.environment}-${var.stack_name}-party-rooms"
+  billing_mode   = "PROVISIONED"
+  read_capacity  = 1
+  write_capacity = 1
+  hash_key       = "roomCode"
+
+  attribute {
+    name = "roomCode"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "expirationTime"
+    enabled        = true
+  }
+
+  tags = {
+    Name        = "Moral Torture Machine Party Rooms"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+    Purpose     = "Party Room state (lobby/question/reveal/completed) with TTL for abandoned rooms"
+  }
+}
+
+# One row per participant per room, holding their per-round votes in a
+# nested map (see PARTY_ROOM_* logic in backend_fastapi.py).
+resource "aws_dynamodb_table" "party_participants" {
+  name           = "${var.environment}-${var.stack_name}-party-participants"
+  billing_mode   = "PROVISIONED"
+  read_capacity  = 1
+  write_capacity = 1
+  hash_key       = "roomCode"
+  range_key      = "participantId"
+
+  attribute {
+    name = "roomCode"
+    type = "S"
+  }
+
+  attribute {
+    name = "participantId"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "expirationTime"
+    enabled        = true
+  }
+
+  tags = {
+    Name        = "Moral Torture Machine Party Participants"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+    Purpose     = "Per-participant Party Room presence and per-round votes"
+  }
+}
+
 # SSM Parameter for Groq API Key (migrato da Secrets Manager - risparmio $0.40/mese)
 # Se già creato via CLI, importare con:
 # terraform import aws_ssm_parameter.groq_api_key /prod/moral-torture-machine/groq-api-key
@@ -556,7 +617,9 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           aws_dynamodb_table.moral_profiles.arn,
           "${aws_dynamodb_table.moral_profiles.arn}/index/*",
           aws_dynamodb_table.challenges.arn,
-          aws_dynamodb_table.challenge_participants.arn
+          aws_dynamodb_table.challenge_participants.arn,
+          aws_dynamodb_table.party_rooms.arn,
+          aws_dynamodb_table.party_participants.arn
         ]
       },
       {
@@ -570,7 +633,9 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           aws_dynamodb_table.users.arn,
           aws_dynamodb_table.moral_profiles.arn,
           aws_dynamodb_table.challenges.arn,
-          aws_dynamodb_table.challenge_participants.arn
+          aws_dynamodb_table.challenge_participants.arn,
+          aws_dynamodb_table.party_rooms.arn,
+          aws_dynamodb_table.party_participants.arn
         ]
       },
       {
@@ -618,29 +683,32 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE                          = aws_dynamodb_table.dilemmas.name
-      ANALYTICS_TABLE                         = aws_dynamodb_table.user_analytics.name
-      STORY_FLOWS_TABLE                       = aws_dynamodb_table.story_flows.name
-      PRODUCT_EVENTS_TABLE                    = aws_dynamodb_table.product_events.name
-      USERS_TABLE                             = aws_dynamodb_table.users.name
-      MORAL_PROFILES_TABLE                    = aws_dynamodb_table.moral_profiles.name
-      CHALLENGES_TABLE                        = aws_dynamodb_table.challenges.name
-      CHALLENGE_PARTICIPANTS_TABLE            = aws_dynamodb_table.challenge_participants.name
-      GROQ_API_KEY_SSM_NAME                   = aws_ssm_parameter.groq_api_key.name
-      ANALYTICS_FINGERPRINT_SECRET_SSM_NAME   = aws_ssm_parameter.analytics_fingerprint_pepper.name
-      COGNITO_USER_POOL_ID                    = aws_cognito_user_pool.users.id
-      COGNITO_APP_CLIENT_ID                   = aws_cognito_user_pool_client.web.id
-      COGNITO_APP_CLIENT_IDS                  = join(",", [aws_cognito_user_pool_client.web.id, aws_cognito_user_pool_client.android.id])
-      ABUSE_BURST_GUARD_ENABLED               = tostring(var.abuse_burst_guard_enabled)
-      ABUSE_GLOBAL_REQUESTS_PER_MINUTE        = tostring(var.abuse_global_requests_per_minute)
-      ABUSE_AI_REQUESTS_PER_MINUTE            = tostring(var.abuse_ai_requests_per_minute)
-      ABUSE_ANALYTICS_BATCHES_PER_MINUTE      = tostring(var.abuse_analytics_batches_per_minute)
-      ABUSE_AUTH_WRITE_REQUESTS_PER_MINUTE    = tostring(var.abuse_auth_write_requests_per_minute)
-      ABUSE_DUEL_WRITE_REQUESTS_PER_MINUTE    = tostring(var.abuse_duel_write_requests_per_minute)
-      ABUSE_PUBLIC_READ_REQUESTS_PER_MINUTE   = tostring(var.abuse_public_read_requests_per_minute)
-      OPS_ALERTS_TOPIC_ARN                    = aws_sns_topic.ops_alerts.arn
-      OPS_ERROR_NOTIFICATIONS_ENABLED         = tostring(var.ops_error_notifications_enabled)
-      OPS_ERROR_NOTIFICATION_COOLDOWN_SECONDS = tostring(var.ops_error_notification_cooldown_seconds)
+      DYNAMODB_TABLE                            = aws_dynamodb_table.dilemmas.name
+      ANALYTICS_TABLE                           = aws_dynamodb_table.user_analytics.name
+      STORY_FLOWS_TABLE                         = aws_dynamodb_table.story_flows.name
+      PRODUCT_EVENTS_TABLE                      = aws_dynamodb_table.product_events.name
+      USERS_TABLE                               = aws_dynamodb_table.users.name
+      MORAL_PROFILES_TABLE                      = aws_dynamodb_table.moral_profiles.name
+      CHALLENGES_TABLE                          = aws_dynamodb_table.challenges.name
+      CHALLENGE_PARTICIPANTS_TABLE              = aws_dynamodb_table.challenge_participants.name
+      PARTY_ROOMS_TABLE                         = aws_dynamodb_table.party_rooms.name
+      PARTY_PARTICIPANTS_TABLE                  = aws_dynamodb_table.party_participants.name
+      GROQ_API_KEY_SSM_NAME                     = aws_ssm_parameter.groq_api_key.name
+      ANALYTICS_FINGERPRINT_SECRET_SSM_NAME     = aws_ssm_parameter.analytics_fingerprint_pepper.name
+      COGNITO_USER_POOL_ID                      = aws_cognito_user_pool.users.id
+      COGNITO_APP_CLIENT_ID                     = aws_cognito_user_pool_client.web.id
+      COGNITO_APP_CLIENT_IDS                    = join(",", [aws_cognito_user_pool_client.web.id, aws_cognito_user_pool_client.android.id])
+      ABUSE_BURST_GUARD_ENABLED                 = tostring(var.abuse_burst_guard_enabled)
+      ABUSE_GLOBAL_REQUESTS_PER_MINUTE          = tostring(var.abuse_global_requests_per_minute)
+      ABUSE_AI_REQUESTS_PER_MINUTE              = tostring(var.abuse_ai_requests_per_minute)
+      ABUSE_ANALYTICS_BATCHES_PER_MINUTE        = tostring(var.abuse_analytics_batches_per_minute)
+      ABUSE_AUTH_WRITE_REQUESTS_PER_MINUTE      = tostring(var.abuse_auth_write_requests_per_minute)
+      ABUSE_DUEL_WRITE_REQUESTS_PER_MINUTE      = tostring(var.abuse_duel_write_requests_per_minute)
+      ABUSE_PUBLIC_READ_REQUESTS_PER_MINUTE     = tostring(var.abuse_public_read_requests_per_minute)
+      ABUSE_PARTY_ROOM_POLL_REQUESTS_PER_MINUTE = tostring(var.abuse_party_room_poll_requests_per_minute)
+      OPS_ALERTS_TOPIC_ARN                      = aws_sns_topic.ops_alerts.arn
+      OPS_ERROR_NOTIFICATIONS_ENABLED           = tostring(var.ops_error_notifications_enabled)
+      OPS_ERROR_NOTIFICATION_COOLDOWN_SECONDS   = tostring(var.ops_error_notification_cooldown_seconds)
     }
   }
 

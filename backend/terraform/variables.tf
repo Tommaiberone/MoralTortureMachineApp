@@ -154,6 +154,17 @@ variable "abuse_public_read_requests_per_minute" {
   }
 }
 
+variable "abuse_party_room_poll_requests_per_minute" {
+  description = "Maximum Party Room state polls (GET) per minute per transient network source in each Lambda container - higher than public_read since every active participant polls every 1-2s"
+  type        = number
+  default     = 90
+
+  validation {
+    condition     = var.abuse_party_room_poll_requests_per_minute > 0
+    error_message = "The Party Room poll burst limit must be positive."
+  }
+}
+
 variable "ops_error_notifications_enabled" {
   description = "TASK-104: whether every 4xx/5xx response emails the ops_alerts SNS topic"
   type        = bool

@@ -5,6 +5,7 @@ import useAuth from '../auth/useAuth';
 import { signOut } from '../auth/authClient';
 import { getAuthenticatedApiHeaders } from '../utils/session';
 import { trackEvent } from '../utils/analytics';
+import { PrivacyFooter } from '../components/AnalyticsConsent';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -58,14 +59,6 @@ const AccountDeleteScreen = () => {
     }
   };
 
-  const legalLinks = (
-    <p>
-      <a href="/privacy">{t('account.privacyLink')}</a>
-      {' · '}
-      <a href="/cookies">{t('account.cookiesLink')}</a>
-    </p>
-  );
-
   if (loading) {
     return <main className="legal-screen"><p>{t('account.loading')}</p></main>;
   }
@@ -76,7 +69,7 @@ const AccountDeleteScreen = () => {
         <article>
           <h1>{t('account.title')}</h1>
           <p>{t('account.deleteSuccess')}</p>
-          {legalLinks}
+          <PrivacyFooter />
           <a href="/">← {t('common.backToHome')}</a>
         </article>
       </main>
@@ -92,7 +85,7 @@ const AccountDeleteScreen = () => {
           <button type="button" className="btn-primary" onClick={() => login(window.location.pathname)}>
             {t('auth.loginGoogle')}
           </button>
-          {legalLinks}
+          <PrivacyFooter />
           <p><a href="/">← {t('common.backToHome')}</a></p>
         </article>
       </main>
@@ -133,7 +126,7 @@ const AccountDeleteScreen = () => {
           </div>
         )}
 
-        {legalLinks}
+        <PrivacyFooter />
         <p><a href="/">← {t('common.backToHome')}</a></p>
       </article>
     </main>

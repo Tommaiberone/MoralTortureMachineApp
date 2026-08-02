@@ -735,6 +735,138 @@ screen's three render branches. `/delete-account` keeps working unchanged
 (no route removed) since nothing in-repo hardcodes it as the only entry
 point.
 
+### ADR-050 — Party Room uses HTTP polling, not API Gateway WebSocket (TASK-46/47/49/91)
+
+Supersedes the WebSocket assumption in ADR-006 for Party Room specifically.
+`TASK-91` existed to compare API Gateway WebSocket against polling HTTP and
+other AWS alternatives before any Party Room provisioning, flagging that the
+WebSocket API Gateway Free Tier is limited to a new account's first 12
+months and so cannot be assumed free on the existing `personal` account. At
+the user's explicit request, that comparison resolved in conversation
+(not via a live AWS pricing check, since the decision to avoid WebSocket
+entirely made one unnecessary) in favor of polling HTTP: the client polls
+room state periodically over the same API Gateway HTTP + Lambda + DynamoDB
+pattern already proven for Moral Duel and already fully covered by the
+DynamoDB/Lambda always-free tier per the `doc-1` Free Tier audit - no new
+AWS resource type, no `$connect`/`$disconnect` connection lifecycle to
+manage, no connection-minutes billing, and no introductory-Free-Tier expiry
+risk. The reveal countdown is synchronized by sending a deadline timestamp
+from the server; the client computes and renders the countdown locally
+rather than requiring a push at each tick. Options considered: API Gateway
+WebSocket as originally scoped in `TASK-46` (rejected: real risk of losing
+Free Tier coverage on this account, plus meaningfully more implementation
+surface for connection lifecycle and reconnect); Server-Sent Events
+(not evaluated in detail: still a persistent connection with its own Lambda
+concurrency/timeout shape, without polling's advantage of reusing the exact
+already-audited request/response pattern). Consequence: `TASK-46`/`47`/`49`
+descriptions were updated to specify polling instead of WebSocket;
+`TASK-91` is closed since the comparison it asked for is resolved, and its
+cost/limits question is now `TASK-49`'s load test to answer (request volume
+under polling, not connection-minutes). The tradeoff accepted: presence and
+vote updates lag by roughly one poll interval (1-2s) instead of arriving
+instantly, judged acceptable for a party game typically played among people
+in the same physical room; if `TASK-49` later shows polling request volume
+becoming a real cost or scaling problem at higher concurrent room counts,
+this decision should be revisited.
+
+### ADR-051 — Party Room core loop: lazy phase advance, short human-shareable room codes (TASK-46/47)
+
+Implements the core loop for ADR-050's polling design. Two provisioned 1/1
+tables (`party_rooms`, `party_participants`, 6h TTL) hold room and
+per-participant state; `party_participants` stores each participant's votes
+as a nested map keyed by round index, with `chosenValues` serialized to a
+JSON string rather than a native DynamoDB Map (boto3's resource API rejects
+raw Python floats in attribute values - this mirrors the same `json.dumps`
+pattern `moral_profiles.dimensionAverages` already uses, and avoids returning
+mixed Decimal/float types that would break the archetype engine's
+arithmetic). The room code is 6 characters from a 32-symbol alphabet
+excluding visually ambiguous characters (0/O/1/I/L), not a long
+`secrets.token_urlsafe` token like Duel's: it is meant to be read aloud,
+typed, or QR-scanned by people who are typically in the same physical space
+for a session lasting hours, not a long-lived link shared over an
+untrusted channel, so it does not need the same entropy.
+
+There is no dedicated "advance to next round" endpoint. `_advance_party_room_if_due`
+runs at the start of every read (`GET /party-rooms/{code}`) and write
+(join/vote), and moves `lobby -> question -> reveal -> question... ->
+completed` purely from a stored `phaseEndsAt` timestamp and a live count of
+votes for the current round, applying the transition with a DynamoDB
+`ConditionExpression` so a concurrent double-advance from several
+simultaneously polling clients is a no-op, not a bug. This means no single
+client - in particular not the host's, which could be backgrounded or
+closed - needs to stay active for the room to progress, and every poller
+observes the same lazily-computed state. Options considered: a host-driven
+"advance" endpoint (rejected: makes the host device a single point of
+failure for the whole room) and a scheduled Lambda sweeping active rooms
+(rejected: adds a new invocation trigger and moving part for something a
+read-time check already gives for free).
+
+Never expose a participant's raw `anonymous_user_id` to other participants
+in the same room (only `isCaller` on their own entry) - the same
+non-enumerable/no-internal-IDs rule applied everywhere else, initially
+missed in a first draft of the participant list and caught before merging.
+
+Deferred to follow-up work: `TASK-48` (group awards - closest pair, moral
+minority, most controversial - and a shareable recap card) and `TASK-49`
+(load test 2-20 participants, which is what should validate or invalidate
+the specific rate-limit and round/reveal duration constants chosen here:
+`PARTY_ROOM_ROUND_DURATION_MS`=20s, `PARTY_ROOM_REVEAL_DURATION_MS`=8s,
+`ABUSE_PARTY_ROOM_POLL_REQUESTS_PER_MINUTE`=90).
+
+### ADR-052 — Party Room group awards reuse the Duel compatibility engine; each award can be legitimately absent (TASK-48)
+
+`backend/src/party_awards.py` computes Party Room's three group awards
+(closest pair, moral minority, most controversial dilemma) as pure,
+deterministic functions over participant-index keys, deliberately reusing
+`compatibility_engine.compute_compatibility` instead of a new pairwise
+distance formula, so Party Room and Duel agree on what "aligned" means and
+the same fixture-style tests apply. Moral minority is only returned for
+rooms with 3+ participants: with exactly 2 people, there is no majority for
+either one to be a minority *of*, so returning one would fabricate a signal
+rather than measure one - the same "don't invent a number the product can't
+honestly support" reasoning as ADR-034's dropped percentile. Each award key
+is independently nullable in the response for this reason, rather than the
+endpoint failing or omitting the whole `awards` object when one doesn't
+apply. The recap card (`generatePartyRecapCardDataUrl`/`sharePartyRecapCard`
+in `shareCard.js`) required refactoring `shareOrDownloadCard`'s native-share
+logic into a shared `shareOrDownloadDataUrl` helper so both the archetype
+card and the new recap card get the same Web-Share-then-download fallback
+(TASK-32/ADR-047) without duplicating it.
+
+### ADR-053 — it.json allowed to drift; en.json is the only frontend target for new work (2026-08-02)
+
+At the user's explicit request, after checking production analytics: Italian
+is 153 of 20,174 events (0.8%) in `user-analytics` historically, and ~0 of
+467 in `product_events` since `TASK-101` hid it app-wide. `CLAUDE.md` now
+carries an explicit exception - new frontend work updates `en.json` only;
+`it.json` is left as-is rather than kept in lockstep, reversing the practice
+used through `TASK-120`/`121`/`122` (e.g. ADR-042's "en/it keys added for
+parity even while hidden"). The bilingual EN/IT SEO landing pages (ADR-020)
+are explicitly unaffected: their content lives in `seoLandings.js`, not
+`it.json`, and continue to be maintained in both languages since they are a
+running, already-indexed acquisition experiment, unlike the app UI. Options
+considered: deleting `it.json`/Italian content outright (rejected: the user
+asked to let it drift for a possible future re-merge, not to remove Italian
+as an option) and keeping both maintained regardless of the low usage
+(rejected given the measured signal - the user's own reasoning for asking).
+
+### ADR-054 — Privacy/cookie footer moved from every screen to the account page only
+
+At the user's explicit request: the small fixed Privacy/Cookies/preferences
+widget (`PrivacyFooter` in `AnalyticsConsent.jsx`) was mounted globally in
+`App.jsx` outside `<Routes>`, so it persisted on every screen including the
+home screen even after the user had already made a consent choice - reported
+as an unwanted permanent banner. `PrivacyFooter` itself is unchanged; only
+where it mounts moved, from global to inside `AccountDeleteScreen.jsx`
+(`/account`, `TASK-120`'s profile page), replacing the separate Privacy/
+Cookies links added there in `TASK-120` so the page doesn't show two
+redundant link groups. `AnalyticsConsent` (the first-run accept/reject
+dialog, which already auto-hides once a choice is made) stays mounted
+globally and unchanged - it was not what was reported as a persistent
+nuisance. Consequence: the persistent privacy/cookie entry point is now one
+tap away via the profile icon (`TASK-120`) rather than always on screen;
+revisit if this proves too hard to find for a compliance-relevant control.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
