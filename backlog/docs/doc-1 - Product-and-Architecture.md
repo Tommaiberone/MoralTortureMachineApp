@@ -99,7 +99,12 @@ dev table, or `/dev` SSM hierarchy.
   It never calls Groq, so it works identically whether or not Groq is
   available. Ties resolve to the lowest archetype id for reproducibility.
   `POST /analyze-results` returns it alongside the AI prose as `archetype`,
-  carrying `archetypesVersion` from the content file.
+  carrying `archetypesVersion` from the content file. Since `TASK-121`, the
+  archetype's own name/description are also fed into the Groq prompt (in
+  addition to the dimension averages and per-dilemma choices already sent),
+  with an instruction that the generated text will render as the
+  description directly under the archetype's name on `ResultsScreen` - the
+  archetype assignment itself stays entirely independent of Groq either way.
 - Because the Lambda deployment package (`.github/workflows/deploy.yml`) copies
   `backend/src/backend_fastapi.py`, `backend/src/archetype_engine.py`, and
   `backend/data/archetypes.json` as flat siblings (no subfolders), the import

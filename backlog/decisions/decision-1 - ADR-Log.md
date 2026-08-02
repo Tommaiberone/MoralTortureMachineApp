@@ -676,6 +676,65 @@ records which method actually ran (`native_share`/`native_share_cancelled`/
 `download`), which is needed to tell whether Android users are actually
 getting a working share path.
 
+### ADR-048 — PITR cost accepted as-is; not worth an active decision (TASK-89)
+
+`TASK-89` asked whether to keep Point-in-Time Recovery enabled on the three
+legacy tables that have it (`dilemmas`, `user-analytics`, `story-flows`).
+PITR is billed per GB of table size per month, and the largest of the three
+(`user-analytics`) is ~7MB - at current size the real monthly cost is a
+fraction of a cent, not a meaningful line item even before Free Tier
+considerations (PITR has no Free Tier allowance at all, so this is pure
+out-of-pocket cost, just a negligible one). Spending effort to evaluate
+disabling it would cost more attention than it would ever save in dollars,
+and disabling it removes a genuine safety net (accidental delete/overwrite
+recovery) for a real cost difference of essentially $0. Decision: leave PITR
+enabled on all three tables as-is; revisit only if one of them grows large
+enough (multiple GB) that the PITR line actually becomes visible in the AWS
+Cost Explorer breakdown. No infrastructure change made.
+
+### ADR-049 — Archetype and AI verdict merged into one card, AI prompt now archetype-aware (TASK-120/121)
+
+`TASK-121`, at the user's explicit request: `ResultsScreen` previously showed
+two separate cards - a deterministic archetype card (name, description,
+strength, blind spot) and a separate Groq-generated "verdict" card - with no
+connection between the two other than both being computed from the same
+dimension averages. They are now one `.results-archetype` card: the
+archetype name is the card's `<h2>` title, and the Groq-generated text
+renders immediately below it as the card's description, with strength/blind
+spot still listed underneath. To make that pairing make sense, the
+`/analyze-results` prompt (both language branches) now also sends the
+already-assigned archetype's name and description, with an explicit
+instruction that the generated text will be shown as the description right
+under that name and must read as a natural elaboration of it, not a
+contradiction or a verbatim repeat. The archetype assignment itself is
+unaffected (still computed by the deterministic engine before the Groq call,
+per ADR-025/ADR-003) - only the prompt for the AI's own text changed.
+Consequence for failure handling: since the merged card used to be gated on
+`archetype` alone, a totally failed `/analyze-results` call (archetype never
+set) would have made the whole card - including the existing fallback error
+text - disappear instead of just losing its title; the card is now shown
+whenever there's an archetype, a loading state, or an AI text/fallback
+message, and the title/strength/blind-spot rows only render when an
+archetype is actually present. `results.archetype_title` and
+`results.verdict` (the two old card headings) and their now-orphaned CSS
+rules were removed. Options considered: keeping both cards side by side and
+just visually grouping them (rejected: doesn't match "una sola scheda", and
+the point of passing archetype context to the AI is specifically so the
+verdict text itself can stand in for the description); dropping
+strength/blind-spot entirely since the user only asked for title+AI text
+(rejected: no instruction to remove already-useful deterministic content, and
+keeping them costs nothing extra now that they're inside the same card).
+
+`TASK-120`, also at the user's request, separately added a discoverable
+account entry point: a round icon in the top-right corner of `HomeScreen`
+only (not a global nav element) linking to a new `/account` route, which
+renders the existing `AccountDeleteScreen` component (already covering
+login/logout/export/delete since `TASK-15`/ADR-028) rather than a new
+duplicate screen. Privacy Policy and Cookie Policy links were added to that
+screen's three render branches. `/delete-account` keeps working unchanged
+(no route removed) since nothing in-repo hardcodes it as the only entry
+point.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

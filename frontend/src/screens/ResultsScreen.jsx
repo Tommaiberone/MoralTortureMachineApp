@@ -213,33 +213,36 @@ const ResultsScreen = () => {
           </ResponsiveContainer>
         </div>
 
-        {archetype && (
-          <div className="results-archetype" style={{ borderColor: archetype.visual?.color }}>
-            <h2 className="results-archetype-title">{t('results.archetype_title')}</h2>
-            <p className="results-archetype-name">
-              <span className="results-archetype-emoji">{archetype.visual?.emoji}</span> {archetype.name}
-            </p>
-            <p className="results-archetype-description">{archetype.description}</p>
-            <p className="results-archetype-strength">
-              <strong>{t('results.archetype_strength')}:</strong> {archetype.strength}
-            </p>
-            <p className="results-archetype-blind-spot">
-              <strong>{t('results.archetype_blind_spot')}:</strong> {archetype.blindSpot}
-            </p>
+        {(archetype || loadingAnalysis || aiAnalysis) && (
+          <div className="results-archetype" style={{ borderColor: archetype?.visual?.color }}>
+            {archetype && (
+              <h2 className="results-archetype-name">
+                <span className="results-archetype-emoji">{archetype.visual?.emoji}</span> {archetype.name}
+              </h2>
+            )}
+            {loadingAnalysis ? (
+              <div className="results-ai-loading">
+                <div className="spinner"></div>
+                <p className="results-ai-loading-text">{t('results.analyzing')}</p>
+              </div>
+            ) : (
+              // If /analyze-results failed entirely, archetype never got set but
+              // aiAnalysis still carries a fallback error message (TASK-121 AC3):
+              // this keeps the card visible instead of silently disappearing.
+              <p className="results-ai-text">{aiAnalysis}</p>
+            )}
+            {archetype && (
+              <>
+                <p className="results-archetype-strength">
+                  <strong>{t('results.archetype_strength')}:</strong> {archetype.strength}
+                </p>
+                <p className="results-archetype-blind-spot">
+                  <strong>{t('results.archetype_blind_spot')}:</strong> {archetype.blindSpot}
+                </p>
+              </>
+            )}
           </div>
         )}
-
-        <div className="results-ai-analysis">
-          <h2 className="results-ai-title">{t('results.verdict')}</h2>
-          {loadingAnalysis ? (
-            <div className="results-ai-loading">
-              <div className="spinner"></div>
-              <p className="results-ai-loading-text">{t('results.analyzing')}</p>
-            </div>
-          ) : (
-            <p className="results-ai-text">{aiAnalysis}</p>
-          )}
-        </div>
 
         <div className="results-share-container">
           <h2 className="results-share-title">{t('results.share_title')}</h2>

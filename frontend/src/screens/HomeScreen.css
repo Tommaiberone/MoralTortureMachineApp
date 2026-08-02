@@ -3,6 +3,32 @@
   /* Inherits from screen-container */
 }
 
+/* TASK-120: round profile/account entry point, homepage only. */
+.home-profile-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  border: 1px solid var(--creepy-fog);
+  background: rgba(18, 17, 19, 0.94);
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.home-profile-button svg {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+@media (max-width: 520px) {
+  .home-profile-button { top: 3.25rem; }
+}
+
 /* HomeScreen uses screen-title-large from shared.css */
 .home-title {
   margin-bottom: 30px;

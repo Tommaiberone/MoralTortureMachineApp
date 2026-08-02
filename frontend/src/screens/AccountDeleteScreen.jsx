@@ -58,6 +58,14 @@ const AccountDeleteScreen = () => {
     }
   };
 
+  const legalLinks = (
+    <p>
+      <a href="/privacy">{t('account.privacyLink')}</a>
+      {' · '}
+      <a href="/cookies">{t('account.cookiesLink')}</a>
+    </p>
+  );
+
   if (loading) {
     return <main className="legal-screen"><p>{t('account.loading')}</p></main>;
   }
@@ -68,6 +76,7 @@ const AccountDeleteScreen = () => {
         <article>
           <h1>{t('account.title')}</h1>
           <p>{t('account.deleteSuccess')}</p>
+          {legalLinks}
           <a href="/">← {t('common.backToHome')}</a>
         </article>
       </main>
@@ -80,9 +89,11 @@ const AccountDeleteScreen = () => {
         <article>
           <h1>{t('account.title')}</h1>
           <p>{t('account.notLoggedIn')}</p>
-          <button type="button" className="btn-primary" onClick={() => login('/delete-account')}>
+          <button type="button" className="btn-primary" onClick={() => login(window.location.pathname)}>
             {t('auth.loginGoogle')}
           </button>
+          {legalLinks}
+          <p><a href="/">← {t('common.backToHome')}</a></p>
         </article>
       </main>
     );
@@ -122,6 +133,7 @@ const AccountDeleteScreen = () => {
           </div>
         )}
 
+        {legalLinks}
         <p><a href="/">← {t('common.backToHome')}</a></p>
       </article>
     </main>

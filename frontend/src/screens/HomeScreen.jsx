@@ -63,6 +63,19 @@ const HomeScreen = () => {
         structuredData={structuredData}
       />
       <AuthButton />
+      {/* TASK-120: profile/account entry point, homepage only - not a global nav element. */}
+      <Link
+        to="/account"
+        className="home-profile-button"
+        aria-label={t('home.profile_icon_label')}
+        title={t('home.profile_icon_label')}
+        onClick={() => trackEvent('profile_icon_clicked')}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <circle cx="12" cy="8" r="4" fill="currentColor" />
+          <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" fill="currentColor" />
+        </svg>
+      </Link>
       {/* TASK-101: LanguageSelector hidden while Italian is temporarily disabled app-wide. */}
       <h1 className="screen-title-large home-title">
         <span className="glitch-text">{t('home.title_moral')}</span><br />

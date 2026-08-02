@@ -15,7 +15,8 @@
     "seo_resource_nav_label": "Related guides",
     "seo_resource_test": "Moral dilemma test",
     "seo_resource_ethical": "Ethical dilemmas",
-    "seo_resource_game": "Moral dilemma game"
+    "seo_resource_game": "Moral dilemma game",
+    "profile_icon_label": "Your profile"
   },
   "evaluation": {
     "back_button": "[ BACK ]",
@@ -43,8 +44,6 @@
     "no_results": "[ NO RESULTS ]",
     "home_button": "[ HOME ]",
     "moral_profile": "MORAL PROFILE",
-    "verdict": "[ THE MACHINE'S VERDICT ]",
-    "archetype_title": "[ YOUR MORAL ARCHETYPE ]",
     "archetype_strength": "Strength",
     "archetype_blind_spot": "Blind spot",
     "analyzing": "Analyzing your soul...",
@@ -247,6 +246,8 @@
     "deleteConfirmButton": "Yes, delete my account",
     "deleteCancelButton": "Cancel",
     "deleteError": "Could not delete your account. Please try again.",
-    "deleteSuccess": "Your account data has been deleted."
+    "deleteSuccess": "Your account data has been deleted.",
+    "privacyLink": "Privacy Policy",
+    "cookiesLink": "Cookie Policy"
   }
 }

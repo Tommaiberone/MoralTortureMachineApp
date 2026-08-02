@@ -1,9 +1,10 @@
 ---
 id: TASK-89
 title: Decidere PITR DynamoDB per dominio dati
-status: Open Points
+status: Done
 assignee: []
 created_date: '2026-07-29 11:55'
+updated_date: '2026-08-01 20:46'
 labels:
   - cost
   - aws
@@ -30,3 +31,9 @@ PITR è attivo su dilemmas, user-analytics e story-flows ed è fatturato per dim
 - [ ] #3 Ogni eccezione a pagamento ha approvazione e owner
 - [ ] #4 Terraform riflette la policy decisa e viene validato prima dell'apply
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Deciso di lasciare PITR invariato su dilemmas/user-analytics/story-flows (ADR-048): al peso attuale delle tabelle il costo reale e' trascurabile, non vale lo sforzo di un cambiamento infrastrutturale. Nessuna modifica infrastrutturale.
+<!-- SECTION:FINAL_SUMMARY:END -->

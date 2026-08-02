@@ -70,6 +70,7 @@ const App = () => {
             <Route path="/auth/callback" element={<AuthCallbackScreen />} />
             <Route path="/privacy" element={<LegalScreen type="privacy" />} />
             <Route path="/cookies" element={<LegalScreen type="cookies" />} />
+            <Route path="/account" element={<AccountDeleteScreen />} />
             <Route path="/delete-account" element={<AccountDeleteScreen />} />
             <Route path="/p/:publicId" element={<PublicProfileScreen />} />
             <Route path="/challenge/:token" element={<ChallengeLandingScreen />} />
