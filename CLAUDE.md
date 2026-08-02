@@ -244,7 +244,20 @@ Growth metric or strategic gate changed        -> backlog/docs/doc-2
 - Add or update tests with behavioral changes.
 - Run the narrowest relevant checks first, then the full available suite.
 - Use `apply_patch` for manual file edits.
-- Do not deploy, apply Terraform, publish, commit, or push unless explicitly asked.
+- **Commit and push standing authorization (2026-08-02, at the user's explicit
+  request):** once the work requested in a turn/session is actually done
+  (checks passing), commit and push to `main` as the closing step without
+  asking again each time — this already triggers the existing CI/CD
+  pipeline's backend/frontend deploy, so no separate "can I deploy" question
+  is needed for that. Still do not run `terraform apply` locally, and do not
+  trigger an explicit Google Play publish (`workflow_dispatch` with
+  `publish_to_play_store`), without being explicitly asked. If the diff
+  being pushed raises `versionCode` in `frontend/android/app/build.gradle`,
+  stop and get explicit confirmation for that specific push before sending
+  it: per ADR-017 this alone auto-publishes straight to Google Play
+  production with no human review gate, a materially bigger consequence than
+  an ordinary web/backend push, and stays worth a deliberate check every
+  time regardless of the general authorization above.
 - **Mandatory app version bump:** whenever a change makes a new app release
   necessary, bump the version before building or distributing that release.
   This includes changes to packaged web code, user-facing behavior, assets,

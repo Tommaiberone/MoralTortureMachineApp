@@ -177,8 +177,12 @@ PARTY_ROOM_MAX_DILEMMAS = 12
 PARTY_ROOM_DEFAULT_DILEMMAS = 6
 PARTY_ROOM_MAX_PARTICIPANTS = 20
 PARTY_ROOM_MIN_PARTICIPANTS_TO_START = 2
-PARTY_ROOM_ROUND_DURATION_MS = 20_000
-PARTY_ROOM_REVEAL_DURATION_MS = 8_000
+# TASK-123, at the user's explicit request: this is a game meant for
+# discussion, not a race against a clock. Voting has no time limit (a round
+# only ends once everyone has voted) and the reveal only ends when the host
+# explicitly advances - see _advance_party_room_if_due. This is a pure
+# abandoned-room safety net, never a visible countdown.
+PARTY_ROOM_SAFETY_TIMEOUT_MS = 10 * 60 * 1000
 
 # Model fallback strategy - ordered by rate limits (highest TPD first)
 MODEL_FALLBACK_CHAIN = [
@@ -1518,8 +1522,13 @@ def _list_party_participants(room_code: str) -> list[Dict[str, Any]]:
 
 
 def _advance_party_room_if_due(room: Dict[str, Any]) -> Dict[str, Any]:
-    """Move the room to its next phase if the current one is over. Returns the
-    (possibly updated) room record. Safe to call from every read and write."""
+    """Move the room to its next phase if it's actually due. TASK-123: no
+    visible timer drives this - "question" only ends once everyone has
+    voted, and "reveal" only ends when the host explicitly requests it
+    (see advance_party_room below). PARTY_ROOM_SAFETY_TIMEOUT_MS is purely a
+    fallback so an abandoned room (someone never votes, the host never
+    returns) doesn't stay open forever; it is never shown as a countdown.
+    Safe to call from every read and write."""
     if room["status"] not in ("question", "reveal"):
         return room
 
@@ -1533,24 +1542,32 @@ def _advance_party_room_if_due(room: Dict[str, Any]) -> Dict[str, Any]:
         voted = sum(1 for p in participants if round_key in p.get("votes", {}))
         due = len(participants) > 0 and voted >= len(participants)
 
+    if room["status"] == "reveal" and not due:
+        due = bool(room.get("hostAdvanceRequested"))
+
     if not due:
         return room
 
     expected_status = room["status"]
     if room["status"] == "question":
-        update_expression = "SET #status = :newStatus, phaseEndsAt = :ends"
+        update_expression = "SET #status = :newStatus, phaseEndsAt = :ends, hostAdvanceRequested = :false"
         expression_values = {
             ":newStatus": "reveal",
-            ":ends": now_ms + PARTY_ROOM_REVEAL_DURATION_MS,
+            ":ends": now_ms + PARTY_ROOM_SAFETY_TIMEOUT_MS,
+            ":false": False,
         }
     else:
         next_index = room["currentRoundIndex"] + 1
         if next_index < len(room["dilemmaBaseIds"]):
-            update_expression = "SET #status = :newStatus, currentRoundIndex = :idx, phaseEndsAt = :ends"
+            update_expression = (
+                "SET #status = :newStatus, currentRoundIndex = :idx, "
+                "phaseEndsAt = :ends, hostAdvanceRequested = :false"
+            )
             expression_values = {
                 ":newStatus": "question",
                 ":idx": next_index,
-                ":ends": now_ms + PARTY_ROOM_ROUND_DURATION_MS,
+                ":ends": now_ms + PARTY_ROOM_SAFETY_TIMEOUT_MS,
+                ":false": False,
             }
         else:
             update_expression = "SET #status = :newStatus"
@@ -1599,6 +1616,7 @@ async def create_party_room(create_request: CreatePartyRoomRequest, request: Req
                     "dilemmaBaseIds": dilemma_base_ids,
                     "currentRoundIndex": 0,
                     "phaseEndsAt": 0,
+                    "hostAdvanceRequested": False,
                     "createdAt": now,
                     "expirationTime": expiration_time,
                 },
@@ -1684,7 +1702,7 @@ async def start_party_room(room_code: str, request: Request):
             ExpressionAttributeValues={
                 ":question": "question",
                 ":lobby": "lobby",
-                ":ends": now_ms + PARTY_ROOM_ROUND_DURATION_MS,
+                ":ends": now_ms + PARTY_ROOM_SAFETY_TIMEOUT_MS,
             },
         )
     except ClientError as error:
@@ -1693,6 +1711,36 @@ async def start_party_room(room_code: str, request: Request):
         raise
     _track_duel_event(request, "party_room_started", {"room_code": room_code, "participant_count": len(participants)})
     return {"roomCode": room_code, "status": "question"}
+
+
+@app.post("/party-rooms/{room_code}/advance")
+async def advance_party_room(room_code: str, request: Request):
+    """Host-only (TASK-123): the reveal phase has no timer, so this is the
+    only way it ends under normal play - the safety-net timeout in
+    _advance_party_room_if_due only exists for an abandoned room."""
+    anonymous_user_id = require_anonymous_user_id(request)
+    room = get_room_or_404(room_code)
+    if room["hostParticipantId"] != anonymous_user_id:
+        raise HTTPException(status_code=403, detail="Only the host can advance to the next round")
+    if room["status"] != "reveal":
+        raise HTTPException(status_code=409, detail="Can only advance during the reveal phase")
+
+    try:
+        party_rooms_table.update_item(
+            Key={"roomCode": room_code},
+            UpdateExpression="SET hostAdvanceRequested = :true",
+            ConditionExpression="#status = :reveal",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={":true": True, ":reveal": "reveal"},
+        )
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            raise HTTPException(status_code=409, detail="Can only advance during the reveal phase")
+        raise
+
+    room = _advance_party_room_if_due(get_room_or_404(room_code))
+    _track_duel_event(request, "party_room_advanced", {"room_code": room_code})
+    return {"roomCode": room_code, "status": room["status"], "currentRoundIndex": room["currentRoundIndex"]}
 
 
 @app.post("/party-rooms/{room_code}/vote")
@@ -1766,6 +1814,53 @@ def _party_room_votes_by_round(participants: list, dilemma_count: int) -> list:
     return tallies
 
 
+def _fallback_party_group_verdict(archetype_names: list, language: str) -> str:
+    """Always-available, no-AI verdict (core flow must work without Groq)."""
+    unique_count = len(set(archetype_names))
+    if language == "it":
+        return f"{len(archetype_names)} persone, {unique_count} archetipi morali diversi nella stessa stanza."
+    return f"{len(archetype_names)} people, {unique_count} different moral archetypes in the same room."
+
+
+def _generate_party_group_verdict(archetype_names: list, language: str) -> str:
+    """TASK-123: one short AI-enriched line about the group as a whole,
+    generated once and cached on the room record (never regenerated on every
+    poll, per the cost rule) - enrichment only, the archetypes themselves
+    stay entirely deterministic (ADR-003/025). Falls back to a plain,
+    factual sentence if Groq is unavailable or fails."""
+    if not archetype_names:
+        return _fallback_party_group_verdict(archetype_names, language)
+    try:
+        api_key = get_groq_api_key()
+        archetype_list = ", ".join(archetype_names)
+        if language == "it":
+            prompt_content = (
+                f'Un gruppo di {len(archetype_names)} persone ha appena giocato insieme a un party game di dilemmi morali. '
+                f'A ciascuno e\' stato assegnato uno di questi archetipi morali, in base alle risposte date: {archetype_list}. '
+                f'Scrivi UNA sola frase breve e incisiva (massimo 25 parole) che catturi il carattere morale collettivo di questo gruppo, '
+                f'nel tono "Moral Torture Machine" - leggermente oscuro, arguto, perspicace. '
+                f'Non nominare nessuno individualmente, non inventare nomi. Restituisci solo la frase, senza virgolette ne\' JSON.'
+            )
+        else:
+            prompt_content = (
+                f'A group of {len(archetype_names)} people just played a moral-dilemma party game together. '
+                f'Each was assigned one of these moral archetypes based on their answers: {archetype_list}. '
+                f'Write ONE short, punchy sentence (max 25 words) capturing this group\'s collective moral character, '
+                f'in the "Moral Torture Machine" tone - slightly dark, wry, insightful. '
+                f'Do not name anyone individually, do not invent names. Return only the sentence, no quotes, no JSON.'
+            )
+        payload = {
+            "model": "llama-3.1-8b-instant",
+            "messages": [{"role": "user", "content": prompt_content}],
+        }
+        result = call_groq_api_with_fallback(payload=payload, api_key=api_key, operation="Party group verdict")
+        text = result['choices'][0]['message']['content'].strip()
+        return text or _fallback_party_group_verdict(archetype_names, language)
+    except Exception:
+        logger.exception("Failed to generate party group verdict, using fallback")
+        return _fallback_party_group_verdict(archetype_names, language)
+
+
 @app.get("/party-rooms/{room_code}")
 async def get_party_room(room_code: str, request: Request, language: str = "en"):
     """Polled repeatedly by every client in the room (lobby, each round, and
@@ -1778,18 +1873,23 @@ async def get_party_room(room_code: str, request: Request, language: str = "en")
     caller = next((p for p in participants if p["participantId"] == anonymous_user_id), None)
     is_completed = room["status"] == "completed"
 
-    # TASK-48: participant-index keys, never the raw anonymous_user_id, both
-    # for the awards computation and for referencing "which participant" from
-    # the response - consistent with never exposing internal IDs.
+    # TASK-48/123: participant-index keys, never the raw anonymous_user_id,
+    # both for the awards computation and for referencing "which participant"
+    # from the response - consistent with never exposing internal IDs.
     participant_averages_by_index: Dict[int, Dict[str, float]] = {}
+    participant_choices_by_index: Dict[int, Dict[int, str]] = {}
     archetypes_by_index: Dict[int, Dict[str, Any]] = {}
     if is_completed:
         for index, participant in enumerate(participants):
-            answers = [json.loads(vote["chosenValues"]) for vote in participant.get("votes", {}).values()]
+            votes = participant.get("votes", {})
+            answers = [json.loads(vote["chosenValues"]) for vote in votes.values()]
             if answers:
                 averages = compute_dimension_averages(answers)
                 participant_averages_by_index[index] = averages
                 archetypes_by_index[index] = assign_archetype(averages, language=language)
+            participant_choices_by_index[index] = {
+                int(round_key): vote["choice"] for round_key, vote in votes.items()
+            }
 
     response = {
         "roomCode": room_code,
@@ -1818,10 +1918,22 @@ async def get_party_room(room_code: str, request: Request, language: str = "en")
             first_votes = sum(1 for p in participants if p.get("votes", {}).get(round_key, {}).get("choice") == "first")
             second_votes = sum(1 for p in participants if p.get("votes", {}).get(round_key, {}).get("choice") == "second")
             response["roundResult"] = {"firstVotes": first_votes, "secondVotes": second_votes}
+            # TASK-123: show who voted what, not just the aggregate split -
+            # people in the same room, more fun to see individually. Never
+            # the raw participantId, same rule as everywhere else.
+            response["roundVotes"] = [
+                {
+                    "displayName": p["displayName"],
+                    "isCaller": p["participantId"] == anonymous_user_id,
+                    "choice": p["votes"][round_key]["choice"],
+                }
+                for p in participants
+                if round_key in p.get("votes", {})
+            ]
 
     if is_completed:
         votes_by_round = _party_room_votes_by_round(participants, len(room["dilemmaBaseIds"]))
-        awards = compute_party_room_awards(participant_averages_by_index, votes_by_round)
+        awards = compute_party_room_awards(participant_averages_by_index, votes_by_round, participant_choices_by_index)
         controversial_index = awards["mostControversialRoundIndex"]
         if controversial_index is not None:
             base_id = room["dilemmaBaseIds"][controversial_index]
@@ -1839,6 +1951,28 @@ async def get_party_room(room_code: str, request: Request, language: str = "en")
                 "secondVotes": round_tally["second"],
             }
         response["awards"] = awards
+
+        # TASK-123 AC9: generate once, cache on the room, never regenerate.
+        group_verdict = room.get("groupVerdict")
+        if not group_verdict:
+            group_verdict = _generate_party_group_verdict(
+                [a["name"] for a in archetypes_by_index.values()], language,
+            )
+            try:
+                party_rooms_table.update_item(
+                    Key={"roomCode": room_code},
+                    UpdateExpression="SET groupVerdict = :verdict",
+                    ConditionExpression="attribute_not_exists(groupVerdict)",
+                    ExpressionAttributeValues={":verdict": group_verdict},
+                )
+            except ClientError as error:
+                if error.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                    # Another concurrent request already cached one first;
+                    # use that instead of two different verdicts flip-flopping.
+                    group_verdict = get_room_or_404(room_code).get("groupVerdict", group_verdict)
+                else:
+                    raise
+        response["groupVerdict"] = group_verdict
 
     return response
 

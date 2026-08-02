@@ -1,6 +1,6 @@
 // screens/PartyRoomScreen.jsx
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import QRCode from 'qrcode';
 
@@ -19,8 +19,36 @@ const chosenValuesFor = (dilemma, choice) => {
   return Object.fromEntries(DIMENSIONS.map((dimension) => [dimension, dilemma[`${prefix}${dimension}`]]));
 };
 
+// TASK-123: which moral dimension this dilemma actually pulls apart the
+// most, so the reveal can say what was really being tested.
+const dominantDimension = (dilemma) => {
+  if (!dilemma) return null;
+  let best = null;
+  let bestDiff = -1;
+  for (const dimension of DIMENSIONS) {
+    const diff = Math.abs((dilemma[`firstAnswer${dimension}`] ?? 0) - (dilemma[`secondAnswer${dimension}`] ?? 0));
+    if (diff > bestDiff) {
+      bestDiff = diff;
+      best = dimension;
+    }
+  }
+  return best;
+};
+
+// TASK-123: no countdown/suspense (explicitly not wanted) - just a reaction
+// to how split the room actually was.
+const splitFlavorKey = (firstVotes, secondVotes) => {
+  const total = firstVotes + secondVotes;
+  if (total === 0) return 'party.splitDivided';
+  const ratio = Math.max(firstVotes, secondVotes) / total;
+  if (ratio >= 0.9) return 'party.splitUnanimous';
+  if (ratio <= 0.6) return 'party.splitDivided';
+  return 'party.splitLopsided';
+};
+
 const PartyRoomScreen = () => {
   const { roomCode } = useParams();
+  const navigate = useNavigate();
   const { t, i18n } = useTranslation();
 
   const [room, setRoom] = useState(null);
@@ -29,10 +57,13 @@ const PartyRoomScreen = () => {
   const [joinError, setJoinError] = useState('');
   const [joining, setJoining] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [advancing, setAdvancing] = useState(false);
+  const [rematching, setRematching] = useState(false);
   const [voting, setVoting] = useState(false);
   const [voteError, setVoteError] = useState('');
   const [qrDataUrl, setQrDataUrl] = useState('');
-  const [nowMs, setNowMs] = useState(Date.now());
+  const [revealHistory, setRevealHistory] = useState({});
+  const [revealStage, setRevealStage] = useState(0);
   const pollTracked = useRef(false);
 
   const fetchRoom = useCallback(async () => {
@@ -77,13 +108,6 @@ const PartyRoomScreen = () => {
     };
   }, [fetchRoom]);
 
-  // Cosmetic 1s countdown ticker; the server (not this timer) is what
-  // actually decides when a phase ends (ADR-050).
-  useEffect(() => {
-    const intervalId = setInterval(() => setNowMs(Date.now()), 1000);
-    return () => clearInterval(intervalId);
-  }, []);
-
   useEffect(() => {
     if (room?.hasJoined && !pollTracked.current) {
       pollTracked.current = true;
@@ -98,6 +122,18 @@ const PartyRoomScreen = () => {
         .catch(() => setQrDataUrl(''));
     }
   }, [room?.status, roomCode]);
+
+  // TASK-123: remember every round's split, purely client-side, so the
+  // reveal can say "most divided so far" without the server tracking a
+  // per-viewer running history.
+  useEffect(() => {
+    if (room?.status === 'reveal' && room.roundResult) {
+      setRevealHistory((prev) => {
+        if (prev[room.currentRoundIndex]) return prev;
+        return { ...prev, [room.currentRoundIndex]: room.roundResult };
+      });
+    }
+  }, [room?.status, room?.currentRoundIndex, room?.roundResult]);
 
   const handleJoin = async (event) => {
     event.preventDefault();
@@ -162,6 +198,47 @@ const PartyRoomScreen = () => {
       setVoteError(t('party.voteError'));
     } finally {
       setVoting(false);
+    }
+  };
+
+  // TASK-123: the only thing that ends the reveal phase under normal play -
+  // no timer does this any more.
+  const handleAdvance = async () => {
+    setAdvancing(true);
+    try {
+      const response = await fetch(`${API_URL}/party-rooms/${roomCode}/advance`, {
+        method: 'POST',
+        headers: getApiHeaders(),
+      });
+      if (response.ok) {
+        trackEvent('party_room_advanced_ui', { room_code: roomCode });
+        await fetchRoom();
+      }
+    } finally {
+      setAdvancing(false);
+    }
+  };
+
+  // TASK-123 AC8: quickest path back into a new game is a fresh room, since
+  // there is no account system to auto-invite the same people to one.
+  const handleRematch = async () => {
+    setRematching(true);
+    try {
+      const response = await fetch(`${API_URL}/party-rooms`, {
+        method: 'POST',
+        headers: getApiHeaders(),
+        body: JSON.stringify({
+          displayName: room.participants.find((p) => p.isCaller)?.displayName || t('party.yourNamePlaceholder'),
+          language: i18n.language,
+          dilemmaCount: room.dilemmaCount,
+        }),
+      });
+      if (!response.ok) return;
+      const data = await response.json();
+      trackEvent('party_room_rematch_created', { previous_room_code: roomCode, room_code: data.roomCode });
+      navigate(`/party/${data.roomCode}`);
+    } finally {
+      setRematching(false);
     }
   };
 
@@ -244,13 +321,11 @@ const PartyRoomScreen = () => {
   }
 
   if (room.status === 'question' && room.currentDilemma) {
-    const secondsLeft = Math.max(0, Math.ceil((room.phaseEndsAt - nowMs) / 1000));
     return (
       <main className="screen-container party-room-screen">
         <p className="screen-subtitle">
           {t('party.roundProgress', { current: room.currentRoundIndex + 1, total: room.dilemmaCount })}
         </p>
-        <p className="party-room-timer">{secondsLeft}s</p>
         <p className="text-box-default">{room.currentDilemma.dilemma}</p>
 
         {room.hasVotedThisRound ? (
@@ -276,24 +351,51 @@ const PartyRoomScreen = () => {
   if (room.status === 'reveal') {
     const result = room.roundResult || { firstVotes: 0, secondVotes: 0 };
     const total = result.firstVotes + result.secondVotes || 1;
+    const priorRounds = Object.entries(revealHistory).filter(([index]) => Number(index) !== room.currentRoundIndex);
+    const currentImbalance = Math.abs(result.firstVotes - result.secondVotes);
+    const isMostDividedSoFar = priorRounds.length > 0 && priorRounds.every(
+      ([, priorResult]) => Math.abs(priorResult.firstVotes - priorResult.secondVotes) >= currentImbalance,
+    );
+    const dimension = dominantDimension(room.currentDilemma);
+
     return (
       <main className="screen-container party-room-screen">
         <p className="screen-subtitle">
           {t('party.roundProgress', { current: room.currentRoundIndex + 1, total: room.dilemmaCount })}
         </p>
-        <h2 className="screen-title">{t('party.revealTitle')}</h2>
+        {room.currentDilemma && <p className="text-box-default party-reveal-dilemma">{room.currentDilemma.dilemma}</p>}
+
+        <h2 className="screen-title">{t(splitFlavorKey(result.firstVotes, result.secondVotes))}</h2>
+        {isMostDividedSoFar && <p className="party-reveal-badge">{t('party.mostDividedSoFar')}</p>}
+        {dimension && <p className="screen-subtitle">{t('party.dimensionTested', { dimension })}</p>}
+
         <div className="party-reveal-bar">
-          <div
-            className="party-reveal-first"
-            style={{ width: `${(result.firstVotes / total) * 100}%` }}
-          />
+          <div className="party-reveal-first" style={{ width: `${(result.firstVotes / total) * 100}%` }} />
         </div>
-        <p>
-          {t('party.revealSplit', {
-            first: result.firstVotes,
-            second: result.secondVotes,
-          })}
-        </p>
+        <p>{t('party.revealSplit', { first: result.firstVotes, second: result.secondVotes })}</p>
+
+        {room.roundVotes && room.roundVotes.length > 0 && (
+          <ul className="party-participant-list party-reveal-votes">
+            {room.roundVotes.map((vote, index) => (
+              <li key={index} className={vote.isCaller ? 'is-caller' : ''}>
+                <span>{vote.displayName}</span>
+                <span className={`party-reveal-choice ${vote.choice}`}>
+                  {vote.choice === 'first' ? room.currentDilemma?.firstAnswer : room.currentDilemma?.secondAnswer}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {room.isHost ? (
+          <button type="button" className="btn-primary" onClick={handleAdvance} disabled={advancing}>
+            {advancing
+              ? t('party.advancing')
+              : (room.currentRoundIndex + 1 < room.dilemmaCount ? t('party.nextRoundButton') : t('party.seeResultsButton'))}
+          </button>
+        ) : (
+          <p className="party-room-waiting">{t('party.waitingForHostToContinue')}</p>
+        )}
       </main>
     );
   }
@@ -301,56 +403,105 @@ const PartyRoomScreen = () => {
   if (room.status === 'completed') {
     const awards = room.awards || {};
     const nameOf = (index) => room.participants[index]?.displayName;
+
+    const awardCards = [];
+    if (awards.closestPair) {
+      awardCards.push({
+        key: 'closestPair',
+        text: t('party.awardClosestPair', {
+          a: nameOf(awards.closestPair.participantKeys[0]),
+          b: nameOf(awards.closestPair.participantKeys[1]),
+          pct: awards.closestPair.agreementPct,
+        }),
+      });
+    }
+    if (awards.moralMinority) {
+      awardCards.push({
+        key: 'moralMinority',
+        text: t('party.awardMoralMinority', { name: nameOf(awards.moralMinority.participantKey) }),
+      });
+    }
+    if (awards.mostAlignedWithGroup) {
+      awardCards.push({
+        key: 'mostAlignedWithGroup',
+        text: t('party.awardMostAligned', { name: nameOf(awards.mostAlignedWithGroup.participantKey) }),
+      });
+    }
+    if (awards.contrarian) {
+      awardCards.push({
+        key: 'contrarian',
+        text: t('party.awardContrarian', { name: nameOf(awards.contrarian.participantKey) }),
+      });
+    }
+    if (awards.mostControversialDilemma) {
+      awardCards.push({
+        key: 'mostControversial',
+        text: t('party.awardMostDivided', {
+          first: awards.mostControversialDilemma.firstVotes,
+          second: awards.mostControversialDilemma.secondVotes,
+        }),
+      });
+    }
+
+    // TASK-123 AC5: sequenced instead of dumped on screen at once - archetypes,
+    // then the AI verdict, then one award at a time, then the actions.
+    const stages = ['archetypes', ...(room.groupVerdict ? ['verdict'] : []), ...awardCards.map((card) => card.key), 'actions'];
+    const stage = stages[Math.min(revealStage, stages.length - 1)];
+    const isLastStage = revealStage >= stages.length - 1;
+
     return (
       <main className="screen-container party-room-screen">
         <h1 className="screen-title-large">{t('party.completedTitle')}</h1>
-        <ul className="party-results-list">
-          {room.participants.map((participant, index) => (
-            <li key={index} className={participant.isCaller ? 'is-caller' : ''}>
-              <span className="party-results-emoji">{participant.archetype?.visual?.emoji}</span>
-              <span className="party-results-name">{participant.displayName}</span>
-              <span className="party-results-archetype">{participant.archetype?.name}</span>
-            </li>
-          ))}
-        </ul>
 
-        {(awards.closestPair || awards.moralMinority || awards.mostControversialDilemma) && (
-          <ul className="party-awards-list">
-            {awards.closestPair && (
-              <li>
-                {t('party.awardClosestPair', {
-                  a: nameOf(awards.closestPair.participantKeys[0]),
-                  b: nameOf(awards.closestPair.participantKeys[1]),
-                  pct: awards.closestPair.agreementPct,
-                })}
+        {stage === 'archetypes' && (
+          <ul className="party-results-list">
+            {room.participants.map((participant, index) => (
+              <li
+                key={index}
+                className={participant.isCaller ? 'is-caller' : ''}
+                style={{ borderLeftColor: participant.archetype?.visual?.color }}
+              >
+                <span className="party-results-emoji">{participant.archetype?.visual?.emoji}</span>
+                <span className="party-results-name">{participant.displayName}</span>
+                <span className="party-results-archetype">{participant.archetype?.name}</span>
               </li>
-            )}
-            {awards.moralMinority && (
-              <li>{t('party.awardMoralMinority', { name: nameOf(awards.moralMinority.participantKey) })}</li>
-            )}
-            {awards.mostControversialDilemma && (
-              <li>
-                {t('party.awardMostDivided', {
-                  first: awards.mostControversialDilemma.firstVotes,
-                  second: awards.mostControversialDilemma.secondVotes,
-                })}
-              </li>
-            )}
+            ))}
           </ul>
         )}
 
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={async () => {
-            const method = await sharePartyRecapCard(awards, room.participants, t('party.recapShareText'));
-            trackEvent('party_room_recap_shared', { room_code: roomCode, method });
-          }}
-        >
-          {t('party.shareRecapButton')}
-        </button>
+        {stage === 'verdict' && (
+          <p className="text-box-default">{room.groupVerdict}</p>
+        )}
 
-        <p><a href="/">← {t('common.backToHome')}</a></p>
+        {awardCards.map((card) => stage === card.key && (
+          <p key={card.key} className="text-box-default party-award-stage">{card.text}</p>
+        ))}
+
+        {stage === 'actions' ? (
+          <div className="party-final-actions">
+            <button type="button" className="btn-primary" onClick={handleRematch} disabled={rematching}>
+              {rematching ? t('party.rematching') : t('party.rematchButton')}
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={async () => {
+                const method = await sharePartyRecapCard(awards, room.participants, t('party.recapShareText'));
+                trackEvent('party_room_recap_shared', { room_code: roomCode, method });
+              }}
+            >
+              {t('party.shareRecapButton')}
+            </button>
+            <p><a href="/">← {t('common.backToHome')}</a></p>
+          </div>
+        ) : (
+          <button type="button" className="btn-primary" onClick={() => setRevealStage((value) => value + 1)}>
+            {t('party.continueButton')}
+          </button>
+        )}
+        {!isLastStage && (
+          <p className="screen-subtitle">{t('party.roundProgress', { current: revealStage + 1, total: stages.length })}</p>
+        )}
       </main>
     );
   }

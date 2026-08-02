@@ -71,6 +71,7 @@
   margin: 6px 0;
   background-color: var(--creepy-dark-gray);
   border: 1px solid var(--creepy-fog);
+  border-left-width: 4px;
   color: var(--text-normal);
   font-family: 'Courier New', Courier, monospace;
   text-align: left;
@@ -105,12 +106,20 @@
   margin-top: 20px;
 }
 
-.party-room-timer {
+.party-reveal-dilemma {
+  margin-bottom: 16px;
+}
+
+.party-reveal-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  margin-bottom: 8px;
+  background-color: var(--creepy-blood);
+  color: var(--text-highlight);
   font-family: 'Courier New', Courier, monospace;
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--text-danger-readable);
-  margin: 6px 0 16px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .party-reveal-bar {
@@ -145,4 +154,35 @@
   color: var(--text-normal);
   font-family: 'Courier New', Courier, monospace;
   text-align: left;
+}
+
+.party-reveal-votes li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.party-reveal-choice {
+  font-weight: 700;
+}
+
+.party-reveal-choice.first {
+  color: var(--text-danger-readable);
+}
+
+.party-reveal-choice.second {
+  color: var(--creepy-pale-green);
+}
+
+.party-award-stage {
+  font-size: 19px;
+}
+
+.party-final-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 90%;
+  max-width: 420px;
+  align-items: center;
 }

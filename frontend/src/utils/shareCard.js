@@ -185,7 +185,9 @@ export const shareOrDownloadCard = async (archetype, format, shareText) => {
  */
 export const generatePartyRecapCardDataUrl = (awards, participants) => {
   const width = 1080;
-  const height = 1350;
+  // TASK-123: up to 5 award sections now (was 3) - taller canvas so a big
+  // group with every award computed still has room to breathe.
+  const height = 1700;
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
@@ -249,6 +251,14 @@ export const generatePartyRecapCardDataUrl = (awards, participants) => {
 
   if (awards.moralMinority) {
     drawSection('MORAL MINORITY', [nameOf(awards.moralMinority.participantKey)]);
+  }
+
+  if (awards.mostAlignedWithGroup) {
+    drawSection("THE MACHINE'S FAVORITE", [nameOf(awards.mostAlignedWithGroup.participantKey)]);
+  }
+
+  if (awards.contrarian) {
+    drawSection('THE CONTRARIAN', [nameOf(awards.contrarian.participantKey)]);
   }
 
   if (awards.mostControversialDilemma) {

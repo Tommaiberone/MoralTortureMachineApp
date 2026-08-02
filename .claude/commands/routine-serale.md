@@ -86,27 +86,27 @@ rilevante, `pnpm lint` e `pnpm build:prod` sul frontend se sono stati toccati
 file frontend, e rileggi `doc-1`/`decision-1` se sono stati toccati più di tre
 file o completati più di tre task (regola già in `CLAUDE.md`).
 
-## 6. Deploy e recap — SEMPRE con conferma esplicita finale
+## 6. Deploy e recap
 
-Il deploy e l'invio email sono l'unica parte della routine che richiede una
-conferma esplicita dell'utente in questa stessa conversazione, anche quando il
-resto della routine gira senza fermarsi: è l'unica azione con effetto reale e
-difficilmente reversibile su produzione e utenti veri (`CLAUDE.md` vieta di
-default deploy/push senza richiesta esplicita).
+Da `CLAUDE.md` (2026-08-02): commit + push su `main` sono autorizzati di
+default a fine lavoro, senza richiedere conferma ogni volta — questo include
+la routine serale. Resta un'eccezione, sempre con conferma esplicita:
 
 1. Prepara un commit (o più commit logici) con tutto il lavoro completato in
    questa esecuzione.
 2. Controlla se il diff include un bump di `versionCode` in
    `frontend/android/app/build.gradle`. Se sì: **fermati e avvisa
-   esplicitamente l'utente prima di eseguire il push**, perché per ADR-017 un
-   push su `main` che alza `versionCode` pubblica automaticamente l'AAB sul
-   track `production` di Google Play, senza alcuna revisione umana. Questo
-   vale anche durante la routine autonoma.
-3. Se non c'è bump di `versionCode`, un push su `main` è sufficiente perché la
-   pipeline esistente (`.github/workflows/deploy.yml`) applichi Terraform e
-   deployi backend/frontend. Non eseguire `terraform apply` localmente.
-4. Solo dopo l'ok esplicito dell'utente per il push/deploy: pusha, poi manda
-   il recap con:
+   esplicitamente l'utente prima di eseguire quel push**, perché per ADR-017
+   un push su `main` che alza `versionCode` pubblica automaticamente l'AAB
+   sul track `production` di Google Play, senza alcuna revisione umana —
+   l'unica eccezione all'autorizzazione permanente di commit/push. Vale
+   anche durante la routine autonoma.
+3. Se non c'è bump di `versionCode`, pusha senza chiedere: la pipeline
+   esistente (`.github/workflows/deploy.yml`) applica Terraform e deploya
+   backend/frontend da sola. Non eseguire `terraform apply` localmente, e
+   non triggerare un `workflow_dispatch` di pubblicazione Play Store
+   esplicita senza che sia stato chiesto.
+4. Dopo il push: manda il recap con:
    `aws --profile personal sns publish --topic-arn <arn di aws_sns_topic.ops_alerts, da backend/terraform/observability.tf> --subject "Routine serale - <data>" --message "<recap>"`
    Riusa il topic SNS operativo già esistente (già iscritto all'email
    dell'owner): non creare un nuovo topic, una nuova subscription o un nuovo

@@ -16,6 +16,7 @@ from backend.src.backend_fastapi import (  # noqa: E402
     CreatePartyRoomRequest,
     JoinPartyRoomRequest,
     SubmitPartyVoteRequest,
+    advance_party_room,
     create_party_room,
     get_party_room,
     join_party_room,
@@ -173,6 +174,9 @@ class PartyRoomTestCase(unittest.TestCase):
             request_with_headers({"X-Anonymous-User-Id": participant}),
         ))
 
+    def _advance(self, room_code, participant="host-1"):
+        return asyncio.run(advance_party_room(room_code, request_with_headers({"X-Anonymous-User-Id": participant})))
+
     def test_create_room_makes_host_the_first_participant(self):
         result = self._create_room()
         self.assertEqual(result["status"], "lobby")
@@ -242,18 +246,80 @@ class PartyRoomTestCase(unittest.TestCase):
         state = self._get_state(room["roomCode"], "host-1")
         self.assertEqual(state["roundResult"], {"firstVotes": 1, "secondVotes": 1})
 
-    def test_deadline_passing_advances_without_everyone_voting(self):
+    def test_safety_net_timeout_advances_an_abandoned_round(self):
+        # TASK-123: there is no visible per-round timer any more - only a
+        # long safety net so a round nobody ever finishes voting doesn't
+        # hang the room forever.
         room = self._create_room()
         self._join(room["roomCode"], "guest-1")
         self._start(room["roomCode"])
         self._vote(room["roomCode"], "host-1", "first")
 
-        # Force the round's deadline into the past instead of sleeping.
+        # Force the safety-net deadline into the past instead of sleeping.
         self.rooms._items[(room["roomCode"],)]["phaseEndsAt"] = 0
 
         state = self._get_state(room["roomCode"], "host-1")
         self.assertEqual(state["status"], "reveal")
         self.assertEqual(state["roundResult"], {"firstVotes": 1, "secondVotes": 0})
+
+    def test_reveal_does_not_auto_advance_without_the_host(self):
+        room = self._create_room()
+        self._join(room["roomCode"], "guest-1")
+        self._start(room["roomCode"])
+        self._vote(room["roomCode"], "host-1", "first")
+        self._vote(room["roomCode"], "guest-1", "second")
+
+        for _ in range(3):
+            state = self._get_state(room["roomCode"], "host-1")
+            self.assertEqual(state["status"], "reveal")
+
+    def test_reveal_exposes_who_voted_what_without_raw_ids(self):
+        room = self._create_room()
+        self._join(room["roomCode"], "guest-1")
+        self._start(room["roomCode"])
+        self._vote(room["roomCode"], "host-1", "first")
+        self._vote(room["roomCode"], "guest-1", "second")
+
+        state = self._get_state(room["roomCode"], "host-1")
+        votes_by_choice = {v["choice"] for v in state["roundVotes"]}
+        self.assertEqual(votes_by_choice, {"first", "second"})
+        for vote in state["roundVotes"]:
+            self.assertNotIn("participantId", vote)
+        self.assertTrue(any(v["isCaller"] for v in state["roundVotes"]))
+
+    def test_only_host_can_advance(self):
+        room = self._create_room()
+        self._join(room["roomCode"], "guest-1")
+        self._start(room["roomCode"])
+        self._vote(room["roomCode"], "host-1", "first")
+        self._vote(room["roomCode"], "guest-1", "second")
+
+        with self.assertRaises(Exception) as raised:
+            self._advance(room["roomCode"], participant="guest-1")
+        self.assertEqual(raised.exception.status_code, 403)
+
+    def test_advance_is_rejected_outside_the_reveal_phase(self):
+        room = self._create_room()
+        self._join(room["roomCode"], "guest-1")
+        self._start(room["roomCode"])  # still "question", nobody voted yet
+
+        with self.assertRaises(Exception) as raised:
+            self._advance(room["roomCode"])
+        self.assertEqual(raised.exception.status_code, 409)
+
+    def test_host_advance_moves_to_the_next_round(self):
+        room = self._create_room(count=backend_module.PARTY_ROOM_MIN_DILEMMAS)
+        self._join(room["roomCode"], "guest-1")
+        self._start(room["roomCode"])
+        self._vote(room["roomCode"], "host-1", "first")
+        self._vote(room["roomCode"], "guest-1", "second")
+
+        result = self._advance(room["roomCode"])
+        self.assertEqual(result["status"], "question")
+        self.assertEqual(result["currentRoundIndex"], 1)
+
+        state = self._get_state(room["roomCode"], "host-1")
+        self.assertFalse(state["hasVotedThisRound"])  # fresh round, no votes yet
 
     def test_full_room_reaches_completed_and_returns_archetypes(self):
         room = self._create_room(count=backend_module.PARTY_ROOM_MIN_DILEMMAS)
@@ -297,11 +363,32 @@ class PartyRoomTestCase(unittest.TestCase):
         awards = state["awards"]
         self.assertIsNotNone(awards["closestPair"])
         self.assertIsNotNone(awards["moralMinority"])
+        self.assertIsNotNone(awards["mostAlignedWithGroup"])
+        self.assertIsNotNone(awards["contrarian"])
         self.assertEqual(awards["mostControversialDilemma"]["roundIndex"], 0)
         self.assertEqual(
             (awards["mostControversialDilemma"]["firstVotes"], awards["mostControversialDilemma"]["secondVotes"]),
             (2, 1),
         )
+        # TASK-123 AC9: always present, even without Groq configured in tests
+        # (falls back to a deterministic sentence).
+        self.assertIsInstance(state["groupVerdict"], str)
+        self.assertTrue(state["groupVerdict"])
+
+    def test_group_verdict_is_generated_once_and_cached(self):
+        room = self._create_room(count=backend_module.PARTY_ROOM_MIN_DILEMMAS)
+        self.rooms._items[(room["roomCode"],)]["dilemmaBaseIds"] = \
+            self.rooms._items[(room["roomCode"],)]["dilemmaBaseIds"][:1]
+        self._join(room["roomCode"], "guest-1")
+        self._start(room["roomCode"])
+        self._vote(room["roomCode"], "host-1", "first")
+        self._vote(room["roomCode"], "guest-1", "second")
+        self.rooms._items[(room["roomCode"],)]["phaseEndsAt"] = 0
+
+        first = self._get_state(room["roomCode"], "host-1")
+        second = self._get_state(room["roomCode"], "host-1")
+        self.assertEqual(first["groupVerdict"], second["groupVerdict"])
+        self.assertEqual(self.rooms._items[(room["roomCode"],)]["groupVerdict"], first["groupVerdict"])
 
     def test_participant_summary_never_includes_raw_ids(self):
         room = self._create_room()

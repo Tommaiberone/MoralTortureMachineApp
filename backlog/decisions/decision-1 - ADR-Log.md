@@ -903,6 +903,34 @@ in `EvaluationDilemmasScreen.jsx`/`PassThePhoneScreen.jsx`) because Recharts
 does not expose a fill override when `label` is a function returning a bare
 string.
 
+### ADR-057 — Party Room drops all visible timers in favor of consensus-driven advance (TASK-123)
+
+At the user's explicit request (a game meant for in-person discussion, not a
+race against a clock): `PARTY_ROOM_ROUND_DURATION_MS`/`PARTY_ROOM_REVEAL_DURATION_MS`
+are replaced by `PARTY_ROOM_SAFETY_TIMEOUT_MS` (10 minutes), which is never
+shown to a player - it exists purely so an abandoned room (someone never
+votes, the host never returns) doesn't stay open forever. Voting now ends
+only once every participant has voted; the reveal phase now ends only via a
+new host-only `POST /party-rooms/{code}/advance`, mirroring the existing
+host-only `start` precedent rather than introducing a new "everyone signals
+ready" mechanic. `_advance_party_room_if_due` keeps its lazy-advance-on-every-read
+architecture from ADR-051 unchanged - only what counts as "due" changed, so
+no new state-machine paradigm was introduced for this. Options considered: a
+much longer but still visible timer (rejected: the user specifically didn't
+want a time pressure at all, not just a smaller one) and an "everyone ready"
+toggle instead of host-only (rejected for this pass: adds a second piece of
+per-participant UI state for a group size where a single host control is
+already an established, understood pattern from the lobby's `start`).
+
+The AI group verdict (`_generate_party_group_verdict`) is generated once
+when a room first reaches `completed` and cached on the room record itself
+(`groupVerdict` field, `attribute_not_exists` conditional write so a
+concurrent duplicate generation never overwrites an already-cached one) -
+same "persist and reuse AI output" rule as the main Results screen's verdict
+(TASK-121). It receives only archetype *names*, never participant display
+names, and always has a deterministic no-AI fallback sentence, so a
+completed room's data is never blocked on Groq being available.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

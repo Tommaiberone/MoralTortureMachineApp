@@ -157,23 +157,31 @@ dev table, or `/dev` SSM hierarchy.
   people together in person and the room expires in hours) and
   `party_participants` (PK `roomCode`, SK `participantId` = the caller's
   existing `anonymous_user_id`, with per-round votes in a nested map, both
-  provisioned 1/1 with a 6h TTL). There is no WebSocket and no
-  "advance to next round" endpoint: every `GET`/`POST` first runs
-  `_advance_party_room_if_due`, which moves `lobby -> question -> reveal ->
-  question... -> completed` from a stored deadline timestamp and live vote
-  counts, via a conditional DynamoDB update so concurrent pollers never
-  double-advance. `GET /party-rooms/{code}` never returns another
-  participant's raw `anonymous_user_id`, only `isCaller` on the caller's own
-  entry. `backend/src/party_awards.py` (`TASK-48`, ADR-052) computes three
-  group awards once the room is `completed` - closest pair and moral
-  minority reuse `compatibility_engine.compute_compatibility` over
-  participant-index keys (moral minority needs 3+ participants and is `null`
-  otherwise, never fabricated), and most-controversial-dilemma picks the
-  round with the closest first/second split. `shareCard.js`'s
-  `sharePartyRecapCard` renders these client-side onto the same canvas
+  provisioned 1/1 with a 6h TTL). There is no WebSocket. Every `GET`/`POST`
+  first runs `_advance_party_room_if_due`, which moves `lobby -> question ->
+  reveal -> question... -> completed` via a conditional DynamoDB update so
+  concurrent pollers never double-advance. Since `TASK-123`/ADR-057 there is
+  no visible timer driving this: voting ends only once everyone has voted,
+  and the reveal phase ends only via the host-only `POST
+  /party-rooms/{code}/advance` (mirroring the lobby's host-only `start`) -
+  the stored deadline is purely a long safety-net timeout for an abandoned
+  room, never surfaced as a countdown. `GET /party-rooms/{code}` never
+  returns another participant's raw `anonymous_user_id`, only `isCaller` on
+  the caller's own entry. `backend/src/party_awards.py` (`TASK-48`/`123`,
+  ADR-052/057) computes five group awards once the room is `completed` -
+  closest pair, moral minority, and its inverse "most aligned with the
+  group" reuse `compatibility_engine.compute_compatibility` over
+  participant-index keys (both minority and most-aligned need 3+
+  participants and are `null` otherwise, never fabricated); "the contrarian"
+  counts how often each participant picked a round's minority option; and
+  most-controversial-dilemma picks the round with the closest first/second
+  split. A one-line AI group verdict (`_generate_party_group_verdict`,
+  archetype names only, never participant names) is generated once and
+  cached on the room record, with a deterministic no-AI fallback. `shareCard.js`'s
+  `sharePartyRecapCard` renders the awards client-side onto the same canvas
   approach as the archetype share card (no AI, no server round trip).
-  A load-tested capacity/duration tuning for the round/reveal timers and the
-  polling rate limit is deliberately deferred to `TASK-49`.
+  A load-tested tuning of the polling rate limit and the abandoned-room
+  safety-net timeout is deliberately deferred to `TASK-49`.
 
 ## Analytics contract
 
