@@ -119,6 +119,7 @@
     "qualityTitle": "Historical data is estimated.",
     "qualityDescription": "Before the platform field was introduced, Android is detected from the user agent. Future data is marked as exact.",
     "summary": "Summary",
+    "registeredUsers": "Registered accounts",
     "events": "Events",
     "activeIdentities": "Active identities",
     "sessions": "Sessions",

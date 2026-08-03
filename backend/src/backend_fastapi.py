@@ -2204,6 +2204,22 @@ def _scan_all_rows(dynamodb_table) -> list[Dict[str, Any]]:
 def _masked_identity(identity: str) -> str:
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:10]
 
+def _count_registered_users() -> int:
+    """Count real user records in users_table, excluding anon# claim-lock rows."""
+    total = 0
+    scan_kwargs = {
+        "Select": "COUNT",
+        "FilterExpression": "attribute_exists(createdAt) AND attribute_not_exists(claimedAt)",
+    }
+    while True:
+        response = users_table.scan(**scan_kwargs)
+        total += response.get("Count", 0)
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key:
+            break
+        scan_kwargs["ExclusiveStartKey"] = last_key
+    return total
+
 
 ABUSE_MONITORING_THRESHOLDS = {
     "watchPeakEventsPerMinute": 15,
@@ -2314,6 +2330,7 @@ def build_analytics_overview(
     days: int,
     now_ms: Optional[int] = None,
     platform: str = "all",
+    registered_users: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Build privacy-safe aggregates used by both the web and Android dashboard."""
     now_ms = now_ms or int(time.time() * 1000)
@@ -2438,6 +2455,7 @@ def build_analytics_overview(
             "activeIdentities": len(identities),
             "knownAnonymousUsers": len(anonymous_users),
             "uniqueSessions": len(sessions),
+            "registeredUsers": registered_users,
         },
         "sourceCounts": dict(source_counts),
         "platformCounts": dict(platform_counts),
@@ -2493,7 +2511,15 @@ async def analytics_overview(
             logger.warning("Product events table is not deployed yet; showing legacy analytics only")
             product_rows = []
 
-        overview = build_analytics_overview(legacy_rows, product_rows, days, platform=platform)
+        try:
+            registered_users = _count_registered_users()
+        except ClientError as error:
+            logger.warning("Unable to count registered users: %s", str(error))
+            registered_users = None
+
+        overview = build_analytics_overview(
+            legacy_rows, product_rows, days, platform=platform, registered_users=registered_users,
+        )
         _analytics_overview_cache[cache_key] = {"createdAt": time.time(), "value": overview}
         return overview
     except ClientError as error:

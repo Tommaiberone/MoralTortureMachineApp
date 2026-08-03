@@ -205,6 +205,14 @@ dev table, or `/dev` SSM hierarchy.
 - `/admin/analytics` consumes privacy-safe aggregates from
   `/admin/analytics/overview` and intentionally has a separate, Notion-like
   operational visual language from the public horror-themed product.
+  `summary.registeredUsers` (TASK-128, ADR-058) is a lifetime `Select=COUNT`
+  scan of `users_table` excluding `anon#` claim-lock rows, not scoped by the
+  `days`/`platform` filters like the rest of the summary; it reuses the same
+  60-second overview cache and falls back to `null` on a scan error. The
+  screen itself (`AnalyticsAdminScreen.jsx`) is single-panel tabs
+  (`role="tablist"`/`tabpanel`, one section mounted at a time) driven by
+  sidebar clicks, not the former continuous scroll-spy: only the KPI band
+  (including `registeredUsers`) stays always visible above the active tab.
 - Abuse monitoring groups events using a server-generated, HMAC-peppered network
   pseudonym where available, falling back to anonymous or session identity. The
   dashboard returns only a short derived mask, behavioral counts, thresholds,

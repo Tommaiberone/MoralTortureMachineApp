@@ -931,6 +931,39 @@ same "persist and reuse AI output" rule as the main Results screen's verdict
 names, and always has a deterministic no-AI fallback sentence, so a
 completed room's data is never blocked on Groq being available.
 
+### ADR-058 — AnalyticsAdminScreen switches to single-panel tab navigation; registered-account count added (TASK-128)
+
+The dashboard exposed no count of registered (signed-in) accounts at all -
+every KPI was derived from anonymous event identities, so "how many people
+have signed up" had no answer anywhere in the product. `_count_registered_users`
+does a `Select=COUNT` scan of `users_table` filtered to
+`attribute_exists(createdAt) AND attribute_not_exists(claimedAt)`, which
+excludes the `anon#<id>` claim-lock rows written by `claim_anonymous_user_id`
+(those never get a `createdAt`, only `claimedAt`) so the count reflects real
+accounts only. It's a lifetime total, not scoped by the `days`/`platform`
+query filters like the rest of the summary, since "how many signups do I
+have" is inherently an all-time question; it reuses the endpoint's existing
+60-second cache rather than adding a second cache layer. A scan failure logs
+a warning and returns `null` (rendered as "—") instead of failing the whole
+overview, matching the existing fallback pattern for a not-yet-deployed
+`product_events` table just above it in the same handler.
+
+Separately, and at the user's explicit request after finding the page "full
+of detail with no essentials reachable by clicking": the five sections
+(abuse, trends, funnel, breakdowns, recent events) move from one continuous
+IntersectionObserver-driven scroll to single-panel tabs (`role="tablist"` /
+`role="tabpanel"`) - clicking a sidebar item now shows only that section,
+the rest unmount rather than merely losing scroll focus. Options considered:
+a multi-open accordion (rejected by the user - explicitly wanted one section
+visible at a time, not a scroll-with-collapsibles hybrid). The former
+"Breakdowns" card (data sources/languages/time zones/app versions/top
+dilemmas) becomes its own fifth tab instead of living inside the funnel
+grid, since it was the densest single card and the funnel tab reads better
+as just funnel + all-events-by-type. The always-visible KPI band above the
+tabs drops `exactPlatform` (a data-quality/QA number, not a product metric)
+in favor of the new registered-accounts count; exact-platform coverage moved
+into the breakdowns tab as a caption instead of being removed.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

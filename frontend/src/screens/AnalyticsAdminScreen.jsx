@@ -26,7 +26,7 @@ const PLATFORM_COLORS = {
   ios: '#6940a5',
   unknown: '#8a8980',
 };
-const SECTION_IDS = ['overview', 'abuse', 'trends', 'funnel', 'events'];
+const SECTION_IDS = ['abuse', 'trends', 'funnel', 'breakdowns', 'events'];
 
 const AnalyticsAdminScreen = () => {
   const { t, i18n } = useTranslation();
@@ -43,25 +43,6 @@ const AnalyticsAdminScreen = () => {
     document.body.classList.add('analytics-page');
     return () => document.body.classList.remove('analytics-page');
   }, []);
-
-  useEffect(() => {
-    if (!data) return undefined;
-    const sections = SECTION_IDS
-      .map((id) => document.getElementById(id))
-      .filter(Boolean);
-    if (!sections.length) return undefined;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-        if (visible[0]) setActiveSection(visible[0].target.id);
-      },
-      { rootMargin: '-15% 0px -70% 0px', threshold: 0 },
-    );
-    sections.forEach((section) => observer.observe(section));
-    return () => observer.disconnect();
-  }, [data]);
 
   const numberFormatter = useMemo(
     () => new Intl.NumberFormat(i18n.language || 'it'),
@@ -116,7 +97,9 @@ const AnalyticsAdminScreen = () => {
     if (auth.isAuthenticated) auth.logout();
   };
 
-  const formatNumber = (value) => numberFormatter.format(value || 0);
+  const formatNumber = (value) => (value === null || value === undefined
+    ? '—'
+    : numberFormatter.format(value));
   const formatDateTime = (value) => new Intl.DateTimeFormat(i18n.language || 'it', {
     dateStyle: 'short',
     timeStyle: 'short',
@@ -149,10 +132,10 @@ const AnalyticsAdminScreen = () => {
   }
 
   const summaryCards = [
-    ['events', data.summary.totalEvents],
+    ['registeredUsers', data.summary.registeredUsers],
     ['activeIdentities', data.summary.activeIdentities],
+    ['events', data.summary.totalEvents],
     ['sessions', data.summary.uniqueSessions],
-    ['exactPlatform', `${data.dataQuality.exactPlatformCoveragePct}%`],
   ];
   const abuse = data.abuseMonitoring || {
     summary: {
@@ -182,22 +165,26 @@ const AnalyticsAdminScreen = () => {
             <small>Analytics workspace</small>
           </div>
         </div>
-        <nav className="analytics-sidebar-nav" aria-label={t('analyticsAdmin.title')}>
+        <nav className="analytics-sidebar-nav" role="tablist" aria-label={t('analyticsAdmin.title')} aria-orientation="vertical">
           {[
-            ['overview', '◫', t('analyticsAdmin.summary')],
             ['abuse', '⌁', t('analyticsAdmin.abuseTitle')],
-            ['trends', '⌁', t('analyticsAdmin.trend')],
+            ['trends', '↝', t('analyticsAdmin.trend')],
             ['funnel', '↳', t('analyticsAdmin.funnel')],
+            ['breakdowns', '▦', t('analyticsAdmin.breakdowns')],
             ['events', '≡', t('analyticsAdmin.recentEvents')],
           ].map(([id, icon, label]) => (
-            <a
+            <button
+              type="button"
               key={id}
-              href={`#${id}`}
-              className={activeSection === id ? 'is-active' : ''}
-              aria-current={activeSection === id ? 'true' : undefined}
+              id={`tab-${id}`}
+              role="tab"
+              className={`analytics-nav-item${activeSection === id ? ' is-active' : ''}`}
+              aria-selected={activeSection === id}
+              aria-controls={`panel-${id}`}
+              onClick={() => setActiveSection(id)}
             >
               <span aria-hidden="true">{icon}</span>{label}
-            </a>
+            </button>
           ))}
         </nav>
         <div className="analytics-sidebar-account">
@@ -212,7 +199,7 @@ const AnalyticsAdminScreen = () => {
       </aside>
 
       <div className={`analytics-content${loading ? ' analytics-content--loading' : ''}`}>
-      <header className="analytics-header" id="overview">
+      <header className="analytics-header">
         <div>
           <p className="analytics-eyebrow">Workspace / Analytics</p>
           <h1>{t('analyticsAdmin.title')}</h1>
@@ -270,12 +257,13 @@ const AnalyticsAdminScreen = () => {
         {summaryCards.map(([label, value]) => (
           <article className="analytics-card analytics-kpi" key={label}>
             <span>{t(`analyticsAdmin.${label}`)}</span>
-            <strong>{typeof value === 'number' ? formatNumber(value) : value}</strong>
+            <strong>{formatNumber(value)}</strong>
           </article>
         ))}
       </section>
 
-      <section className="analytics-card analytics-abuse" id="abuse">
+      {activeSection === 'abuse' && (
+      <section className="analytics-card analytics-abuse" id="panel-abuse" role="tabpanel" aria-labelledby="tab-abuse">
         <div className="analytics-section-heading">
           <div>
             <h2>{t('analyticsAdmin.abuseTitle')}</h2>
@@ -342,8 +330,10 @@ const AnalyticsAdminScreen = () => {
           </table>
         </div>
       </section>
+      )}
 
-      <section className="analytics-grid analytics-grid--wide" id="trends">
+      {activeSection === 'trends' && (
+      <section className="analytics-grid analytics-grid--wide" id="panel-trends" role="tabpanel" aria-labelledby="tab-trends">
         <article className="analytics-card analytics-chart-card">
           <div className="analytics-section-heading">
             <div>
@@ -398,8 +388,10 @@ const AnalyticsAdminScreen = () => {
           </div>
         </article>
       </section>
+      )}
 
-      <section className="analytics-grid analytics-grid--three" id="funnel">
+      {activeSection === 'funnel' && (
+      <section className="analytics-grid analytics-grid--two" id="panel-funnel" role="tabpanel" aria-labelledby="tab-funnel">
         <article className="analytics-card">
           <h2>{t('analyticsAdmin.funnel')}</h2>
           <p className="analytics-card-copy">{t('analyticsAdmin.funnelDescription')}</p>
@@ -437,9 +429,17 @@ const AnalyticsAdminScreen = () => {
             ))}
           </div>
         </article>
+      </section>
+      )}
 
-        <article className="analytics-card">
-          <h2>{t('analyticsAdmin.breakdowns')}</h2>
+      {activeSection === 'breakdowns' && (
+        <section className="analytics-card analytics-breakdowns" id="panel-breakdowns" role="tabpanel" aria-labelledby="tab-breakdowns">
+          <div className="analytics-section-heading">
+            <div>
+              <h2>{t('analyticsAdmin.breakdowns')}</h2>
+              <p>{t('analyticsAdmin.exactPlatform')}: {formatNumber(data.dataQuality.exactPlatformCoveragePct)}%</p>
+            </div>
+          </div>
           <h3>{t('analyticsAdmin.dataSources')}</h3>
           <div className="analytics-ranked-list analytics-ranked-list--compact">
             {Object.entries(data.sourceCounts).map(([source, count]) => (
@@ -478,10 +478,11 @@ const AnalyticsAdminScreen = () => {
               </div>
             )) : <p>{t('analyticsAdmin.noData')}</p>}
           </div>
-        </article>
-      </section>
+        </section>
+      )}
 
-      <section className="analytics-card analytics-recent" id="events">
+      {activeSection === 'events' && (
+      <section className="analytics-card analytics-recent" id="panel-events" role="tabpanel" aria-labelledby="tab-events">
         <div className="analytics-section-heading">
           <div>
             <h2>{t('analyticsAdmin.recentEvents')}</h2>
@@ -536,6 +537,7 @@ const AnalyticsAdminScreen = () => {
           </table>
         </div>
       </section>
+      )}
       </div>
     </main>
   );
