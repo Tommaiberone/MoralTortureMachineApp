@@ -1124,6 +1124,34 @@ to web-only in one place if device verification turns up a problem, and
 `TASK-18`/`TASK-86`'s acceptance criteria remain unchecked pending that
 verification.
 
+### ADR-064 — [regression] Invalid DynamoDB tag value silently blocked every deploy for five consecutive pushes (TASK-137)
+
+Asked directly whether the just-pushed Cognito/login-gate work was actually
+live on Play Store; checking `gh run list` to answer honestly showed every
+deploy since `feat: persist ops error alerts to DynamoDB...` (2026-08-04
+07:35, `TASK-129/130/131`) had failed in `Terraform Init & Apply`, including
+this session's own push. Root cause: `aws_dynamodb_table.ops_error_alerts`'s
+`Purpose` tag contained a comma ("...TTL, for offline triage") - AWS rejects
+that character in a tag value, the exact same class of bug already found and
+fixed twice on 2026-08-02 for the `party_rooms` and Duel tables (`ADR-055`).
+That fix was never generalized into a lint/check, so the same mistake
+recurred on the next new table added afterward. Consequence: five
+consecutive pushes (roughly a full day of otherwise-good work, including
+`TASK-133`-`136` from this same session) never actually reached
+`Build Android APK`, `Build & Deploy Frontend`, or `Publish to Google Play` -
+those jobs were skipped every time because `Deploy Backend (prod)` failed
+first. The last successful deploy remained `TASK-128` (2026-08-03 18:08),
+so the live Play Store build has no Cognito credentials in it either (see
+`ADR-063`) until a push clears this and successfully republishes.
+
+Fixed by dropping the comma (`Purpose = "Persisted 4xx/5xx alert history with
+TTL for offline triage"`), `terraform validate` passing. Filed as a
+`[regression]` task (`TASK-137`) per CLAUDE.md rather than silently patched,
+since five failed production deploys is exactly the kind of thing that
+belongs in the tracked history, not just a commit message. Not generalized
+into an automated tag-character lint in this pass - flagged as a gap worth a
+future task if this recurs a third time.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

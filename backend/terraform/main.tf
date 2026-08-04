@@ -398,7 +398,7 @@ resource "aws_dynamodb_table" "ops_error_alerts" {
     Name        = "Moral Torture Machine Ops Error Alerts"
     Environment = var.environment
     ManagedBy   = "Terraform"
-    Purpose     = "Persisted 4xx/5xx alert history with TTL, for offline triage"
+    Purpose     = "Persisted 4xx/5xx alert history with TTL for offline triage"
   }
 }
 
