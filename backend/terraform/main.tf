@@ -370,6 +370,38 @@ resource "aws_dynamodb_table" "party_participants" {
   }
 }
 
+# TASK-104/129: persisted twin of the ops_alerts email (ADR-045/observability.tf) -
+# one item per notification actually sent, so past alerts can be found and
+# triaged in bulk (see the ops-alerts-sweep skill) instead of only ever
+# existing as an email in the owner's inbox. alertId is a random token, not a
+# natural key, since several distinct alerts can share the same
+# (statusCode, pathSignature) coalescing signature over time. TTL keeps this a
+# recent-history audit trail rather than permanent storage.
+resource "aws_dynamodb_table" "ops_error_alerts" {
+  name           = "${var.environment}-${var.stack_name}-ops-error-alerts"
+  billing_mode   = "PROVISIONED"
+  read_capacity  = 1
+  write_capacity = 1
+  hash_key       = "alertId"
+
+  attribute {
+    name = "alertId"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "expirationTime"
+    enabled        = true
+  }
+
+  tags = {
+    Name        = "Moral Torture Machine Ops Error Alerts"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+    Purpose     = "Persisted 4xx/5xx alert history with TTL, for offline triage"
+  }
+}
+
 # SSM Parameter for Groq API Key (migrato da Secrets Manager - risparmio $0.40/mese)
 # Se già creato via CLI, importare con:
 # terraform import aws_ssm_parameter.groq_api_key /prod/moral-torture-machine/groq-api-key
@@ -619,7 +651,8 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           aws_dynamodb_table.challenges.arn,
           aws_dynamodb_table.challenge_participants.arn,
           aws_dynamodb_table.party_rooms.arn,
-          aws_dynamodb_table.party_participants.arn
+          aws_dynamodb_table.party_participants.arn,
+          aws_dynamodb_table.ops_error_alerts.arn
         ]
       },
       {
@@ -635,7 +668,8 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           aws_dynamodb_table.challenges.arn,
           aws_dynamodb_table.challenge_participants.arn,
           aws_dynamodb_table.party_rooms.arn,
-          aws_dynamodb_table.party_participants.arn
+          aws_dynamodb_table.party_participants.arn,
+          aws_dynamodb_table.ops_error_alerts.arn
         ]
       },
       {
@@ -693,6 +727,7 @@ resource "aws_lambda_function" "api" {
       CHALLENGE_PARTICIPANTS_TABLE              = aws_dynamodb_table.challenge_participants.name
       PARTY_ROOMS_TABLE                         = aws_dynamodb_table.party_rooms.name
       PARTY_PARTICIPANTS_TABLE                  = aws_dynamodb_table.party_participants.name
+      OPS_ERROR_ALERTS_TABLE                    = aws_dynamodb_table.ops_error_alerts.name
       GROQ_API_KEY_SSM_NAME                     = aws_ssm_parameter.groq_api_key.name
       ANALYTICS_FINGERPRINT_SECRET_SSM_NAME     = aws_ssm_parameter.analytics_fingerprint_pepper.name
       COGNITO_USER_POOL_ID                      = aws_cognito_user_pool.users.id

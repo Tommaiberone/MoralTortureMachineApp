@@ -964,6 +964,68 @@ tabs drops `exactPlatform` (a data-quality/QA number, not a product metric)
 in favor of the new registered-accounts count; exact-platform coverage moved
 into the breakdowns tab as a caption instead of being removed.
 
+### ADR-059 — Ops error alerts persisted to DynamoDB and coalesced by route signature, not literal path (TASK-129/130)
+
+Triggered by two real production alert emails (`GET /party-rooms/V9NX5F
+returned 429`, `GET /robots.txt returned 404`): the owner wanted them easier
+to find and triage than "an email in an inbox", plus a way to periodically
+clean up the ones that are clearly noise. Two changes, not one:
+
+1. **Persistence**: `_notify_ops_of_error` now writes one item to a new
+   `ops_error_alerts` table (provisioned 1/1, 30-day TTL - an audit trail,
+   not permanent storage) every time it would send the SNS email, gated by
+   the same cooldown so table growth stays bounded. Storage and the email
+   toggle are deliberately decoupled (`_record_ops_error_alert` runs even
+   when `OPS_ERROR_NOTIFICATIONS_ENABLED` is false) so disabling email noise
+   can never silently stop the audit trail too.
+2. **Coalescing key fix**: ADR-045's "one email per (status_code, path) per
+   cooldown" turned out to barely coalesce anything on parameterized routes -
+   `/party-rooms/V9NX5F` and `/party-rooms/AB12CD` are different literal
+   paths, so every distinct room/profile/challenge got its own independent
+   cooldown and its own email. `_request_path_signature` now prefers the
+   matched route template (`request.scope["route"].path`, e.g.
+   `/party-rooms/{room_code}`) when the router resolved one. The specific
+   429 that prompted this never reaches the router at all -
+   `enforce_zero_cost_burst_guard` short-circuits before routing - so for a
+   429 the signature instead falls back to the burst guard's own rule name
+   (`rate_limit:party_room_poll`, already parameter-independent by
+   construction). Only a genuinely unmapped path (e.g. a bot on
+   `/robots.txt`, see ADR-060) falls all the way back to the literal path,
+   which is itself the useful signal there.
+
+Options considered for the coalescing fix: hashing/truncating the literal
+path to strip trailing segments (rejected - fragile against routes that
+don't end in the varying segment); a global 429 cooldown regardless of rule
+(rejected - would suppress an unrelated rate-limit rule going off while one
+is noisy, same reasoning ADR-045 already rejected for a global 4xx cooldown).
+
+`.claude/commands/ops-alerts-sweep.md` (TASK-130) is a new project skill,
+modeled on `routine-serale.md`: it scans `ops_error_alerts` via the
+`personal` AWS CLI profile, groups by `(statusCode, pathSignature)`, and
+deletes only the groups whose cause it can determine from the code with
+confidence and that need no further action (expected business-logic 4xx,
+already-fixed causes, harmless bot noise). Anything else stays in the table
+and is routed through the normal CLAUDE.md task-creation rules instead of the
+skill silently modifying product code or infrastructure itself - this keeps
+an unattended/periodic sweep from ever being the thing that changes
+production behavior.
+
+### ADR-060 — API domain serves a disallow-all robots.txt instead of 404 (TASK-131)
+
+Found via the same alert email triage as ADR-059: `GET /robots.txt` on the
+API domain (API Gateway/Lambda) was a genuine 404, because only the frontend
+(CloudFront/S3) serves one - bots/scanners routinely probe robots.txt on any
+host they hit, including an API that was never meant to be crawled. Since the
+path never changes per-request, ADR-059's coalescing already limited this to
+at most one email per cooldown per warm container, but that still means
+recurring noise for as long as anything keeps scanning the API host. Added a
+trivial `GET /robots.txt` returning a `200` disallow-all
+(`User-agent: *\nDisallow: /`), which is both accurate (nothing on the API is
+meant to be indexed) and removes the noise at the source rather than relying
+on the alert pipeline or the sweep skill to keep absorbing it. The frontend's
+own `robots.txt` (`frontend/public/robots.txt`, served for the actual
+indexable site) is untouched.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

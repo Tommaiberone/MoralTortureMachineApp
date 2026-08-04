@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from mangum import Mangum
 from pydantic import BaseModel, Field, field_validator
 import boto3
@@ -93,6 +93,7 @@ CHALLENGES_TABLE = os.getenv("CHALLENGES_TABLE", "moral-torture-machine-challeng
 CHALLENGE_PARTICIPANTS_TABLE = os.getenv("CHALLENGE_PARTICIPANTS_TABLE", "moral-torture-machine-challenge-participants")
 PARTY_ROOMS_TABLE = os.getenv("PARTY_ROOMS_TABLE", "moral-torture-machine-party-rooms")
 PARTY_PARTICIPANTS_TABLE = os.getenv("PARTY_PARTICIPANTS_TABLE", "moral-torture-machine-party-participants")
+OPS_ERROR_ALERTS_TABLE = os.getenv("OPS_ERROR_ALERTS_TABLE", "moral-torture-machine-ops-error-alerts")
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
 GROQ_API_KEY_SSM_NAME = os.getenv("GROQ_API_KEY_SSM_NAME", "")
 ANALYTICS_FINGERPRINT_SECRET_SSM_NAME = os.getenv(
@@ -160,6 +161,10 @@ OPS_ERROR_NOTIFICATION_COOLDOWN_SECONDS = _env_positive_int(
     "OPS_ERROR_NOTIFICATION_COOLDOWN_SECONDS",
     600,
 )
+# TASK-129: how long a persisted ops error alert row survives before TTL
+# cleanup - a recent-history audit trail for triage (see the
+# ops-alerts-sweep skill), not permanent storage.
+OPS_ERROR_ALERT_TTL_SECONDS = 30 * 24 * 60 * 60
 
 # TASK-34: abandoned challenges (never joined/completed) expire via TTL.
 CHALLENGE_TTL_SECONDS = 30 * 24 * 60 * 60
@@ -215,6 +220,7 @@ challenges_table = dynamodb.Table(CHALLENGES_TABLE)
 challenge_participants_table = dynamodb.Table(CHALLENGE_PARTICIPANTS_TABLE)
 party_rooms_table = dynamodb.Table(PARTY_ROOMS_TABLE)
 party_participants_table = dynamodb.Table(PARTY_PARTICIPANTS_TABLE)
+ops_error_alerts_table = dynamodb.Table(OPS_ERROR_ALERTS_TABLE)
 ssm_client = boto3.client('ssm', region_name=AWS_REGION)
 sns_client = boto3.client('sns', region_name=AWS_REGION)
 
@@ -1042,23 +1048,71 @@ def _should_notify_ops(status_code: int, path: str, now_seconds: Optional[float]
         return True
 
 
+def _request_path_signature(request: Request, status_code: Optional[int] = None) -> str:
+    """TASK-129: the matched route template (e.g. '/party-rooms/{room_code}')
+    when the router resolved one, so distinct instances of the same endpoint
+    (different room codes, profile ids, challenge tokens...) coalesce into one
+    alert/email signature instead of one per literal path - otherwise the
+    per-(status, path) cooldown from ADR-045 barely coalesces anything on
+    parameterized routes. A 429 from enforce_zero_cost_burst_guard never
+    reaches the router (it short-circuits before routing), so scope['route']
+    is never set for it; fall back to the same rule name the burst guard
+    itself used (e.g. 'party_room_poll'), which is already
+    parameter-independent. Only a genuinely unmapped route (e.g. a bot probing
+    /robots.txt) falls all the way back to the literal path, which is itself
+    useful signal to keep distinct."""
+    route = request.scope.get("route")
+    path_template = getattr(route, "path", None)
+    if path_template:
+        return path_template
+    if status_code == 429:
+        rules = _rate_limit_rules_for_request(request.method, request.url.path)
+        if rules:
+            return f"rate_limit:{rules[-1][0]}"
+    return request.url.path
+
+
+def _record_ops_error_alert(method: str, status_code: int, path: str, path_signature: str, detail: str) -> None:
+    """TASK-129: persist each alerted error to DynamoDB so past alerts can be
+    found and triaged later (see the ops-alerts-sweep skill) instead of only
+    ever existing as an email in the owner's inbox. Best-effort like the SNS
+    publish below - a write failure here must never affect the response."""
+    try:
+        now = int(time.time())
+        ops_error_alerts_table.put_item(Item={
+            "alertId": secrets.token_hex(16),
+            "statusCode": status_code,
+            "method": method,
+            "path": path,
+            "pathSignature": path_signature,
+            "detail": detail[:500],
+            "occurredAt": datetime.now(timezone.utc).isoformat(),
+            "expirationTime": now + OPS_ERROR_ALERT_TTL_SECONDS,
+        })
+    except Exception:
+        logger.exception("Failed to persist ops error alert to DynamoDB")
+
+
 def _notify_ops_of_error(request: Request, status_code: int, detail: str) -> None:
-    """Best-effort SNS email for a 4xx/5xx response (TASK-104). Reuses the
-    existing ops_alerts topic (ADR-031/backend/terraform/observability.tf);
-    a failure here must never affect the response already produced."""
-    if not OPS_ERROR_NOTIFICATIONS_ENABLED or not OPS_ALERTS_TOPIC_ARN:
+    """Best-effort SNS email + DynamoDB record for a 4xx/5xx response
+    (TASK-104/TASK-129). Reuses the existing ops_alerts topic
+    (ADR-031/backend/terraform/observability.tf); a failure here must never
+    affect the response already produced."""
+    literal_path = request.url.path
+    signature = _request_path_signature(request, status_code)
+    if not _should_notify_ops(status_code, signature):
         return
-    path = request.url.path
-    if not _should_notify_ops(status_code, path):
+    _record_ops_error_alert(request.method, status_code, literal_path, signature, detail)
+    if not OPS_ERROR_NOTIFICATIONS_ENABLED or not OPS_ALERTS_TOPIC_ARN:
         return
     try:
         sns_client.publish(
             TopicArn=OPS_ALERTS_TOPIC_ARN,
-            Subject=f"[Moral Torture Machine] {status_code} on {path}"[:100],
+            Subject=f"[Moral Torture Machine] {status_code} on {signature}"[:100],
             Message=(
-                f"{request.method} {path} returned {status_code}.\n\n"
+                f"{request.method} {literal_path} returned {status_code}.\n\n"
                 f"Detail: {detail}\n\n"
-                "This alert is coalesced: at most one email per (status code, path) "
+                "This alert is coalesced: at most one email per (status code, route) "
                 f"every {OPS_ERROR_NOTIFICATION_COOLDOWN_SECONDS}s per warm Lambda container."
             ),
         )
@@ -1084,6 +1138,15 @@ async def notify_ops_of_errors(request: Request, call_next):
 async def root():
     """Health check endpoint"""
     return {"status": "ok", "message": "Moral Torture Machine API"}
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+async def robots_txt():
+    """TASK-131: this is the API domain, not the indexable frontend (which
+    already serves its own robots.txt via CloudFront/S3) - scanners probing
+    it directly used to get a real 404, which kept triggering ops error
+    alerts for harmless bot noise. A disallow-all is both accurate (nothing
+    here is meant to be crawled) and stops the noise at the source."""
+    return "User-agent: *\nDisallow: /\n"
 
 @app.get("/auth/me")
 async def authenticated_profile(request: Request):

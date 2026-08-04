@@ -325,14 +325,31 @@ dev table, or `/dev` SSM hierarchy.
   lookup - `TASK-67`) per transient network source by default. It adds no AWS
   service, is configurable through Terraform, and is deliberately best-effort
   rather than a globally consistent distributed limit.
-- `TASK-104`: every 4xx/5xx response (including an uncaught exception) emails
-  the existing `ops_alerts` SNS topic (ADR-031) through a `notify_ops_of_errors`
-  middleware, coalesced to at most one notification per `(status_code, path)`
-  pair per `OPS_ERROR_NOTIFICATION_COOLDOWN_SECONDS` (default 600s) per warm
-  Lambda container, so an ordinary burst of the same expected 4xx (e.g. a
-  repeated Duel 409) cannot flood the owner's inbox. IAM grants only
-  `sns:Publish` on that one topic; a notification failure is caught and never
-  affects the response it describes.
+- `TASK-104`/`TASK-129`: every 4xx/5xx response (including an uncaught
+  exception) emails the existing `ops_alerts` SNS topic (ADR-031) through a
+  `notify_ops_of_errors` middleware and also persists one item to the
+  `ops_error_alerts` DynamoDB table (`backend/terraform/main.tf`, provisioned
+  1/1, 30-day TTL), coalesced to at most one notification+row per
+  `(status_code, path signature)` pair per
+  `OPS_ERROR_NOTIFICATION_COOLDOWN_SECONDS` (default 600s) per warm Lambda
+  container, so an ordinary burst of the same expected 4xx (e.g. a repeated
+  Duel 409) cannot flood the owner's inbox. The "path signature" is the
+  matched route template (`request.scope["route"].path`, e.g.
+  `/party-rooms/{room_code}`) when the router resolved one, so different
+  resource instances of the same endpoint coalesce together instead of one
+  alert each; a burst-guard 429 never reaches the router, so it falls back to
+  the burst guard's own rule name (e.g. `rate_limit:party_room_poll`) instead
+  of the literal parameterized path (ADR-059). IAM grants only `sns:Publish`
+  on the ops_alerts topic and the usual table CRUD on `ops_error_alerts`; a
+  notification/persistence failure is caught and never affects the response
+  it describes. `.claude/commands/ops-alerts-sweep.md` (`TASK-130`) is a
+  project skill that scans/groups/triages that table and deletes only the
+  rows it can confidently resolve, routing anything else through the normal
+  Backlog.md process instead of touching product code itself.
+- `TASK-131`: `GET /robots.txt` on the API domain returns a `200` disallow-all
+  instead of a `404` - the API is not the indexable site (the frontend serves
+  its own via CloudFront/S3), so a bot probing the API host directly used to
+  keep triggering the ops error alert above for pure noise.
 - `AnalyticsEvent.validate_properties` screens both the property *key* (blocks
   `email`/`password`/`token`/`secret`/`ip`/`analysis` tokens) and, since
   `TASK-65`, the property *value* (rejects a string that looks like an email

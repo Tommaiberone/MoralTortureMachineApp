@@ -38,3 +38,25 @@ These thresholds are intentionally coarse for a low-traffic solo project;
 revisit them (lower the absolute counts, or switch to a rate-based metric
 math expression) once monthly invocations grow enough that 5 errors in 15
 minutes stops being a meaningful signal.
+
+## Ops error alerts: email + DynamoDB history (TASK-104/129/130)
+
+Every 4xx/5xx API response (including an uncaught exception) both emails the
+`ops_alerts` topic above and writes one item to the `ops_error_alerts`
+DynamoDB table (`backend/terraform/main.tf`), coalesced to at most one
+notification per `(status_code, route signature)` per 600s per warm Lambda
+container (ADR-045/059). The table keeps a 30-day TTL history, so an alert
+that already scrolled out of the inbox can still be looked up.
+
+To inspect it directly:
+
+```bash
+aws --profile personal dynamodb scan --table-name prod-moral-torture-machine-ops-error-alerts
+```
+
+Run the `ops-alerts-sweep` skill (`.claude/commands/ops-alerts-sweep.md`,
+TASK-130) to triage the table in bulk: it groups alerts by
+`(statusCode, pathSignature)`, investigates each group in the code, deletes
+the ones it can confidently resolve as noise or already-fixed, and files a
+Backlog.md task for anything that still needs a real fix instead of touching
+product code itself.
