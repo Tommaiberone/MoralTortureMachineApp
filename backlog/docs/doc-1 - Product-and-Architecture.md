@@ -128,20 +128,49 @@ dev table, or `/dev` SSM hierarchy.
 - The Duel API (`POST /profiles`, `GET /profiles/{publicId}`,
   `POST /challenges`, `GET /challenges/{token}`, `POST .../join`,
   `POST .../submit`, `GET .../compare`, `POST .../rematch`,
-  `POST .../revoke`) never requires authentication, only the existing
-  `X-Anonymous-User-Id` identity. Every state transition is validated
-  (`ensure_challenge_is_actionable`) and idempotent at the DynamoDB level via
-  `ConditionExpression`, not just an application-level check: a repeated join
-  by the same invitee is a no-op, a second distinct invitee gets 409, and a
-  second submit is rejected because `submittedAt` already exists. The
-  opponent's dimension averages and archetype are never returned before the
-  challenge reaches `completed`; the pre-unlock `open_challenge` response is
-  a teaser (archetype name/visual/share phrase only).
+  `POST .../revoke`) only requires the base `X-Anonymous-User-Id` identity for
+  a caller's *first* Duel interaction; `require_authenticated_for_repeat_duel`
+  (`TASK-136`) additionally requires a Cognito bearer token from the second
+  one on for `create_challenge`/`join_challenge`, and unconditionally for
+  `rematch_challenge` (a rematch only exists after completing a first one, so
+  it is always a repeat). "First interaction" is detected by
+  `_has_prior_profile`, a bounded `Limit=5` query against the existing
+  `moral_profiles` `OwnerIndex` GSI (no new table/index, no Scan) checking
+  whether the caller already owns a profile besides the one just used for the
+  current action - a profile is only ever created by "challenge a friend" or
+  by an invitee's submit, so owning any other one means this is not the
+  caller's first Duel interaction. An unmet gate raises `401` with
+  `detail: "login_required"`, which the frontend (`ResultsScreen.jsx`,
+  `ChallengeLandingScreen.jsx`, `ChallengeCompareScreen.jsx`) renders as a
+  dedicated login CTA instead of a generic error, never a hard crash. Every
+  state transition is still validated (`ensure_challenge_is_actionable`) and
+  idempotent at the DynamoDB level via `ConditionExpression`, not just an
+  application-level check: a repeated join by the same invitee is a no-op, a
+  second distinct invitee gets 409, and a second submit is rejected because
+  `submittedAt` already exists. The opponent's dimension averages and
+  archetype are never returned before the challenge reaches `completed`; the
+  pre-unlock `open_challenge` response is a teaser (archetype name/visual/
+  share phrase only).
 - `backend/src/compatibility_engine.py` computes Duel compatibility from two
   participants' dimension averages by per-dimension distance, with no AI and
   no dependency on which dilemmas were used. `compute_compatibility(A, B)`
   always equals `compute_compatibility(B, A)` (only the `a`/`b` per-dimension
   labels swap); `COMPATIBILITY_VERSION` is returned in every comparison.
+- `GET /challenges/{token}/compare` additionally returns a `pairInsight`
+  (`TASK-135`) - one short AI-enriched sentence about what the specific
+  archetype pairing means - only when `get_optional_user` resolves a caller
+  (`pairInsightUnlocked: true`); an anonymous caller still gets the full
+  aggregate comparison above for free, just not this one extra sentence. This
+  is the concrete, contextual login incentive for `TASK-14`, replacing an
+  earlier "save your result" framing. Generated once via
+  `_generate_duel_pair_insight` and cached on the `challenges` record
+  (`pairInsight` field, `attribute_not_exists` conditional write, same
+  never-regenerate-per-view pattern as the Party Room group verdict) with a
+  deterministic `_fallback_duel_pair_insight` when Groq is unavailable. The
+  prompt receives only archetype names and aggregate percentages
+  (`overallAgreementPct`, `mostAlignedDimension`, `mostDivergentDimension`) -
+  never raw per-dilemma answers/choices, which `TASK-39` already decided
+  never to expose even to the two participants themselves.
 - AI can enrich presentation but cannot determine scores or core outcomes.
 - Generated AI output is persisted and reused; every core flow has a
   deterministic fallback when Groq is unavailable.
@@ -314,6 +343,15 @@ dev table, or `/dev` SSM hierarchy.
   with the generated PNG instead of relying on `<a download>`, which does not
   reliably save a file inside that WebView; it falls back to the anchor
   download only when file sharing isn't available (mainly desktop browsers).
+  `generateShareCardDataUrl` (`TASK-133`) also takes an optional `dimensions`
+  array (the same `{subject, value}` shape as the Results radar chart) to draw
+  a mini bar chart plus the archetype's `strength`/`blindSpot` lines, since an
+  emoji-and-quote card alone carried no real content to share. `shareCard.js`
+  also exports `generateDuelCardDataUrl`/`shareDuelCard` (`TASK-134`), a
+  Stories-sized card for the Moral Duel comparison itself (both archetypes,
+  overall compatibility %, most aligned/divergent dimension) rendered from
+  `GET /challenges/{token}/compare`'s response only - never raw per-dilemma
+  answers, same constraint as the JSON response itself.
 - Avoid SMS. Use FCM only after an explicit opt-in value moment.
 - Reassess Cognito at 8,000 MAU and before exceeding the 10,000 MAU free tier.
 - Every new variable-cost service needs an owner, budget alarm, and fallback.
@@ -406,7 +444,18 @@ ADR-043 for the full protocol and why deploy stays gated.
 ## Release automation
 
 - `.github/workflows/deploy.yml` builds and signs the release AAB on every push
-  to `main` (job `android-build`).
+  to `main` (job `android-build`). Its "Build web app" step now also injects
+  `VITE_COGNITO_DOMAIN`/`VITE_COGNITO_CLIENT_ID`/`VITE_COGNITO_NATIVE_CLIENT_ID`
+  from the `backend-deploy` job outputs, mirroring `frontend-deploy` - found
+  during `TASK-18`/`TASK-86` follow-up work that these were missing from this
+  job specifically: every Android build before this fix embedded an empty
+  Cognito config, so `isGoogleAuthAvailable()` was always `false` on Android
+  and `AuthButton` never rendered at all, regardless of how complete the
+  native PKCE/Keystore code (`frontend/src/auth/authClient.js`) was. This is
+  the likely root cause of `TASK-18`/`TASK-86` never having a device
+  confirm a working Android login. The fix makes the *next* Android build
+  carry real credentials, but does not itself constitute the device-level
+  end-to-end verification those tasks' acceptance criteria still require.
 - A separate job, `play-store-publish`, pushes that same AAB to Google Play
   through the Play Developer API (`r0adkll/upload-google-play`). Per ADR-017 it
   fires automatically, straight to the `production` track, whenever a push to

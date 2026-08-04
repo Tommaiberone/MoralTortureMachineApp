@@ -180,6 +180,23 @@ class CreateChallengeTests(unittest.TestCase):
                 ))
         self.assertEqual(raised.exception.status_code, 404)
 
+    def test_second_challenge_requires_login(self):
+        """TASK-136: the first challenge stays anonymous, but owning any
+        profile besides the one used for this challenge means it's not the
+        caller's first Duel interaction, so it requires an account."""
+        profiles_table = Mock()
+        profiles_table.get_item.return_value = {"Item": self._profile_item(owner="anon-1")}
+        profiles_table.query.return_value = {"Items": [
+            {"publicId": "profile-1"}, {"publicId": "profile-from-an-earlier-duel"},
+        ]}
+        with patch.object(backend_module, "moral_profiles_table", profiles_table):
+            with self.assertRaises(HTTPException) as raised:
+                asyncio.run(create_challenge(
+                    CreateChallengeRequest(profilePublicId="profile-1"),
+                    request_with_headers({"X-Anonymous-User-Id": "anon-1"}),
+                ))
+        self.assertEqual(raised.exception.status_code, 401)
+
 
 class OpenChallengeTests(unittest.TestCase):
     def test_teaser_never_includes_dimension_averages(self):
@@ -285,9 +302,12 @@ class JoinChallengeTests(unittest.TestCase):
         challenges_table.get_item.return_value = {"Item": {**self._open_challenge(), "status": "joined"}}
         participants_table = Mock()
         participants_table.get_item.return_value = {"Item": {"anonymousUserId": "someone-else", "role": "creator"}}
+        profiles_table = Mock()
+        profiles_table.query.return_value = {"Items": []}
         with (
             patch.object(backend_module, "challenges_table", challenges_table),
             patch.object(backend_module, "challenge_participants_table", participants_table),
+            patch.object(backend_module, "moral_profiles_table", profiles_table),
         ):
             result = asyncio.run(join_challenge("tok", request_with_headers({"X-Anonymous-User-Id": "anon-2"})))
         self.assertEqual(result["dilemmaBaseIds"], ["d1"])
@@ -298,13 +318,53 @@ class JoinChallengeTests(unittest.TestCase):
         participants_table = Mock()
         participants_table.get_item.return_value = {"Item": {"anonymousUserId": "someone-else", "role": "creator"}}
         participants_table.put_item.side_effect = conditional_check_failed()
+        profiles_table = Mock()
+        profiles_table.query.return_value = {"Items": []}
         with (
             patch.object(backend_module, "challenges_table", challenges_table),
             patch.object(backend_module, "challenge_participants_table", participants_table),
+            patch.object(backend_module, "moral_profiles_table", profiles_table),
         ):
             with self.assertRaises(HTTPException) as raised:
                 asyncio.run(join_challenge("tok", request_with_headers({"X-Anonymous-User-Id": "anon-3"})))
         self.assertEqual(raised.exception.status_code, 409)
+
+    def test_join_requires_login_when_caller_already_has_a_prior_profile(self):
+        """TASK-136: the first challenge/join stays anonymous, but a caller
+        who already owns a moral profile from something earlier must sign in
+        to join a further one."""
+        challenges_table = Mock()
+        challenges_table.get_item.return_value = {"Item": self._open_challenge()}
+        participants_table = Mock()
+        participants_table.get_item.return_value = {"Item": {"anonymousUserId": "someone-else", "role": "creator"}}
+        profiles_table = Mock()
+        profiles_table.query.return_value = {"Items": [{"publicId": "profile-from-a-previous-duel"}]}
+        with (
+            patch.object(backend_module, "challenges_table", challenges_table),
+            patch.object(backend_module, "challenge_participants_table", participants_table),
+            patch.object(backend_module, "moral_profiles_table", profiles_table),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                asyncio.run(join_challenge("tok", request_with_headers({"X-Anonymous-User-Id": "anon-4"})))
+        self.assertEqual(raised.exception.status_code, 401)
+
+    def test_join_allowed_with_a_prior_profile_when_authenticated(self):
+        challenges_table = Mock()
+        challenges_table.get_item.return_value = {"Item": self._open_challenge()}
+        participants_table = Mock()
+        participants_table.get_item.return_value = {"Item": {"anonymousUserId": "someone-else", "role": "creator"}}
+        profiles_table = Mock()
+        profiles_table.query.return_value = {"Items": [{"publicId": "profile-from-a-previous-duel"}]}
+        with (
+            patch.object(backend_module, "challenges_table", challenges_table),
+            patch.object(backend_module, "challenge_participants_table", participants_table),
+            patch.object(backend_module, "moral_profiles_table", profiles_table),
+            patch.object(backend_module, "verify_cognito_id_token", return_value={"sub": "user-sub"}),
+        ):
+            result = asyncio.run(join_challenge("tok", request_with_headers({
+                "X-Anonymous-User-Id": "anon-4", "Authorization": "Bearer token",
+            })))
+        self.assertEqual(result["dilemmaBaseIds"], ["d1"])
 
 
 class SubmitChallengeTests(unittest.TestCase):
@@ -413,6 +473,69 @@ class CompareChallengeTests(unittest.TestCase):
         self.assertEqual(result["compatibility"]["overallAgreementPct"], 100.0)
         self.assertIn("archetype", result["creator"])
         self.assertIn("archetype", result["invitee"])
+        self.assertFalse(result["pairInsightUnlocked"])
+        self.assertNotIn("pairInsight", result)
+
+    def test_pair_insight_unlocked_and_cached_when_authenticated(self):
+        """TASK-135: the pair insight is the login incentive - generated
+        once for an authenticated caller and cached on the challenge record,
+        from only archetype names and aggregate percentages (never raw
+        per-dilemma answers, per TASK-39)."""
+        challenges_table = Mock()
+        challenges_table.get_item.return_value = {"Item": {"challengeToken": "tok", "status": "completed"}}
+        participants_table = Mock()
+        participants_table.get_item.side_effect = [
+            {"Item": {"role": "creator", "profilePublicId": "profile-creator"}},
+            {"Item": {"role": "invitee", "profilePublicId": "profile-invitee"}},
+        ]
+        profiles_table = Mock()
+        profiles_table.get_item.side_effect = [
+            {"Item": {"dimensionAverages": json.dumps({d: 0.8 for d in SIX_DIMENSIONS})}},
+            {"Item": {"dimensionAverages": json.dumps({d: 0.8 for d in SIX_DIMENSIONS})}},
+        ]
+        with (
+            patch.object(backend_module, "challenges_table", challenges_table),
+            patch.object(backend_module, "challenge_participants_table", participants_table),
+            patch.object(backend_module, "moral_profiles_table", profiles_table),
+            patch.object(backend_module, "verify_cognito_id_token", return_value={"sub": "user-sub"}),
+        ):
+            result = asyncio.run(compare_challenge(
+                "tok", request_with_headers({"Authorization": "Bearer token"}), language="en",
+            ))
+
+        self.assertTrue(result["pairInsightUnlocked"])
+        self.assertTrue(result["pairInsight"])
+        update_call = challenges_table.update_item.call_args
+        self.assertEqual(update_call.kwargs["Key"], {"challengeToken": "tok"})
+        self.assertEqual(update_call.kwargs["ExpressionAttributeValues"][":insight"], result["pairInsight"])
+
+    def test_pair_insight_not_regenerated_when_already_cached(self):
+        challenges_table = Mock()
+        challenges_table.get_item.return_value = {
+            "Item": {"challengeToken": "tok", "status": "completed", "pairInsight": "Already cached."},
+        }
+        participants_table = Mock()
+        participants_table.get_item.side_effect = [
+            {"Item": {"role": "creator", "profilePublicId": "profile-creator"}},
+            {"Item": {"role": "invitee", "profilePublicId": "profile-invitee"}},
+        ]
+        profiles_table = Mock()
+        profiles_table.get_item.side_effect = [
+            {"Item": {"dimensionAverages": json.dumps({d: 0.8 for d in SIX_DIMENSIONS})}},
+            {"Item": {"dimensionAverages": json.dumps({d: 0.8 for d in SIX_DIMENSIONS})}},
+        ]
+        with (
+            patch.object(backend_module, "challenges_table", challenges_table),
+            patch.object(backend_module, "challenge_participants_table", participants_table),
+            patch.object(backend_module, "moral_profiles_table", profiles_table),
+            patch.object(backend_module, "verify_cognito_id_token", return_value={"sub": "user-sub"}),
+        ):
+            result = asyncio.run(compare_challenge(
+                "tok", request_with_headers({"Authorization": "Bearer token"}), language="en",
+            ))
+
+        self.assertEqual(result["pairInsight"], "Already cached.")
+        challenges_table.update_item.assert_not_called()
 
 
 class RevokeChallengeTests(unittest.TestCase):
@@ -496,12 +619,33 @@ class RematchChallengeTests(unittest.TestCase):
         with (
             patch.object(backend_module, "challenges_table", challenges_table),
             patch.object(backend_module, "challenge_participants_table", participants_table),
+            patch.object(backend_module, "verify_cognito_id_token", return_value={"sub": "user-sub"}),
         ):
-            result = asyncio.run(rematch_challenge("tok", request_with_headers({"X-Anonymous-User-Id": "anon-1"})))
+            result = asyncio.run(rematch_challenge("tok", request_with_headers({
+                "X-Anonymous-User-Id": "anon-1", "Authorization": "Bearer token",
+            })))
 
         self.assertNotEqual(result["challengeToken"], "tok")
         new_challenge_item = challenges_table.put_item.call_args.kwargs["Item"]
         self.assertEqual(new_challenge_item["rematchOfToken"], "tok")
+
+    def test_rematch_requires_login_even_for_a_valid_participant(self):
+        """TASK-136: a rematch is always a repeat Duel interaction, so it
+        always requires an account, even though this same participant/
+        challenge state would otherwise be allowed."""
+        challenges_table = Mock()
+        challenges_table.get_item.return_value = {"Item": {
+            "challengeToken": "tok", "status": "completed", "dilemmaBaseIds": ["d1"], "language": "en",
+        }}
+        participants_table = Mock()
+        participants_table.get_item.return_value = {"Item": {"anonymousUserId": "anon-1", "profilePublicId": "profile-1"}}
+        with (
+            patch.object(backend_module, "challenges_table", challenges_table),
+            patch.object(backend_module, "challenge_participants_table", participants_table),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                asyncio.run(rematch_challenge("tok", request_with_headers({"X-Anonymous-User-Id": "anon-1"})))
+        self.assertEqual(raised.exception.status_code, 401)
 
 
 if __name__ == "__main__":

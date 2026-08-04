@@ -3,17 +3,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend } from 'recharts';
 import { useTranslation } from 'react-i18next';
-import { getApiHeaders } from '../utils/session';
+import { getApiHeaders, getAuthenticatedApiHeaders } from '../utils/session';
 import SEO from '../components/SEO';
 import { trackEvent } from '../utils/analytics';
 import { trackGoogleAnalyticsEvent } from '../utils/googleAnalytics';
 import { shareOrDownloadCard } from '../utils/shareCard';
+import useAuth from '../auth/useAuth';
 import './ResultsScreen.css';
 
 const ResultsScreen = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
+  const auth = useAuth();
   const { answers, dilemmasWithChoices } = location.state || { answers: [], dilemmasWithChoices: [] };
   const [aiAnalysis, setAiAnalysis] = useState('');
   const [archetype, setArchetype] = useState(null);
@@ -21,6 +23,7 @@ const ResultsScreen = () => {
   const [challengeUrl, setChallengeUrl] = useState('');
   const [creatingChallenge, setCreatingChallenge] = useState(false);
   const [challengeError, setChallengeError] = useState('');
+  const [challengeLoginRequired, setChallengeLoginRequired] = useState(false);
   const resultTracked = useRef(false);
   const hasResults = Boolean(answers && answers.length > 0);
 
@@ -120,8 +123,12 @@ const ResultsScreen = () => {
     if (!dilemmasWithChoices || dilemmasWithChoices.length === 0) return;
     setCreatingChallenge(true);
     setChallengeError('');
+    setChallengeLoginRequired(false);
     try {
       const API_URL = import.meta.env.VITE_API_URL;
+      const headers = auth.session?.idToken
+        ? getAuthenticatedApiHeaders(auth.session.idToken)
+        : getApiHeaders();
       const profileAnswers = dilemmasWithChoices.map((entry) => ({
         dilemmaBaseId: entry.dilemmaBaseId,
         chosenValues: entry.chosenValues,
@@ -129,7 +136,7 @@ const ResultsScreen = () => {
 
       const profileResponse = await fetch(`${API_URL}/profiles`, {
         method: 'POST',
-        headers: getApiHeaders(),
+        headers,
         body: JSON.stringify({ answers: profileAnswers, language: i18n.language }),
       });
       if (!profileResponse.ok) throw new Error(`profile creation failed: ${profileResponse.status}`);
@@ -137,9 +144,17 @@ const ResultsScreen = () => {
 
       const challengeResponse = await fetch(`${API_URL}/challenges`, {
         method: 'POST',
-        headers: getApiHeaders(),
+        headers,
         body: JSON.stringify({ profilePublicId: profile.publicId }),
       });
+      if (challengeResponse.status === 401) {
+        // TASK-136: this anon id already has a prior Duel profile, so a
+        // further challenge requires an account - a concrete, contextual
+        // ask, not a generic error.
+        trackEvent('auth_prompt_shown', { surface: 'results_challenge', object_type: 'result' });
+        setChallengeLoginRequired(true);
+        return;
+      }
       if (!challengeResponse.ok) throw new Error(`challenge creation failed: ${challengeResponse.status}`);
       const challenge = await challengeResponse.json();
 
@@ -280,7 +295,7 @@ const ResultsScreen = () => {
                 <button
                   className="results-share-button card-download"
                   onClick={async () => {
-                    const method = await shareOrDownloadCard(archetype, 'stories', t('results.share_text'));
+                    const method = await shareOrDownloadCard(archetype, 'stories', t('results.share_text'), data);
                     trackEvent('share_card_downloaded', { format: 'stories', method });
                   }}
                 >
@@ -289,7 +304,7 @@ const ResultsScreen = () => {
                 <button
                   className="results-share-button card-download"
                   onClick={async () => {
-                    const method = await shareOrDownloadCard(archetype, 'square', t('results.share_text'));
+                    const method = await shareOrDownloadCard(archetype, 'square', t('results.share_text'), data);
                     trackEvent('share_card_downloaded', { format: 'square', method });
                   }}
                 >
@@ -304,7 +319,21 @@ const ResultsScreen = () => {
           <div className="results-challenge-container">
             <h2 className="results-challenge-title">{t('results.challenge_title')}</h2>
             <p className="results-challenge-intro">{t('results.challenge_intro')}</p>
-            {!challengeUrl ? (
+            {challengeLoginRequired ? (
+              <div className="results-challenge-login">
+                <p className="results-challenge-login-text">{t('results.challenge_login_required_text')}</p>
+                <button
+                  type="button"
+                  className="btn-primary results-challenge-button"
+                  onClick={() => {
+                    trackEvent('auth_prompt_clicked', { surface: 'results_challenge', object_type: 'result' });
+                    void auth.login(window.location.pathname);
+                  }}
+                >
+                  {t('results.challenge_login_required_button')}
+                </button>
+              </div>
+            ) : !challengeUrl ? (
               <button
                 className="btn-primary results-challenge-button"
                 onClick={handleChallengeAFriend}

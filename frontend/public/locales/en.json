@@ -64,7 +64,9 @@
     "challenge_error": "Could not create the challenge. Please try again.",
     "challenge_share_text": "I judged these moral dilemmas. Think you'd choose differently? Prove it:",
     "challenge_link_copied": "Challenge link copied to clipboard!",
-    "copy_link": "Copy link"
+    "copy_link": "Copy link",
+    "challenge_login_required_text": "You've already done a Moral Duel before. Sign in to challenge someone else and keep your comparisons.",
+    "challenge_login_required_button": "Sign in to continue"
   },
   "tutorial": {
     "previous": "Previous",
@@ -223,7 +225,10 @@
     "accept_button": "Accept the challenge",
     "own_challenge_notice": "This is your challenge. Share it with a friend to see how compatible you really are.",
     "copy_link": "Copy link",
-    "link_copied": "Link copied!"
+    "link_copied": "Link copied!",
+    "login_required_title": "[ ONE MORE STEP ]",
+    "login_required_text": "You've already done a Moral Duel before. Sign in to accept another one and keep your comparisons.",
+    "login_required_button": "Sign in to continue"
   },
   "challengeCompare": {
     "loading": "Unlocking your comparison...",
@@ -235,7 +240,14 @@
     "most_divergent": "Most divided on: {{dimension}}",
     "rematch_button": "Rematch someone else",
     "rematch_creating": "Preparing your rematch...",
-    "share_rematch": "Share rematch on WhatsApp"
+    "share_rematch": "Share rematch on WhatsApp",
+    "insight_label": "What this pairing says",
+    "login_cta_text": "Sign in to unlock an AI read on what your archetypes together actually mean.",
+    "login_cta_button": "Unlock the pair insight",
+    "download_card": "Download comparison card",
+    "share_card_text": "We just did a Moral Duel. Here's how we compared:",
+    "rematch_login_required_text": "A rematch is your next Duel - sign in to start it and keep your comparisons.",
+    "rematch_login_required_button": "Sign in to continue"
   },
   "account": {
     "title": "Your account",

@@ -382,6 +382,23 @@
   text-align: center;
 }
 
+.results-challenge-login {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.results-challenge-login-text {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-normal);
+  text-align: center;
+  margin: 0;
+}
+
 .results-challenge-error {
   margin-top: 16px;
   color: var(--text-danger-readable);

@@ -3,13 +3,15 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import SEO from '../components/SEO';
-import { getApiHeaders } from '../utils/session';
+import { getApiHeaders, getAuthenticatedApiHeaders } from '../utils/session';
 import { trackEvent } from '../utils/analytics';
+import useAuth from '../auth/useAuth';
 import './ChallengeLandingScreen.css';
 
 const STEP = {
   LOADING: 'loading',
   ERROR: 'error',
+  LOGIN_REQUIRED: 'login_required',
   TEASER: 'teaser',
   ANSWERING: 'answering',
   SUBMITTING: 'submitting',
@@ -19,6 +21,7 @@ const ChallengeLandingScreen = () => {
   const { token } = useParams();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
+  const auth = useAuth();
   const [step, setStep] = useState(STEP.LOADING);
   const [error, setError] = useState('');
   const [challenge, setChallenge] = useState(null);
@@ -69,10 +72,14 @@ const ChallengeLandingScreen = () => {
   const handleAccept = async () => {
     setStep(STEP.LOADING);
     try {
+      const headers = auth.session?.idToken
+        ? getAuthenticatedApiHeaders(auth.session.idToken)
+        : getApiHeaders();
       const joinResponse = await fetch(`${API_URL}/challenges/${token}/join`, {
         method: 'POST',
-        headers: getApiHeaders(),
+        headers,
       });
+      if (joinResponse.status === 401) throw new Error('login_required');
       if (joinResponse.status === 400) throw new Error('own_challenge');
       if (!joinResponse.ok) throw new Error(`join failed: ${joinResponse.status}`);
       const joinData = await joinResponse.json();
@@ -91,6 +98,11 @@ const ChallengeLandingScreen = () => {
       setCollectedAnswers([]);
       setStep(STEP.ANSWERING);
     } catch (acceptError) {
+      if (acceptError.message === 'login_required') {
+        trackEvent('auth_prompt_shown', { surface: 'challenge_join', challenge_token: token });
+        setStep(STEP.LOGIN_REQUIRED);
+        return;
+      }
       console.error('Error accepting challenge:', acceptError);
       setError(acceptError.message === 'own_challenge' ? 'own_challenge' : 'unknown');
       setStep(STEP.ERROR);
@@ -158,6 +170,26 @@ const ChallengeLandingScreen = () => {
       <main className="challenge-screen">
         <h1>{t('challenge.error_title')}</h1>
         <p>{t(`challenge.error_${error}`, t('challenge.error_unknown'))}</p>
+        <a href="/">← {t('common.backToHome')}</a>
+      </main>
+    );
+  }
+
+  if (step === STEP.LOGIN_REQUIRED) {
+    return (
+      <main className="challenge-screen">
+        <h1>{t('challenge.login_required_title')}</h1>
+        <p>{t('challenge.login_required_text')}</p>
+        <button
+          type="button"
+          className="btn-primary challenge-accept-button"
+          onClick={() => {
+            trackEvent('auth_prompt_clicked', { surface: 'challenge_join', challenge_token: token });
+            void auth.login(window.location.pathname);
+          }}
+        >
+          {t('challenge.login_required_button')}
+        </button>
         <a href="/">← {t('common.backToHome')}</a>
       </main>
     );

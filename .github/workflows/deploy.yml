@@ -420,6 +420,9 @@ jobs:
         working-directory: frontend
         env:
           VITE_API_URL: ${{ needs.backend-deploy.outputs.api_url }}
+          VITE_COGNITO_DOMAIN: ${{ needs.backend-deploy.outputs.cognito_domain }}
+          VITE_COGNITO_CLIENT_ID: ${{ needs.backend-deploy.outputs.cognito_client_id }}
+          VITE_COGNITO_NATIVE_CLIENT_ID: ${{ needs.backend-deploy.outputs.cognito_native_client_id }}
         run: pnpm build --mode prod
 
       - name: Sync Capacitor

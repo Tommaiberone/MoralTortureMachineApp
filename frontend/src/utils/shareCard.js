@@ -50,12 +50,51 @@ const fitText = (ctx, text, { maxWidth, maxLines, startSize, minSize, weight = '
   return { fontSize, lines: lines.slice(0, maxLines) };
 };
 
+// Draws left-aligned horizontal bars for each dimension inside maxWidth,
+// starting at startY, and returns the y position right after the block.
+// Bar length is normalized against the tallest dimension (defensively
+// floored at 0, matching the non-negative domain the results radar chart
+// already assumes) so a single dominant dimension doesn't clip.
+const drawDimensionBars = (ctx, dimensions, { startY, width, maxWidth, margin, accent }) => {
+  if (!dimensions || dimensions.length === 0) return startY;
+  const maxValue = Math.max(0.01, ...dimensions.map((entry) => Math.max(0, Number(entry.value) || 0)));
+  const rowHeight = width * 0.052;
+  const labelWidth = maxWidth * 0.32;
+  const barMaxWidth = maxWidth - labelWidth;
+  const fontSize = width * 0.024;
+  let y = startY;
+
+  for (const entry of dimensions) {
+    const ratio = Math.max(0, Number(entry.value) || 0) / maxValue;
+    const barWidth = Math.max(width * 0.01, barMaxWidth * ratio);
+    const barY = y - fontSize * 0.4;
+    const barHeight = fontSize * 0.8;
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#cccccc';
+    ctx.font = `${fontSize}px ${FONT_FAMILY}`;
+    ctx.fillText(entry.subject, margin, y);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(margin + labelWidth, barY, barMaxWidth, barHeight);
+    ctx.fillStyle = accent;
+    ctx.fillRect(margin + labelWidth, barY, barWidth, barHeight);
+
+    y += rowHeight;
+  }
+  ctx.textAlign = 'center';
+  return y;
+};
+
 /**
- * @param {{name: string, sharePhrase: string, visual: {emoji: string, color: string}}} archetype
+ * @param {{name: string, sharePhrase: string, strength?: string, blindSpot?: string, visual: {emoji: string, color: string}}} archetype
  * @param {'stories'|'square'} format
+ * @param {{subject: string, value: number}[]} [dimensions] Per-dimension averages
+ *   (same shape as the results radar chart's `data`), rendered as a mini bar
+ *   chart. Omitted entirely (no empty block) when not provided.
  * @returns {string} PNG data URL
  */
-export const generateShareCardDataUrl = (archetype, format = 'stories') => {
+export const generateShareCardDataUrl = (archetype, format = 'stories', dimensions = []) => {
   const { width, height } = FORMATS[format] || FORMATS.stories;
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -80,20 +119,23 @@ export const generateShareCardDataUrl = (archetype, format = 'stories') => {
   ctx.textAlign = 'center';
   ctx.fillStyle = '#888888';
   ctx.font = `${width * 0.024}px ${FONT_FAMILY}`;
-  ctx.fillText('MORAL TORTURE MACHINE', width / 2, height * 0.1);
+  ctx.fillText('MORAL TORTURE MACHINE', width / 2, height * 0.08);
 
-  ctx.font = `${width * 0.13}px ${FONT_FAMILY}`;
-  ctx.fillText(archetype.visual?.emoji || '', width / 2, height * 0.28);
+  // Emoji is smaller than the original single-fact card (TASK-133): the
+  // freed vertical space goes to the dimension bars and strength/blind spot,
+  // which is the actual content that makes the card worth sharing.
+  ctx.font = `${width * 0.09}px ${FONT_FAMILY}`;
+  ctx.fillText(archetype.visual?.emoji || '', width / 2, height * 0.15);
 
   const name = fitText(ctx, archetype.name, {
     maxWidth,
     maxLines: 2,
-    startSize: width * 0.07,
-    minSize: width * 0.04,
+    startSize: width * 0.062,
+    minSize: width * 0.038,
     weight: 'bold',
   });
   ctx.fillStyle = '#f2f2f2';
-  let y = height * 0.38;
+  let y = height * 0.22;
   const nameLineHeight = name.fontSize * 1.2;
   for (const line of name.lines) {
     ctx.font = `bold ${name.fontSize}px ${FONT_FAMILY}`;
@@ -103,12 +145,12 @@ export const generateShareCardDataUrl = (archetype, format = 'stories') => {
 
   const phrase = fitText(ctx, `"${archetype.sharePhrase}"`, {
     maxWidth,
-    maxLines: 4,
-    startSize: width * 0.038,
-    minSize: width * 0.024,
+    maxLines: 2,
+    startSize: width * 0.032,
+    minSize: width * 0.022,
   });
   ctx.fillStyle = '#cccccc';
-  y += height * 0.04;
+  y += height * 0.025;
   const phraseLineHeight = phrase.fontSize * 1.4;
   for (const line of phrase.lines) {
     ctx.font = `${phrase.fontSize}px ${FONT_FAMILY}`;
@@ -116,9 +158,41 @@ export const generateShareCardDataUrl = (archetype, format = 'stories') => {
     y += phraseLineHeight;
   }
 
+  y += height * 0.03;
+  y = drawDimensionBars(ctx, dimensions, { startY: y, width, maxWidth, margin, accent });
+
+  const traitBlocks = [
+    { label: 'STRENGTH', text: archetype.strength },
+    { label: 'BLIND SPOT', text: archetype.blindSpot },
+  ].filter((block) => Boolean(block.text));
+
+  if (traitBlocks.length > 0) y += height * 0.02;
+  for (const block of traitBlocks) {
+    ctx.textAlign = 'left';
+    ctx.fillStyle = accent;
+    ctx.font = `bold ${width * 0.022}px ${FONT_FAMILY}`;
+    ctx.fillText(block.label, margin, y);
+    y += width * 0.032;
+
+    const fitted = fitText(ctx, block.text, {
+      maxWidth,
+      maxLines: 2,
+      startSize: width * 0.026,
+      minSize: width * 0.02,
+    });
+    ctx.fillStyle = '#dddddd';
+    for (const line of fitted.lines) {
+      ctx.font = `${fitted.fontSize}px ${FONT_FAMILY}`;
+      ctx.fillText(line, margin, y);
+      y += fitted.fontSize * 1.35;
+    }
+    y += width * 0.018;
+  }
+  ctx.textAlign = 'center';
+
   ctx.fillStyle = accent;
   ctx.font = `${width * 0.03}px ${FONT_FAMILY}`;
-  ctx.fillText(DEEP_LINK_LABEL, width / 2, height * 0.94);
+  ctx.fillText(DEEP_LINK_LABEL, width / 2, height * 0.96);
 
   return canvas.toDataURL('image/png');
 };
@@ -169,9 +243,124 @@ const shareOrDownloadDataUrl = async (dataUrl, filename, shareText) => {
   return 'download';
 };
 
-export const shareOrDownloadCard = async (archetype, format, shareText) => {
-  const dataUrl = generateShareCardDataUrl(archetype, format);
+export const shareOrDownloadCard = async (archetype, format, shareText, dimensions = []) => {
+  const dataUrl = generateShareCardDataUrl(archetype, format, dimensions);
   return shareOrDownloadDataUrl(dataUrl, `moral-torture-machine-${format}.png`, shareText);
+};
+
+/**
+ * TASK-134: Moral Duel comparison card - the highest-tension moment of the
+ * product (two archetypes + how compatible they are) had no shareable image
+ * at all, only a raw WhatsApp link for the rematch. Same canvas approach as
+ * the other cards: no AI, no server round trip. Only renders data already
+ * returned by GET /challenges/{token}/compare (archetypes, overall
+ * agreement, most aligned/divergent dimension) - never raw per-dilemma
+ * answers, per TASK-39's explicit decision not to expose those.
+ * @param {{creator: {archetype: object}, invitee: {archetype: object}, compatibility: {overallAgreementPct: number, mostAlignedDimension: string, mostDivergentDimension: string}}} comparison
+ */
+export const generateDuelCardDataUrl = (comparison) => {
+  const width = 1080;
+  const height = 1920;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  const margin = width * 0.1;
+  const maxWidth = width - margin * 2;
+  const accent = '#8B0000';
+  const { creator, invitee, compatibility } = comparison;
+
+  const gradient = ctx.createLinearGradient(0, 0, 0, height);
+  gradient.addColorStop(0, '#0a0a0a');
+  gradient.addColorStop(0.5, '#151515');
+  gradient.addColorStop(1, '#0a0a0a');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = width * 0.012;
+  ctx.strokeRect(ctx.lineWidth / 2, ctx.lineWidth / 2, width - ctx.lineWidth, height - ctx.lineWidth);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#888888';
+  ctx.font = `${width * 0.024}px ${FONT_FAMILY}`;
+  ctx.fillText('MORAL TORTURE MACHINE', width / 2, height * 0.08);
+
+  ctx.fillStyle = '#f2f2f2';
+  ctx.font = `bold ${width * 0.05}px ${FONT_FAMILY}`;
+  ctx.fillText('MORAL DUEL', width / 2, height * 0.14);
+
+  // Two archetype columns side by side, "VS" between them.
+  const columnWidth = maxWidth * 0.42;
+  const leftCenterX = margin + columnWidth / 2;
+  const rightCenterX = width - margin - columnWidth / 2;
+  const archetypeY = height * 0.24;
+
+  const drawArchetypeColumn = (centerX, archetype) => {
+    ctx.textAlign = 'center';
+    ctx.font = `${width * 0.11}px ${FONT_FAMILY}`;
+    ctx.fillStyle = '#f2f2f2';
+    ctx.fillText(archetype?.visual?.emoji || '', centerX, archetypeY);
+
+    const nameText = fitText(ctx, archetype?.name || '', {
+      maxWidth: columnWidth,
+      maxLines: 2,
+      startSize: width * 0.032,
+      minSize: width * 0.02,
+      weight: 'bold',
+    });
+    ctx.fillStyle = archetype?.visual?.color || accent;
+    let nameY = archetypeY + width * 0.06;
+    for (const line of nameText.lines) {
+      ctx.font = `bold ${nameText.fontSize}px ${FONT_FAMILY}`;
+      ctx.fillText(line, centerX, nameY);
+      nameY += nameText.fontSize * 1.25;
+    }
+  };
+
+  drawArchetypeColumn(leftCenterX, creator?.archetype);
+  drawArchetypeColumn(rightCenterX, invitee?.archetype);
+
+  ctx.fillStyle = accent;
+  ctx.font = `bold ${width * 0.045}px ${FONT_FAMILY}`;
+  ctx.fillText('VS', width / 2, archetypeY + width * 0.02);
+
+  // Overall compatibility, the headline number.
+  const pctY = height * 0.5;
+  ctx.fillStyle = '#888888';
+  ctx.font = `${width * 0.026}px ${FONT_FAMILY}`;
+  ctx.fillText('COMPATIBILITY', width / 2, pctY);
+  ctx.fillStyle = '#f2f2f2';
+  ctx.font = `bold ${width * 0.14}px ${FONT_FAMILY}`;
+  ctx.fillText(`${compatibility?.overallAgreementPct ?? '--'}%`, width / 2, pctY + width * 0.13);
+
+  // Most aligned / most divergent dimension as the curiosity hook.
+  let y = pctY + width * 0.24;
+  const highlightRows = [
+    { label: 'MOST ALIGNED', value: compatibility?.mostAlignedDimension },
+    { label: 'MOST DIVERGENT', value: compatibility?.mostDivergentDimension },
+  ].filter((row) => Boolean(row.value));
+
+  for (const row of highlightRows) {
+    ctx.fillStyle = '#888888';
+    ctx.font = `${width * 0.024}px ${FONT_FAMILY}`;
+    ctx.fillText(row.label, width / 2, y);
+    y += width * 0.045;
+    ctx.fillStyle = '#f2f2f2';
+    ctx.font = `bold ${width * 0.036}px ${FONT_FAMILY}`;
+    ctx.fillText(row.value, width / 2, y);
+    y += width * 0.09;
+  }
+
+  ctx.fillStyle = accent;
+  ctx.font = `${width * 0.03}px ${FONT_FAMILY}`;
+  ctx.fillText(DEEP_LINK_LABEL, width / 2, height * 0.96);
+
+  return canvas.toDataURL('image/png');
+};
+
+export const shareDuelCard = async (comparison, shareText) => {
+  const dataUrl = generateDuelCardDataUrl(comparison);
+  return shareOrDownloadDataUrl(dataUrl, 'moral-torture-machine-duel.png', shareText);
 };
 
 /**

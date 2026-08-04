@@ -1026,6 +1026,104 @@ on the alert pipeline or the sweep skill to keep absorbing it. The frontend's
 own `robots.txt` (`frontend/public/robots.txt`, served for the actual
 indexable site) is untouched.
 
+### ADR-061 — Share cards enriched with real content instead of an emoji-and-quote label (TASK-133/134)
+
+Growth review of the share/signup funnel found the share cards genuinely
+weak: `generateShareCardDataUrl` rendered only an emoji, the archetype name,
+and its `sharePhrase` - no data, nothing that reads as a real analysis. The
+user's own words after seeing a first draft plan: "gli screenshot di share
+fanno schifo, hanno pochissime info". Fix: the solo card now draws a mini bar
+chart of the six dimension scores plus the archetype's `strength`/
+`blindSpot` lines (data that already existed on the archetype/response, just
+never reached the card). Separately, the Moral Duel comparison - the
+highest-tension moment in the whole product - had no shareable card at all,
+only a raw WhatsApp link for the rematch; `generateDuelCardDataUrl` fills
+that gap (both archetypes, overall compatibility %, most/least aligned
+dimension), reusing the Party Recap card's denser layout as the template
+rather than the sparser solo-archetype one. Both stay canvas-rendered
+client-side with no AI and no server round trip, unchanged from ADR's
+original card-generation approach (TASK-31/32).
+
+An earlier draft of this plan also proposed asking the sharer "who are you
+challenging?" to personalize the share text. Rejected before implementation,
+again at the user's explicit objection: the channel (a specific WhatsApp
+chat) already personalizes the send target, so an extra input field would
+have added friction for a benefit the channel gives away for free.
+
+### ADR-062 — Duel pair insight (gated by login) replaces "save your result forever" as the login incentive (TASK-135, supersedes TASK-14's original framing)
+
+TASK-14 (progressive login) had never actually been built - Google login
+existed (TASK-5) but the `AuthButton` only ever rendered on the home page,
+decontextualized from any moment of value. The first fix proposed was a
+generic "save this result" prompt on the Results screen. The user rejected
+it directly: "mi sa che il gancio del 'Salva il confronto per sempre' non mi
+convince" - a deferred, abstract benefit is a weak incentive next to
+immediate curiosity.
+
+A second draft proposed gating the dilemma-by-dilemma breakdown of a
+completed Duel behind login ("see exactly which 2 questions you disagreed
+on"). This was caught during the mandatory doc-1 read *before* implementing
+it: `TASK-39`'s own implementation notes and the `compare_challenge`
+docstring are explicit that raw per-dilemma answers/choices are never
+returned, even to the two participants themselves ("MAI risposte grezze ai
+singoli dilemmi ne' testo delle scelte") - matching CLAUDE.md's blanket rule
+against exposing "answer details" through an API. Gating that data behind
+login would not have relaxed the rule for authenticated users; it would have
+broken it outright.
+
+Chosen instead: `pairInsight`, one short AI-enriched sentence (same
+generate-once/cache-on-record/deterministic-fallback pattern as the Party
+Room group verdict, `ADR-057`) interpreting what a specific archetype
+pairing and its aggregate compatibility numbers mean - fed only archetype
+names and already-public aggregate percentages, never per-dilemma data. This
+keeps the "unlock something concretely interesting right now" psychology the
+user was after without touching TASK-39's privacy decision, and without
+regressing the existing aggregate comparison, which stays free for anonymous
+callers.
+
+### ADR-063 — Mandatory login from a second Moral Duel interaction (TASK-136), plus a CI bug that was silently blocking all Android login
+
+The user asked, after the pair-insight redesign, for something stronger than
+a dismissible prompt: "altrimenti mi sa che è meglio metterlo all'inizio
+obbligatorio" (login mandatory at the very start). That conflicts directly
+with an explicit product constraint (`doc-2`'s Social MVP definition of done,
+"a visitor starts without an account"; `TASK-14` AC1) and with the baseline
+74% test-completion rate doc-2 already measured, which is almost certainly
+downstream of zero friction before the first result. Flagged as a conflict
+per CLAUDE.md before implementing; the user, given that trade-off, chose the
+narrower alternative instead of overriding the constraint outright.
+
+Chosen design: the first Duel interaction (first challenge created, first
+challenge joined) stays fully anonymous; from the second one on,
+`require_authenticated_for_repeat_duel` requires a Cognito bearer token to
+create or join a further challenge, and a rematch always requires one (it is
+definitionally a repeat). "First interaction" reuses the existing
+`moral_profiles` `OwnerIndex` GSI (`_has_prior_profile`) rather than adding a
+new GSI or Scan - a profile only exists once someone has actually challenged
+or been challenged before, so owning any profile besides the one for the
+current action is a reliable, already-available signal.
+
+While implementing this, auditing `TASK-18`/`TASK-86` (Android native login,
+both `Blocked`, never device-verified despite complete-looking PKCE/Keystore
+code) surfaced a real bug: `.github/workflows/deploy.yml`'s `android-build`
+job never passed `VITE_COGNITO_DOMAIN`/`VITE_COGNITO_CLIENT_ID`/
+`VITE_COGNITO_NATIVE_CLIENT_ID` into the web build it packages into the APK,
+unlike `frontend-deploy`. Every distributed Android build therefore shipped
+with Google/Cognito config empty, `isGoogleAuthAvailable()` permanently
+`false`, and no login button ever rendered - almost certainly why those two
+tasks could never be verified. Fixed in the same change.
+
+This does not, by itself, prove Android login now works end to end - no
+device test was run as part of this change (matches the existing "no browser
+automation, verify UI changes by code review" rule; the same reasoning
+extends to an Android device/emulator, which is equally unavailable here).
+The user was told this explicitly and chose to proceed with the gate anyway
+rather than wait for a device confirmation. `require_authenticated_for_repeat_duel`
+is deliberately a single choke point so the gate can be disabled or narrowed
+to web-only in one place if device verification turns up a problem, and
+`TASK-18`/`TASK-86`'s acceptance criteria remain unchecked pending that
+verification.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

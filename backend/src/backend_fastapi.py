@@ -476,6 +476,49 @@ def get_latest_profile_for_anonymous_user(anonymous_user_id: str) -> Optional[Di
     return items[0] if items else None
 
 
+def _has_prior_profile(anonymous_user_id: str, exclude_public_id: Optional[str] = None) -> bool:
+    """TASK-136: true if this anon id already owns a moral profile other than
+    exclude_public_id - the signal used to detect a second-or-later Moral
+    Duel interaction. Reuses the existing OwnerIndex GSI (no new table/index,
+    no Scan): a profile is only ever created by the 'challenge a friend'
+    action or by an invitee's submit, so owning any profile besides the one
+    just made for the current action means this is not the caller's first
+    Duel interaction."""
+    response = moral_profiles_table.query(
+        IndexName="OwnerIndex",
+        KeyConditionExpression="ownerAnonymousUserId = :owner",
+        ExpressionAttributeValues={":owner": anonymous_user_id},
+        ProjectionExpression="publicId",
+        Limit=5,
+    )
+    items = response.get("Items", [])
+    return any(item.get("publicId") != exclude_public_id for item in items)
+
+
+def require_authenticated_for_repeat_duel(request: Request, anonymous_user_id: str, exclude_public_id: Optional[str] = None) -> None:
+    """TASK-136: the first Moral Duel challenge/join stays fully anonymous
+    (doc-2 social MVP definition of done, TASK-14 AC1); from the second one
+    on, continuing requires an account - the concrete, higher-pressure login
+    gate that a dismissible prompt alone couldn't provide.
+
+    Implemented at the user's explicit request despite an open risk: Android
+    native login (TASK-18/TASK-86) is code-complete but was never verified
+    end-to-end on a device in the backlog, and the CI pipeline that builds
+    the distributed Android APK was found to omit the Cognito env vars
+    entirely (fixed in this same change, see deploy.yml) - so no Android
+    build before this fix could have shown a working login button at all.
+    Until an Android device confirms sign-in actually completes there,
+    an Android player who reaches their second Duel interaction may be
+    unable to authenticate and therefore unable to continue - a real
+    product regression on that platform, not merely a hypothetical one.
+    Kept as a single choke point so the gate can be disabled or scoped to
+    web-only in one place if device verification surfaces a problem."""
+    if not _has_prior_profile(anonymous_user_id, exclude_public_id=exclude_public_id):
+        return
+    if get_optional_user(request) is None:
+        raise HTTPException(status_code=401, detail="login_required")
+
+
 def get_challenge_or_404(token: str) -> Dict[str, Any]:
     response = challenges_table.get_item(Key={"challengeToken": token})
     item = response.get("Item")
@@ -1297,6 +1340,8 @@ async def create_challenge(challenge_request: CreateChallengeRequest, request: R
         if not profile:
             raise HTTPException(status_code=400, detail="Complete a moral profile before creating a challenge")
 
+    require_authenticated_for_repeat_duel(request, anonymous_user_id, exclude_public_id=profile["publicId"])
+
     token = generate_public_token()
     now = int(time.time() * 1000)
     challenges_table.put_item(Item={
@@ -1361,6 +1406,8 @@ async def join_challenge(token: str, request: Request):
     creator_participant = get_participant(token, "creator")
     if creator_participant and creator_participant["anonymousUserId"] == anonymous_user_id:
         raise HTTPException(status_code=400, detail="You cannot join your own challenge")
+
+    require_authenticated_for_repeat_duel(request, anonymous_user_id)
 
     now = int(time.time() * 1000)
     try:
@@ -1438,6 +1485,61 @@ async def submit_challenge(token: str, submit_request: SubmitChallengeRequest, r
     _track_duel_event(request, "challenge_completed", {"archetype_id": profile_result["archetypeId"]})
     return {"challengeToken": token, "status": "completed", "profilePublicId": profile_result["publicId"]}
 
+def _fallback_duel_pair_insight(creator_name: str, invitee_name: str, overall_pct: int, language: str) -> str:
+    """Always-available, no-AI insight (core flow must work without Groq)."""
+    if language == "it":
+        return f"{creator_name} e {invitee_name} sono allineati al {overall_pct}%: due modi diversi di guardare allo stesso dilemma."
+    return f"{creator_name} and {invitee_name} agree {overall_pct}% of the time: two different lenses on the same dilemma."
+
+
+def _generate_duel_pair_insight(
+    creator_name: str, invitee_name: str, compatibility: Dict[str, Any], language: str,
+) -> str:
+    """TASK-135: one short AI-enriched line about what this specific pairing
+    means, generated once and cached on the challenge record (never
+    regenerated on every /compare call, per the cost rule) - enrichment only,
+    same 'persist and reuse AI output' pattern as the Party Room group
+    verdict (_generate_party_group_verdict) and the main Results screen's
+    verdict (TASK-121). The prompt receives only archetype names and
+    aggregate percentages, never per-dilemma answers/choices - TASK-39
+    deliberately never exposes those, even to the two participants
+    themselves. Falls back to a plain, factual sentence if Groq is
+    unavailable or fails."""
+    overall_pct = compatibility.get("overallAgreementPct", 0)
+    try:
+        api_key = get_groq_api_key()
+        if language == "it":
+            prompt_content = (
+                f'Due persone hanno appena completato un Moral Duel: {creator_name} contro {invitee_name}. '
+                f'Sono allineati al {overall_pct}% complessivo. La dimensione dove concordano di piu\' e\' '
+                f'"{compatibility.get("mostAlignedDimension")}", quella dove divergono di piu\' e\' '
+                f'"{compatibility.get("mostDivergentDimension")}". '
+                f'Scrivi UNA sola frase breve e incisiva (massimo 30 parole) su cosa dice questo abbinamento della loro relazione morale, '
+                f'nel tono "Moral Torture Machine" - leggermente oscuro, arguto, perspicace. '
+                f'Non inventare fatti su di loro, non nominare risposte specifiche. Restituisci solo la frase, senza virgolette ne\' JSON.'
+            )
+        else:
+            prompt_content = (
+                f'Two people just completed a Moral Duel: {creator_name} versus {invitee_name}. '
+                f'They agree {overall_pct}% overall. The dimension where they align most is '
+                f'"{compatibility.get("mostAlignedDimension")}", the one where they diverge most is '
+                f'"{compatibility.get("mostDivergentDimension")}". '
+                f'Write ONE short, punchy sentence (max 30 words) about what this pairing says about their moral relationship, '
+                f'in the "Moral Torture Machine" tone - slightly dark, wry, insightful. '
+                f'Do not invent facts about them, do not name specific answers. Return only the sentence, no quotes, no JSON.'
+            )
+        payload = {
+            "model": "llama-3.1-8b-instant",
+            "messages": [{"role": "user", "content": prompt_content}],
+        }
+        result = call_groq_api_with_fallback(payload=payload, api_key=api_key, operation="Duel pair insight")
+        text = result['choices'][0]['message']['content'].strip()
+        return text or _fallback_duel_pair_insight(creator_name, invitee_name, overall_pct, language)
+    except Exception:
+        logger.exception("Failed to generate duel pair insight, using fallback")
+        return _fallback_duel_pair_insight(creator_name, invitee_name, overall_pct, language)
+
+
 @app.get("/challenges/{token}/compare")
 async def compare_challenge(token: str, request: Request, language: str = "en"):
     """Symmetric, deterministic comparison (TASK-37/39), unlocked only once
@@ -1459,12 +1561,41 @@ async def compare_challenge(token: str, request: Request, language: str = "en"):
     compatibility = compute_compatibility(creator_averages, invitee_averages)
 
     _track_duel_event(request, "challenge_compared", {"overall_agreement_pct": compatibility["overallAgreementPct"]})
-    return {
+    response = {
         "challengeToken": token,
         "creator": {"archetype": creator_archetype},
         "invitee": {"archetype": invitee_archetype},
         "compatibility": compatibility,
+        "pairInsightUnlocked": False,
     }
+
+    # TASK-135/TASK-14: the pair insight is the login incentive - unlocked
+    # only for an authenticated caller, generated once and cached on the
+    # challenge record itself. Anonymous callers keep the full aggregate
+    # comparison above for free (do not regress the existing completion
+    # rate); they just don't get this one extra sentence.
+    if get_optional_user(request) is not None:
+        pair_insight = challenge.get("pairInsight")
+        if not pair_insight:
+            pair_insight = _generate_duel_pair_insight(
+                creator_archetype["name"], invitee_archetype["name"], compatibility, language,
+            )
+            try:
+                challenges_table.update_item(
+                    Key={"challengeToken": token},
+                    UpdateExpression="SET pairInsight = :insight",
+                    ConditionExpression="attribute_not_exists(pairInsight)",
+                    ExpressionAttributeValues={":insight": pair_insight},
+                )
+            except ClientError as error:
+                if error.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                    pair_insight = get_challenge_or_404(token).get("pairInsight", pair_insight)
+                else:
+                    raise
+        response["pairInsight"] = pair_insight
+        response["pairInsightUnlocked"] = True
+
+    return response
 
 @app.post("/challenges/{token}/revoke")
 async def revoke_challenge(token: str, request: Request):
@@ -1492,7 +1623,10 @@ async def revoke_challenge(token: str, request: Request):
 @app.post("/challenges/{token}/rematch")
 async def rematch_challenge(token: str, request: Request):
     """Create a new challenge attributed to a completed one (TASK-39 AC2).
-    Whichever participant calls this becomes the new challenge's creator."""
+    Whichever participant calls this becomes the new challenge's creator.
+    TASK-136: a rematch is by definition a repeat Duel interaction (it only
+    exists after completing a full first challenge), so it always requires
+    authentication - no profile-count check needed, unlike create/join."""
     anonymous_user_id = require_anonymous_user_id(request)
     challenge = get_challenge_or_404(token)
     if challenge["status"] != "completed":
@@ -1503,6 +1637,13 @@ async def rematch_challenge(token: str, request: Request):
         participant = get_participant(token, "invitee")
         if not participant or participant["anonymousUserId"] != anonymous_user_id:
             raise HTTPException(status_code=403, detail="You were not part of this challenge")
+
+    # Checked last, after confirming the challenge is completed and the
+    # caller genuinely was a participant: a 409/403 on the resource itself
+    # is more useful feedback than a login prompt for a request that would
+    # have failed anyway.
+    if get_optional_user(request) is None:
+        raise HTTPException(status_code=401, detail="login_required")
 
     new_token = generate_public_token()
     now = int(time.time() * 1000)
