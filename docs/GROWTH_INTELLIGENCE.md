@@ -121,13 +121,17 @@ landing promise. Future-fit and policy-review candidates cannot generate one.
 
 The workflow downloads only recent private report artifacts using the
 read-only `GITHUB_TOKEN` Actions permission, summarizes their aggregate query
-metrics, and compares the current report with the latest prior one. New report
-artifacts are retained for 90 days, still without AWS storage. A missing or
-unavailable history artifact is shown as a non-fatal data-status condition and
-never blocks the current collection. Trend recommendations require at least ten
+metrics, and compares the current report with the latest prior week. Manual
+runs from the current ISO week, duplicate runs from the same week, and empty
+artifacts are excluded from the history count. New report artifacts are
+retained for 90 days, still without AWS storage. A missing or unavailable
+history artifact is shown as a non-fatal data-status condition and never blocks
+the current collection. Trend recommendations require at least ten
 impressions in both comparable reports and a material absolute and relative
 change; branded queries are excluded.
 
 Play Vitals retries only transient HTTP 429/5xx responses with bounded backoff.
 An exhausted retry remains a visible non-fatal source error rather than a
-reason to retry indefinitely or alter Play Console data.
+reason to retry indefinitely or alter Play Console data. Structured Google API
+status and error messages are included after redacting email addresses, Cloud
+Storage URIs, and URLs so a private artifact remains useful for diagnosis.

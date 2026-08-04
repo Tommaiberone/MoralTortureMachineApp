@@ -56,6 +56,28 @@ class GrowthIntelligenceTests(unittest.TestCase):
         add_error(data, "Search Console", SourceError())
         self.assertEqual(data["configuration"]["errors"], ["Search Console: HTTP 403"])
 
+    def test_error_summary_keeps_safe_google_reason_and_redacts_identifiers(self):
+        class Response:
+            status_code = 400
+
+            def json(self):
+                return {"error": {
+                    "status": "INVALID_ARGUMENT",
+                    "message": "Bad timeline for growth@example.test in gs://private-bucket/report.csv",
+                }}
+
+        class SourceError(Exception):
+            response = Response()
+
+        data = {"configuration": {"missing": []}}
+        add_error(data, "Google Play Android Vitals", SourceError())
+        error = data["configuration"]["errors"][0]
+        self.assertIn("HTTP 400 (INVALID_ARGUMENT", error)
+        self.assertIn("[redacted-email]", error)
+        self.assertIn("gs://[redacted]", error)
+        self.assertNotIn("growth@example.test", error)
+        self.assertNotIn("private-bucket", error)
+
     def test_play_csv_prefix_requires_an_organic_search_file(self):
         # The selector is intentionally constrained to the Play Search report:
         # generic acquisition files do not contain the keyword dimension.
@@ -302,7 +324,42 @@ class GrowthIntelligenceTests(unittest.TestCase):
         self.assertEqual(history["status"], "ok")
         self.assertEqual(history["reports"][0]["query_metrics"]["ethical dilemmas"]["impressions"], 20)
         self.assertEqual(request.call_count, 2)
+        self.assertEqual(request.call_args_list[0].kwargs["params"]["per_page"], 100)
         self.assertEqual(collect_artifact_history("owner/repo", None)["reports"], [])
+
+    def test_history_counts_distinct_non_empty_weeks_not_artifacts(self):
+        class Response:
+            def __init__(self, payload=None, content=b""):
+                self.payload = payload
+                self.content = content
+
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return self.payload
+
+        def bundle_for(report_date, impressions):
+            bundle = BytesIO()
+            with zipfile.ZipFile(bundle, "w") as artifact:
+                artifact.writestr("growth-intelligence-report.json", json.dumps({
+                    "generated_at": report_date,
+                    "search_console": {"aggregated_rows": ([{
+                        "keys": ["ethical dilemmas"], "impressions": impressions, "clicks": 1, "position": 10,
+                    }] if impressions else [])},
+                }))
+            return bundle.getvalue()
+
+        artifacts = [{"expired": False, "archive_download_url": f"https://example.test/{index}"} for index in range(4)]
+        with patch("requests.get", side_effect=[
+            Response({"artifacts": artifacts}),
+            Response(content=bundle_for("2026-07-28", 20)),
+            Response(content=bundle_for("2026-07-27", 10)),
+            Response(content=bundle_for("2026-07-20", 8)),
+            Response(content=bundle_for("2026-07-13", 0)),
+        ]):
+            history = collect_artifact_history("owner/repo", "token", limit=8)
+        self.assertEqual([report["generated_at"] for report in history["reports"]], ["2026-07-28", "2026-07-20"])
 
     def test_configuration_covers_all_discovery_landing_urls_and_keeps_history(self):
         config = json.loads(Path(".github/growth-intelligence.json").read_text())

@@ -67,6 +67,20 @@ def add_error(data: dict[str, Any], source: str, error: Exception) -> None:
     response = getattr(error, "response", None)
     status_code = getattr(response, "status_code", None)
     detail = f"HTTP {status_code}" if status_code else type(error).__name__
+    if response is not None:
+        try:
+            api_error = response.json().get("error", {})
+            api_status = api_error.get("status", "")
+            api_message = re.sub(r"\s+", " ", str(api_error.get("message", ""))).strip()
+            api_message = re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", "[redacted-email]", api_message)
+            api_message = re.sub(r"gs://[^\s\"']+", "gs://[redacted]", api_message)
+            api_message = re.sub(r"https?://[^\s\"']+", "[redacted-url]", api_message)
+            api_message = api_message[:180]
+            api_parts = [value for value in (api_status, api_message) if value]
+            if api_parts:
+                detail += f" ({': '.join(api_parts)})"
+        except (AttributeError, TypeError, ValueError):
+            pass
     errors.append(f"{source}: {detail}")
 
 
@@ -112,12 +126,14 @@ def collect_artifact_history(repository: str, token: str | None, limit: int = 8)
     try:
         response = requests.get(
             f"https://api.github.com/repos/{repository}/actions/artifacts",
-            params={"name": "growth-intelligence-report", "per_page": limit * 3},
+            params={"name": "growth-intelligence-report", "per_page": 100},
             headers=headers,
             timeout=30,
         )
         response.raise_for_status()
         reports = []
+        current_week = date.today().isocalendar()[:2]
+        seen_weeks = set()
         for artifact in response.json().get("artifacts", []):
             if artifact.get("expired") or len(reports) >= limit:
                 continue
@@ -127,7 +143,20 @@ def collect_artifact_history(repository: str, token: str | None, limit: int = 8)
                 report_file = next((name for name in bundle.namelist() if name.endswith("growth-intelligence-report.json")), None)
                 if not report_file:
                     continue
-                reports.append(history_snapshot(json.loads(bundle.read(report_file))))
+                snapshot = history_snapshot(json.loads(bundle.read(report_file)))
+                report_date = snapshot.get("generated_at")
+                try:
+                    report_week = date.fromisoformat(report_date).isocalendar()[:2]
+                except (TypeError, ValueError):
+                    continue
+                if (
+                    report_week == current_week
+                    or report_week in seen_weeks
+                    or (not snapshot["query_metrics"] and not snapshot["pagespeed"])
+                ):
+                    continue
+                reports.append(snapshot)
+                seen_weeks.add(report_week)
         return {"reports": reports, "status": "ok"}
     except Exception as error:
         return {"reports": [], "status": f"history unavailable: {type(error).__name__}"}

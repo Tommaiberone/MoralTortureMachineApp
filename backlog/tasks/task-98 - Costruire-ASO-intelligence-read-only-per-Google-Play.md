@@ -59,4 +59,12 @@ pubblica non viene registrata come localizzazione editoriale. Restano bloccanti
 l'invito Play Console read-only del service account, la variabile della URI del
 report Play Search, la scheda IT approvata e l'autenticazione GitHub necessaria
 per impostare le variabili del repository.
+
+Verifica 2026-08-04 sulla run successiva: la variabile del bucket viene letta,
+ma Google Cloud Storage risponde HTTP 403 e Android Vitals HTTP 400. Search
+Console e GA4 confermano che lo scambio OIDC è valido; resta da concedere e
+lasciare propagare al service account l'accesso Play read-only all'app e ai
+bulk report. Il report ora include il motivo strutturato restituito dalle API,
+con identificativi sensibili redatti, per distinguere permessi e payload nella
+run successiva.
 <!-- SECTION:NOTES:END -->

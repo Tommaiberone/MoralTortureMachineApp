@@ -41,3 +41,9 @@ Verificato 2026-08-04 sul report generato il 2026-08-03: storico in stato
 `ok` con otto report precedenti; nessuna raccomandazione di trend è emersa
 senza un campione non-brand sufficiente. Il report corrente è stato comunque
 generato con errori di fonti ASO non fatali.
+
+Correzione 2026-08-04 dopo verifica degli artifact reali: il conteggio
+precedente rappresentava artifact, non settimane, e includeva run duplicate o
+vuote dello stesso giorno. Lo storico ora conserva il report non vuoto più
+recente di ogni settimana ISO, esclude la settimana corrente e continua a
+limitarsi a otto settimane precedenti. Coperto da test di regressione.
