@@ -6,7 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-08-04 12:15'
-updated_date: '2026-08-04 12:15'
+updated_date: '2026-08-04 12:21'
 labels:
   - regression
   - infra
@@ -25,5 +25,5 @@ Ogni deploy dal commit 'feat: persist ops error alerts to DynamoDB...' (2026-08-
 <!-- AC:BEGIN -->
 - [x] #1 Il tag Purpose di ops_error_alerts non contiene virgole/parentesi
 - [x] #2 terraform validate passa
-- [ ] #3 Il prossimo push su main completa Deploy Backend, Android build e frontend deploy senza errori
+- [x] #3 Il prossimo push su main completa Deploy Backend, Android build e frontend deploy senza errori
 <!-- AC:END -->

@@ -1152,6 +1152,19 @@ belongs in the tracked history, not just a commit message. Not generalized
 into an automated tag-character lint in this pass - flagged as a gap worth a
 future task if this recurs a third time.
 
+With the deploy unblocked, the user explicitly authorized a manual
+`workflow_dispatch` publish (`publish_to_play_store: true`,
+`play_store_track: production`) of the AAB already built by the fix commit,
+rather than waiting for a future unrelated `versionCode` bump to carry it out
+automatically. That publish itself failed at the upload step with
+`Version code 15 has already been used` - Google Play version codes are
+global to the app across every track, never reusable, and this repo's own
+history shows no prior commit setting `versionCode 15`, so it was consumed
+by an upload outside what's visible in this history (an earlier manual
+test/internal-track upload is the most likely explanation, but unconfirmed).
+Resolved pragmatically by bumping to `versionCode 16`/`versionName 1.6.1`
+rather than spending time reconstructing exactly how 15 was consumed.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
