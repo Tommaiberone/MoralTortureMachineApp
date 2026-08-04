@@ -694,7 +694,7 @@ def collect_play_vitals(session, package_name: str, start_date: str, end_date: s
             "year": int(value[:4]),
             "month": int(value[5:7]),
             "day": int(value[8:]),
-            "timeZone": "America/Los_Angeles",
+            "timeZone": {"id": "America/Los_Angeles"},
         }
 
     result = {}

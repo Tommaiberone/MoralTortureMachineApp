@@ -279,8 +279,8 @@ class GrowthIntelligenceTests(unittest.TestCase):
         self.assertEqual(len(session.payloads), 2)
         for payload in session.payloads:
             timeline = payload["timelineSpec"]
-            self.assertEqual(timeline["startTime"]["timeZone"], "America/Los_Angeles")
-            self.assertEqual(timeline["endTime"]["timeZone"], "America/Los_Angeles")
+            self.assertEqual(timeline["startTime"]["timeZone"], {"id": "America/Los_Angeles"})
+            self.assertEqual(timeline["endTime"]["timeZone"], {"id": "America/Los_Angeles"})
 
     def test_listing_snapshot_requires_reviewed_english_and_italian_text(self):
         english_listing = {

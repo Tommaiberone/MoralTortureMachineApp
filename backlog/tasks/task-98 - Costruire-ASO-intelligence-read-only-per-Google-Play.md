@@ -67,4 +67,10 @@ lasciare propagare al service account l'accesso Play read-only all'app e ai
 bulk report. Il report ora include il motivo strutturato restituito dalle API,
 con identificativi sensibili redatti, per distinguere permessi e payload nella
 run successiva.
+
+Correzione 2026-08-04 dalla diagnostica strutturata: il tipo REST
+`google.type.DateTime` richiede `timeZone` come oggetto `{"id":
+"America/Los_Angeles"}`, non come stringa. Payload e test di regressione
+aggiornati. Il report Play Search resta bloccato separatamente dal permesso
+`storage.objects.list` sul bucket dei bulk report.
 <!-- SECTION:NOTES:END -->
