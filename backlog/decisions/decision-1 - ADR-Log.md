@@ -1165,6 +1165,99 @@ test/internal-track upload is the most likely explanation, but unconfirmed).
 Resolved pragmatically by bumping to `versionCode 16`/`versionName 1.6.1`
 rather than spending time reconstructing exactly how 15 was consumed.
 
+### ADR-065 — Android Google login verified working end-to-end on a real device; a separate, platform-agnostic claim gap found in the process (TASK-18/86/136/138)
+
+The user reported Google login on Android silently doing nothing on tap and
+asked for a real-device diagnosis, which no prior session had access to. This
+session's environment had neither `adb` nor the `backlog` CLI on `PATH` either
+(no Android SDK anywhere on the machine); both were installed mid-session
+without admin rights — `backlog.md` via `npm install -g`, and `adb` by
+extracting Google's official `platform-tools` zip (downloaded through
+`winget`'s resolved URL after a direct `dl.google.com/.../repo/...` guess
+404'd) into a user-writable folder, since `choco install adb` failed needing
+elevation this session doesn't have. Once the user connected a physical
+Xiaomi/POCO phone with USB debugging on, `adb install` still silently failed
+(`INSTALL_FAILED_USER_RESTRICTED`, no on-device prompt) until the user also
+enabled MIUI's separate "Install via USB" developer option, distinct from USB
+debugging - worth knowing for any future device-based verification on a MIUI/
+HyperOS phone.
+
+The phone's Play-Store-installed build was still `versionCode 14`/`1.5.0`,
+predating `ADR-063`'s CI env-var fix (`versionCode 16`/`1.6.1` had published
+to production roughly an hour earlier per `gh run view 30911640401`, all jobs
+including `Publish to Google Play (production)` green; the device just hadn't
+pulled the store update yet). Rather than wait on Play propagation, that run's
+`android-app-debug` artifact was downloaded directly, confirmed to actually
+contain the Android Cognito client ID in its bundled JS, and sideloaded over
+the uninstalled release build. With that build, `adb logcat` captured a
+complete, error-free real login performed by the user by hand: PKCE
+state/verifier written to `SecureAuthStoragePlugin`, a Custom Tab opened on
+the Cognito hosted UI, the Google redirect returning through
+`moraltorturemachine://auth/callback` with a matching `code`/`state`, a
+successful `/oauth2/token` exchange (368ms), and session persistence - no
+errors anywhere in the chain. Force-stopping and relaunching the app preserved
+the session, and tapping "Sign Out" correctly returned to the signed-out
+state. This closes `TASK-18` AC1 and `TASK-86` AC1/AC2 with direct evidence
+rather than code review alone.
+
+While confirming `TASK-18` AC3 ("Logout e claim anonimo funzionano su
+Android"), the logout half checked out but the claim-anonimo half could not
+be verified because it does not exist: a repository-wide grep found nothing
+in `frontend/src` (web or Android, not an Android-specific gap) that ever
+calls `POST /users/claim-anonymous-data`; `claim_anonymous_user_id` in
+`backend_fastapi.py` is reachable only from that one route. `TASK-13`
+(closed 2026-07-31) only ever scoped and tested the backend half
+(idempotency, no-email, cross-device conflict) - linking it to an actual
+post-login call was never one of its acceptance criteria, and nothing since
+added it. Concretely, today, a real login never links any pre-login
+`moral_profiles`/Duel activity to the new account on either platform, which
+quietly undermines the continuity promise both `ADR-002` and the
+login-value reasoning behind the `TASK-136` mandatory-login gate (`ADR-062`/
+`ADR-063`, already live in production) depend on - not a regression (it never
+worked), but a real gap surfaced by this verification pass rather than an
+Android-specific defect. Filed as `TASK-138` rather than folded into `TASK-18`,
+since it is not Android-specific and needs its own acceptance criteria;
+`TASK-18`/`TASK-86` moved from `Blocked` to `To Do` (the device blocker is
+resolved, `TASK-18` AC3 is the only remaining open item, gated on `TASK-138`)
+rather than `Done`, and `TASK-136` AC1 stays unchecked for the same reason.
+Options considered for AC3: marking it satisfied since the login/logout
+mechanism itself is proven correct and treating claim-anonimo as purely
+`TASK-13`'s concern (rejected: the AC's own wording bundles both, and closing
+it would hide a real, live product gap instead of tracking it) and silently
+wiring the missing frontend call in the same pass (rejected: expands scope
+into the login flow beyond what was asked, without the user's go-ahead, for a
+non-blocking gap - gameplay and login both work today, only continuity is
+missing).
+
+### ADR-066 — Anonymous-data claim wired to the single point both platforms already share (TASK-138)
+
+Following `ADR-065`, the user explicitly asked for the missing frontend call to
+be implemented. `claimAnonymousData` (`frontend/src/auth/authClient.js`) POSTs
+`{ anonymousUserId: getAnonymousUserId() }` with
+`getAuthenticatedApiHeaders(session.idToken)` - the same authenticated-fetch
+pattern already shipped in `AccountDeleteScreen.jsx` - and is called once,
+fire-and-forget (never `await`ed, errors only `console.warn`ed, never thrown),
+from inside `completeGoogleSignIn` right after `persistSession`. That single
+function is already the one place both the web callback
+(`AuthCallbackScreen.jsx`) and the native Android deep-link listener
+(`AuthProvider.jsx`'s `appUrlOpen` handler) funnel through after a real
+sign-in, so this needed no per-platform duplication and, importantly, does
+not also fire on the silent refresh-token path in `getValidAuthSession`
+(which calls `persistSession` directly, not `completeGoogleSignIn`) - it only
+runs once per actual login, not on every app-open session check. Options
+considered: adding the call inside `persistSession` itself (rejected: would
+also fire on every silent token refresh, an unnecessary write per the
+project's "avoid noise/unnecessary writes" cost posture) and duplicating the
+call in both `AuthCallbackScreen.jsx` and `AuthProvider.jsx` (rejected:
+`completeGoogleSignIn` was already the shared choke point, so duplicating it
+there would only add drift risk for no benefit). `eslint` and
+`vite build --mode prod` both pass. Not verified with a live device login in
+this pass, unlike the rest of this session's Android work: reproducing it
+would mean serving a local build to the phone, and the Cognito web/Android
+client's `redirect_uri` allowlist almost certainly excludes a
+dev/LAN callback, so confirming the network call actually fires is deferred
+to the next real deploy (`TASK-18` AC3 stays unchecked pending that).
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

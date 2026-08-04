@@ -54,7 +54,12 @@ is uncertain.
 After completing a tracked task, in this order:
 
 1. Check its acceptance criteria and set it to Done with
-   `backlog task edit TASK-N --status "Done"`.
+   `backlog task edit TASK-N --status "Done"`. If the criteria are narrower
+   than what the task's own description promised (e.g. the description says
+   "connect X to Y" but the criteria only exercise X in isolation), either
+   broaden the criteria to cover the gap or leave it explicitly open and
+   unchecked — never close a task as Done on criteria you already know don't
+   match its stated intent.
 2. Update `backlog/docs/doc-1` when folders/modules, dependencies, architecture,
    global patterns, or immutable constraints changed.
 3. Append a concise ADR to `backlog/decisions/decision-1` for every non-trivial
@@ -342,4 +347,15 @@ A change is done only when:
 - analytics and privacy implications were considered;
 - relevant tests/checks pass;
 - no secret or unrelated change is included;
-- operational cost impact is understood.
+- operational cost impact is understood;
+- **a new or changed backend endpoint meant for a client to call has at least
+  one real caller in the frontend (web or Android), confirmed either in this
+  change or already present** — backend-only tests (idempotency, auth,
+  validation) prove the endpoint behaves correctly in isolation, not that
+  anything actually invokes it. (Root cause of TASK-138, 2026-08-04: TASK-13
+  shipped and closed `POST /users/claim-anonymous-data` with backend tests
+  only; no frontend code ever called it, on web or Android, for days, and
+  nothing in the pre/post-task protocol at the time would have caught that.)
+  When auditing an existing task before building on top of it, grep for an
+  actual caller instead of trusting a `Done` status or a "looks complete"
+  code read.

@@ -1,7 +1,9 @@
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 
+import { API_BASE_URL } from '../config/api';
 import { trackEvent } from '../utils/analytics';
+import { getAnonymousUserId, getAuthenticatedApiHeaders } from '../utils/session';
 import {
   getAuthStorageItem,
   removeAuthStorageItem,
@@ -174,6 +176,21 @@ export const beginGoogleSignIn = async (returnTo = window.location.pathname) => 
   window.location.assign(authorizationUrl);
 };
 
+// Links pre-login anonymous activity (moral_profiles, Duel history) to the
+// account. Fire-and-forget: idempotent server-side (TASK-13), and a failure
+// here must never block sign-in or surface as a login error to the user.
+const claimAnonymousData = async (idToken) => {
+  try {
+    await fetch(`${API_BASE_URL}/users/claim-anonymous-data`, {
+      method: 'POST',
+      headers: getAuthenticatedApiHeaders(idToken),
+      body: JSON.stringify({ anonymousUserId: getAnonymousUserId() }),
+    });
+  } catch (claimError) {
+    console.warn('Claiming anonymous data failed; continuing without it.', claimError);
+  }
+};
+
 export const completeGoogleSignIn = async (callbackUrl) => {
   if (!isGoogleAuthAvailable()) throw new Error('Google authentication is not configured');
   const url = parseAuthUrl(callbackUrl);
@@ -204,6 +221,7 @@ export const completeGoogleSignIn = async (callbackUrl) => {
     code_verifier: verifier,
   });
   const session = await persistSession(tokens);
+  void claimAnonymousData(session.idToken);
   trackEvent('auth_completed', { provider: 'google' });
   return { session, returnTo };
 };
