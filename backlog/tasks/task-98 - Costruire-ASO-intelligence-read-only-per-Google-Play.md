@@ -4,7 +4,7 @@ title: Costruire ASO intelligence read-only per Google Play
 status: Blocked
 assignee: []
 created_date: '2026-07-29 13:59'
-updated_date: '2026-07-29 14:23'
+updated_date: '2026-08-04 09:44'
 labels:
   - growth
   - aso
@@ -49,4 +49,14 @@ Ripreso 2026-07-29: migrazione a GitHub OIDC e service account senza chiave in c
 OIDC verificato 2026-07-29: service account keyless growth-intelligence creato e vincolato al solo repository. Restano l'invito read-only in Play Console, URI del report e snapshot listing.
 
 Correzione stato: il meccanismo OIDC è pronto, ma il permesso Play Console read-only deve ancora essere assegnato dall'owner; il criterio resta aperto fino a quella concessione.
+
+Ripreso 2026-08-04: analizzato il report reale del 2026-08-03. Il collector
+Android Vitals ora invia il fuso orario obbligatorio `America/Los_Angeles` per
+le query giornaliere, con test di regressione. Salvato lo snapshot verificato
+della listing EN pubblica (21/80/444 caratteri) e il collector richiede
+esplicitamente tutti i campi EN/IT, così una traduzione automatica della pagina
+pubblica non viene registrata come localizzazione editoriale. Restano bloccanti
+l'invito Play Console read-only del service account, la variabile della URI del
+report Play Search, la scheda IT approvata e l'autenticazione GitHub necessaria
+per impostare le variabili del repository.
 <!-- SECTION:NOTES:END -->

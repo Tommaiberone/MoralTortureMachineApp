@@ -10,9 +10,11 @@ from growth_intelligence import (
     add_error,
     build_recommendations,
     collect_artifact_history,
+    collect_play_vitals,
     collect_search_console,
     demand_radar_candidates,
     history_recommendations,
+    listing_snapshot_missing_fields,
     markdown_report,
     optional_keyword_planner_rows,
     post_with_retry,
@@ -229,6 +231,49 @@ class GrowthIntelligenceTests(unittest.TestCase):
             response = post_with_retry(session, "https://example.test", {"safe": True})
         self.assertEqual(response.status_code, 200)
         sleep.assert_called_once_with(1)
+
+    def test_play_vitals_daily_queries_use_the_required_reporting_timezone(self):
+        class Response:
+            status_code = 200
+
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"rows": []}
+
+        class Session:
+            def __init__(self):
+                self.payloads = []
+
+            def post(self, _url, json, timeout):
+                self.payloads.append(json)
+                self.testcase.assertEqual(timeout, 30)
+                return Response()
+
+        session = Session()
+        session.testcase = self
+        self.assertEqual(collect_play_vitals(session, "com.example.app", "2026-07-01", "2026-07-28"), {})
+        self.assertEqual(len(session.payloads), 2)
+        for payload in session.payloads:
+            timeline = payload["timelineSpec"]
+            self.assertEqual(timeline["startTime"]["timeZone"], "America/Los_Angeles")
+            self.assertEqual(timeline["endTime"]["timeZone"], "America/Los_Angeles")
+
+    def test_listing_snapshot_requires_reviewed_english_and_italian_text(self):
+        english_listing = {
+            "title": "Moral Torture Machine",
+            "short_description": "Generate ethical dilemmas.",
+            "full_description": "Choose, reflect, and compare decisions.",
+        }
+        self.assertEqual(
+            listing_snapshot_missing_fields({"en": english_listing}),
+            ["it.title", "it.short_description", "it.full_description"],
+        )
+        self.assertEqual(
+            listing_snapshot_missing_fields({"en": english_listing, "it": english_listing}),
+            [],
+        )
 
     def test_history_download_is_read_only_and_non_fatal(self):
         class Response:

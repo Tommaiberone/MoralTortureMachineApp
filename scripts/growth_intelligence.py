@@ -658,17 +658,40 @@ def post_with_retry(session, url: str, payload: dict[str, Any], attempts: int = 
 
 
 def collect_play_vitals(session, package_name: str, start_date: str, end_date: str) -> dict[str, Any]:
+    # Daily Android Vitals are defined in Play Console's reporting time zone.
+    # Omitting it makes the API reject an otherwise valid timelineSpec with HTTP 400.
+    def vitals_time(value: str) -> dict[str, Any]:
+        return {
+            "year": int(value[:4]),
+            "month": int(value[5:7]),
+            "day": int(value[8:]),
+            "timeZone": "America/Los_Angeles",
+        }
+
     result = {}
     for metric_set, metric in (("crashRateMetricSet", "userPerceivedCrashRate"), ("anrRateMetricSet", "anrRate")):
         response = post_with_retry(
             session,
             f"https://playdeveloperreporting.googleapis.com/v1beta1/apps/{package_name}/{metric_set}:query",
-            {"timelineSpec": {"aggregationPeriod": "DAILY", "startTime": {"year": int(start_date[:4]), "month": int(start_date[5:7]), "day": int(start_date[8:])}, "endTime": {"year": int(end_date[:4]), "month": int(end_date[5:7]), "day": int(end_date[8:])}}, "metrics": [metric], "pageSize": 100},
+            {"timelineSpec": {"aggregationPeriod": "DAILY", "startTime": vitals_time(start_date), "endTime": vitals_time(end_date)}, "metrics": [metric], "pageSize": 100},
         )
         values = [number(item.get("decimalValue")) for row in response.json().get("rows", []) for item in row.get("metrics", []) if item.get("metric") == metric]
         if values:
             result[metric] = sum(values) / len(values)
     return result
+
+
+def listing_snapshot_missing_fields(listings: Any) -> list[str]:
+    """Require the manually reviewed English and Italian listing fields."""
+    if not isinstance(listings, dict):
+        return ["en", "it"]
+    required_fields = ("title", "short_description", "full_description")
+    return [
+        f"{locale}.{field}"
+        for locale in ("en", "it")
+        for field in required_fields
+        if not isinstance(listings.get(locale), dict) or not str(listings[locale].get(field, "")).strip()
+    ]
 
 
 def collect(config: dict[str, Any]) -> dict[str, Any]:
@@ -738,8 +761,9 @@ def collect(config: dict[str, Any]) -> dict[str, Any]:
         snapshot_path = Path(listing_snapshot)
         if snapshot_path.exists():
             data["play"]["listings"] = json.loads(snapshot_path.read_text())
-            if not data["play"]["listings"]:
-                add_missing(data, "PLAY_LISTING_SNAPSHOT")
+            missing_listing_fields = listing_snapshot_missing_fields(data["play"]["listings"])
+            if missing_listing_fields:
+                add_missing(data, f"PLAY_LISTING_SNAPSHOT ({', '.join(missing_listing_fields)})")
         else:
             add_missing(data, "PLAY_LISTING_SNAPSHOT")
     else:
