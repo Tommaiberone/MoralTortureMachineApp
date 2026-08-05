@@ -40,13 +40,9 @@ const ResultsScreen = () => {
     : '';
 
   const labels = Object.keys(aggregated);
-  const maxAverage = labels.length > 0
-    ? Math.max(...Object.values(aggregated).map(v => v / answers.length))
-    : 0;
   const data = labels.map(label => ({
     subject: label,
     value: (aggregated[label] / answers.length).toFixed(2),
-    fullMark: maxAverage * 1.2,
   }));
 
   useEffect(() => {
@@ -213,7 +209,13 @@ const ResultsScreen = () => {
               />
               <PolarRadiusAxis
                 angle={90}
-                domain={[0, 'auto']}
+                // TASK-105: dimension averages are always within [0, 1]
+                // (each raw per-answer score is authored in that range - see
+                // backend/data/dilemmas_*.json). A fixed domain instead of
+                // 'auto' stops every chart from autoscaling to its own
+                // tallest axis, which made every user's radar look equally
+                // "full" regardless of their actual scores.
+                domain={[0, 1]}
                 tick={{ fontSize: 10 }}
               />
               <Radar
