@@ -393,7 +393,8 @@ def claim_anonymous_user_id(owner_sub: str, anonymous_user_id: str) -> None:
     try:
         users_table.put_item(
             Item={"sub": claim_key, "ownerSub": owner_sub, "claimedAt": now},
-            ConditionExpression="attribute_not_exists(sub) OR ownerSub = :owner",
+            ConditionExpression="attribute_not_exists(#sub) OR ownerSub = :owner",
+            ExpressionAttributeNames={"#sub": "sub"},
             ExpressionAttributeValues={":owner": owner_sub},
         )
     except ClientError as error:

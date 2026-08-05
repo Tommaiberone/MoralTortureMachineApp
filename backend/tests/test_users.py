@@ -84,6 +84,26 @@ class ClaimAnonymousUserIdTests(unittest.TestCase):
         self.assertEqual(update_call.kwargs["Key"], {"sub": "user-sub"})
         self.assertEqual(update_call.kwargs["ExpressionAttributeValues"][":ids"], {"anon-123"})
 
+    def test_condition_expression_never_references_the_reserved_word_sub_directly(self):
+        # DynamoDB rejects a ConditionExpression that names the reserved
+        # keyword "sub" outside of an ExpressionAttributeNames placeholder
+        # (ValidationException: "Attribute name is a reserved keyword").
+        # This does not exercise real DynamoDB validation (this test suite
+        # mocks the table like the rest of this file), but it pins the
+        # placeholder substitution so a regression to the bare literal fails
+        # here instead of in production.
+        table = Mock()
+        with patch.object(backend_module, "users_table", table):
+            claim_anonymous_user_id("user-sub", "anon-123")
+
+        put_call = table.put_item.call_args
+        condition_expression = put_call.kwargs["ConditionExpression"]
+        attribute_names = put_call.kwargs.get("ExpressionAttributeNames", {})
+        self.assertNotIn("attribute_not_exists(sub)", condition_expression)
+        self.assertIn("sub", attribute_names.values())
+        placeholder = next(key for key, value in attribute_names.items() if value == "sub")
+        self.assertIn(f"attribute_not_exists({placeholder})", condition_expression)
+
     def test_repeating_the_claim_by_the_same_owner_is_a_safe_no_op(self):
         table = Mock()
         with patch.object(backend_module, "users_table", table):

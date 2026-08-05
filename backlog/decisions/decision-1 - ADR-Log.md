@@ -1258,6 +1258,45 @@ client's `redirect_uri` allowlist almost certainly excludes a
 dev/LAN callback, so confirming the network call actually fires is deferred
 to the next real deploy (`TASK-18` AC3 stays unchecked pending that).
 
+### ADR-067 — [regression] Reserved-keyword crash made claim-anonymous-data fail 100% of the time in production (TASK-139)
+
+The user forwarded two production ops-alert emails (`TASK-104`/`ADR-045`) to
+check: a 500 on `POST /users/claim-anonymous-data` and a 401 on
+`POST /challenges/{token}/rematch`. Investigation found two different
+situations, not one bug:
+
+1. **Real regression** — `claim_anonymous_user_id()`'s claim-lock `PutItem`
+   (`backend_fastapi.py`) used
+   `ConditionExpression="attribute_not_exists(sub) OR ownerSub = :owner"`
+   with no `ExpressionAttributeNames`. `sub` is a DynamoDB reserved keyword;
+   naming it directly in an expression string (as opposed to as a `Key`,
+   where it's fine) is rejected server-side with a `ValidationException`,
+   which the outer handler turned into an unconditional 500 - so every call
+   to this endpoint failed, on both platforms, from the moment `ADR-066`
+   wired up the first real caller. Every existing test in `test_users.py`
+   mocks the `users_table`, so nothing client-side ever validated the
+   expression string against DynamoDB's reserved-word list; this stayed
+   invisible until real traffic hit it. Fixed by adding
+   `ExpressionAttributeNames={"#sub": "sub"}` and rewriting the condition as
+   `attribute_not_exists(#sub) OR ownerSub = :owner`, the same placeholder
+   pattern already used elsewhere in the file (`#status`). A regression test
+   was added asserting the expression never contains the bare literal and
+   that the placeholder resolves to `sub` - it does not exercise DynamoDB's
+   own validation (still a mock), so it guards this specific regression
+   rather than the whole reserved-word class; introducing `moto` for real
+   expression validation was considered and deferred as disproportionate to
+   one call site, since `moto` isn't already a project dependency. Filed and
+   closed as `TASK-139`.
+2. **Not a bug** — the 401 on `rematch` is `ADR-063`/`TASK-136`'s intended
+   `login_required` gate working as designed for an anonymous caller past
+   their first Duel interaction; `ChallengeCompareScreen.jsx` already renders
+   a login CTA for it instead of a generic error. `ADR-045` already decided
+   every 4xx gets emailed anyway (business-outcome 4xxs are common and
+   deliberately not filtered out at the source), with the `ops-alerts-sweep`
+   skill (`TASK-130`) as the intended place to later recognize and prune
+   exactly this kind of confirmed-expected alert from `ops_error_alerts`. No
+   code change made for this one.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
