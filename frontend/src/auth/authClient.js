@@ -144,36 +144,53 @@ const clearPendingSignIn = async () => {
   ]);
 };
 
+// A fast double-tap on any "Sign in with Google" button (AuthButton,
+// ChallengeLandingScreen, AccountDeleteScreen all call this indirectly) used
+// to fire two overlapping sign-ins: each generates its own PKCE state/
+// verifier and writes them to the same storage keys, so the second call
+// clobbers the first's before its browser tab returns. Whichever callback
+// comes back then fails completeGoogleSignIn's state check with "Invalid
+// authentication callback", even though nothing was actually wrong. This
+// module-level flag makes a re-entrant call while one is already in flight
+// a harmless no-op instead.
+let googleSignInInFlight = false;
+
 export const beginGoogleSignIn = async (returnTo = window.location.pathname) => {
   if (!isGoogleAuthAvailable()) throw new Error('Google authentication is not configured');
+  if (googleSignInInFlight) return;
+  googleSignInInFlight = true;
 
-  const state = randomUrlSafeValue();
-  const verifier = randomUrlSafeValue(64);
-  const challenge = await createCodeChallenge(verifier);
-  await Promise.all([
-    setAuthStorageItem(OAUTH_STATE_KEY, state),
-    setAuthStorageItem(PKCE_VERIFIER_KEY, verifier),
-    setAuthStorageItem(RETURN_TO_KEY, safeReturnPath(returnTo)),
-  ]);
-  trackEvent('auth_started', { provider: 'google' });
+  try {
+    const state = randomUrlSafeValue();
+    const verifier = randomUrlSafeValue(64);
+    const challenge = await createCodeChallenge(verifier);
+    await Promise.all([
+      setAuthStorageItem(OAUTH_STATE_KEY, state),
+      setAuthStorageItem(PKCE_VERIFIER_KEY, verifier),
+      setAuthStorageItem(RETURN_TO_KEY, safeReturnPath(returnTo)),
+    ]);
+    trackEvent('auth_started', { provider: 'google' });
 
-  const query = new URLSearchParams({
-    response_type: 'code',
-    client_id: getCognitoClientId(),
-    redirect_uri: getRedirectUri(),
-    scope: 'openid email profile',
-    state,
-    code_challenge_method: 'S256',
-    code_challenge: challenge,
-    identity_provider: 'Google',
-  });
-  const authorizationUrl = `${cognitoDomain}/oauth2/authorize?${query.toString()}`;
+    const query = new URLSearchParams({
+      response_type: 'code',
+      client_id: getCognitoClientId(),
+      redirect_uri: getRedirectUri(),
+      scope: 'openid email profile',
+      state,
+      code_challenge_method: 'S256',
+      code_challenge: challenge,
+      identity_provider: 'Google',
+    });
+    const authorizationUrl = `${cognitoDomain}/oauth2/authorize?${query.toString()}`;
 
-  if (Capacitor.isNativePlatform()) {
-    await Browser.open({ url: authorizationUrl, toolbarColor: '#1a1a1a' });
-    return;
+    if (Capacitor.isNativePlatform()) {
+      await Browser.open({ url: authorizationUrl, toolbarColor: '#1a1a1a' });
+      return;
+    }
+    window.location.assign(authorizationUrl);
+  } finally {
+    googleSignInInFlight = false;
   }
-  window.location.assign(authorizationUrl);
 };
 
 // Links pre-login anonymous activity (moral_profiles, Duel history) to the
