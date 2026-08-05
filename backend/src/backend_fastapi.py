@@ -189,23 +189,25 @@ PARTY_ROOM_MIN_PARTICIPANTS_TO_START = 2
 # abandoned-room safety net, never a visible countdown.
 PARTY_ROOM_SAFETY_TIMEOUT_MS = 10 * 60 * 1000
 
-# Model fallback strategy - ordered by rate limits (highest TPD first)
+# Model fallback strategy - ordered by capability, highest first. Refreshed
+# 2026-08-05 (TASK-162) against GroqCloud's Supported Models page: models no
+# longer listed there (qwen/qwen3-32b, both llama-4 variants, both
+# moonshotai/kimi-k2 variants, llama-guard-4-12b, allam-2-7b) were dropped
+# rather than left to silently fail; qwen/qwen3.6-27b is new. Rate limits
+# below are the Developer plan TPM/RPM shown on that page (it no longer
+# publishes TPD). The two prompt-guard models are narrow classifiers, not
+# general chat models - kept at low priority since they're still listed, but
+# unlikely to ever produce a usable completion for this app's prompts.
 MODEL_FALLBACK_CHAIN = [
-    "llama-3.3-70b-versatile",                       # 100K TPD, 12K TPM - High capability
-    "openai/gpt-oss-120b",                           # 200K TPD, 8K TPM - High capability
-    "qwen/qwen3-32b",                                # 500K TPD, 6K TPM, 60 RPM - High capability
-    "meta-llama/llama-4-maverick-17b-128e-instruct", # 500K TPD, 6K TPM - High capability
-    "meta-llama/llama-4-scout-17b-16e-instruct",     # 500K TPD, 30K TPM - High capability
-    "llama-3.1-8b-instant",                          # 500K TPD, 6K TPM - Medium capability
-    "moonshotai/kimi-k2-instruct",                   # 300K TPD, 10K TPM, 60 RPM - Medium capability
-    "moonshotai/kimi-k2-instruct-0905",              # 300K TPD, 10K TPM, 60 RPM - Medium capability
-    "meta-llama/llama-guard-4-12b",                  # 500K TPD, 15K TPM - Medium capability
-    "meta-llama/llama-prompt-guard-2-86m",           # 500K TPD, 15K TPM - Medium capability
-    "meta-llama/llama-prompt-guard-2-22m",           # 500K TPD, 15K TPM - Medium capability
-    "allam-2-7b",                                    # 500K TPD, 6K TPM - Low capability
-    "openai/gpt-oss-20b",                            # 200K TPD, 8K TPM - Low capability
-    "groq/compound",                                 # No TPD limit, 70K TPM - Low capability
-    "groq/compound-mini",                            # No TPD limit, 70K TPM - Low capability
+    "llama-3.3-70b-versatile",             # 300K TPM, 1K RPM - High capability
+    "openai/gpt-oss-120b",                 # 250K TPM, 1K RPM - High capability
+    "qwen/qwen3.6-27b",                    # 250K TPM, 1K RPM - High capability
+    "llama-3.1-8b-instant",                # 250K TPM, 1K RPM - Medium capability
+    "openai/gpt-oss-20b",                  # 250K TPM, 1K RPM - Medium capability
+    "meta-llama/llama-prompt-guard-2-86m", # 30K TPM, 100 RPM - narrow classifier, last resort
+    "meta-llama/llama-prompt-guard-2-22m", # 30K TPM, 100 RPM - narrow classifier, last resort
+    "groq/compound",                       # 200K TPM, 200 RPM - agentic system, last resort
+    "groq/compound-mini",                  # 200K TPM, 200 RPM - agentic system, last resort
 ]
 
 # Initialize AWS clients
