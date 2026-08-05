@@ -1,10 +1,10 @@
 ---
 id: TASK-86
 title: Collaudare e distribuire APK 1.3.0 con login Android
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-29 11:46'
-updated_date: '2026-08-05 08:21'
+updated_date: '2026-08-05 13:42'
 labels:
   - m1-auth
   - android
@@ -41,4 +41,6 @@ Completare il login end-to-end su device, verificare la compatibilità anonima d
 2026-08-04 (sessione successiva): AC1 e AC2 verificati su device Android fisico reale (dettagli tecnici completi in TASK-18). Login Google riporta in app sulla route di origine (returnTo "/" salvato/consumato correttamente via SecureAuthStorage), sessione sopravvive a force-stop+relaunch, logout riporta correttamente allo stato disconnesso. AC3 (APK precedente continua a giocare anonimamente) non ri-testato empiricamente in questa sessione - nessuna modifica al gioco anonimo e' stata fatta, e require_authenticated_for_repeat_duel (TASK-136) e' additivo solo su seconda interazione Duel, quindi resta a rischio basso ma tecnicamente non verificato con un vecchio APK reale su device in questa sessione. Non marcato Done: dipende da TASK-18, che resta aperto per il gap di claim anonimo mai collegato lato frontend (vedi TASK-138).
 
 2026-08-05: stesso bump (versionCode 17 / 1.6.2), push in corso per generare il prossimo APK/bundle da verificare su device per AC3 (APK precedente continua a giocare anonimo) e per la verifica end-to-end del claim anonimo legata a TASK-18.
+
+2026-08-05 (sessione successiva): login Google end-to-end confermato funzionante su device reale con build 17/1.6.2 (vedi TASK-18 per i dettagli tecnici completi). AC3 (APK precedente continua a giocare anonimamente) non ri-testato empiricamente in questa sessione ne' nella precedente - nessuna modifica al gioco anonimo e' stata fatta in nessuna delle sessioni recenti, quindi resta a rischio basso ma tecnicamente un'assunzione, non una verifica diretta con un vecchio APK reale su device. Chiudo comunque il task: TASK-18 (la dipendenza bloccante) e' Done, login+claim verificati, e la richiesta dell'utente era di chiudere questa catena.
 <!-- SECTION:NOTES:END -->

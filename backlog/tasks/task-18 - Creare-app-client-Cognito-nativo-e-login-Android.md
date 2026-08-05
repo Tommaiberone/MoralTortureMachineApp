@@ -1,10 +1,10 @@
 ---
 id: TASK-18
 title: Creare app client Cognito nativo e login Android
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-29 11:27'
-updated_date: '2026-08-05 08:21'
+updated_date: '2026-08-05 13:42'
 labels:
   - m1-auth
   - auth
@@ -27,7 +27,7 @@ Aggiungere il client nativo PKCE e il flusso Capacitor mantenendo parità con il
 <!-- AC:BEGIN -->
 - [x] #1 Deep link OAuth Android è documentato e testato
 - [x] #2 Token storage usa un meccanismo nativo appropriato
-- [ ] #3 Logout e claim anonimo funzionano su Android
+- [x] #3 Logout e claim anonimo funzionano su Android
 - [x] #4 Il backend resta compatibile con gli APK anonimi già distribuiti
 <!-- AC:END -->
 
@@ -45,4 +45,6 @@ Aggiungere il client nativo PKCE e il flusso Capacitor mantenendo parità con il
 2026-08-04 (stesso giorno, su richiesta utente): TASK-138 implementato e chiuso (claimAnonymousData collegata in authClient.js). AC3 di questo task pero' resta non spuntato: il codice esiste, passa lint/build, ma non e' stato verificato con un vero login su device (il redirect_uri di un build locale servito al telefono non e' nella allowlist del client Cognito web/Android) - vedi note TASK-138. Riverificare la chiamata (deve comparire nei log/rete durante un login reale) sul prossimo APK distribuito prima di spuntare definitivamente AC3 e chiudere questo task.
 
 2026-08-05: bump versionCode 16->17 / versionName 1.6.1->1.6.2 (frontend/package.json, frontend/android/app/build.gradle) per portare in un nuovo APK distribuito il wiring claim-anonymous-data di TASK-138 (c7c3f2b), che era stato mergiato dopo il bump precedente (3dc5704) e quindi non era mai stato incluso in un build distribuito. Device Xiaomi POCO ricollegato via adb per la verifica su questo nuovo build.
+
+2026-08-05 (sessione successiva): verificato end-to-end su device Android fisico reale (Xiaomi POCO) con la build 17/1.6.2 (contiene il fix TASK-138 mai incluso nella 16/1.6.1). Login Google completato con un singolo tap pulito; nel frattempo scoperto e corretto un bug reale separato (TASK-164, doppio-tap race condition su beginGoogleSignIn) che aveva causato un primo tentativo fallito con 'Invalid authentication callback' - non collegato a questo AC, gia' tracciato e risolto a parte. Log logcat confermano: token exchange riuscito (POST /oauth2/token 200), poi POST /users/claim-anonymous-data con Bearer id_token -> risposta 200 {"claimed":true,"anonymousUserId":"a911e8e3-..."}. AC3 chiuso: claim anonimo verificato funzionante su Android reale.
 <!-- SECTION:NOTES:END -->
