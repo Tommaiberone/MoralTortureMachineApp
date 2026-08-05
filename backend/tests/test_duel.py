@@ -189,13 +189,18 @@ class CreateChallengeTests(unittest.TestCase):
         profiles_table.query.return_value = {"Items": [
             {"publicId": "profile-1"}, {"publicId": "profile-from-an-earlier-duel"},
         ]}
+        request = request_with_headers({"X-Anonymous-User-Id": "anon-1"})
         with patch.object(backend_module, "moral_profiles_table", profiles_table):
             with self.assertRaises(HTTPException) as raised:
                 asyncio.run(create_challenge(
                     CreateChallengeRequest(profilePublicId="profile-1"),
-                    request_with_headers({"X-Anonymous-User-Id": "anon-1"}),
+                    request,
                 ))
         self.assertEqual(raised.exception.status_code, 401)
+        # TASK-140: this is the known, UI-handled login gate, not an
+        # operational error - it must be flagged so notify_ops_of_errors
+        # skips its ops alert for it.
+        self.assertTrue(request.state.expected_business_error)
 
 
 class OpenChallengeTests(unittest.TestCase):
@@ -339,14 +344,18 @@ class JoinChallengeTests(unittest.TestCase):
         participants_table.get_item.return_value = {"Item": {"anonymousUserId": "someone-else", "role": "creator"}}
         profiles_table = Mock()
         profiles_table.query.return_value = {"Items": [{"publicId": "profile-from-a-previous-duel"}]}
+        request = request_with_headers({"X-Anonymous-User-Id": "anon-4"})
         with (
             patch.object(backend_module, "challenges_table", challenges_table),
             patch.object(backend_module, "challenge_participants_table", participants_table),
             patch.object(backend_module, "moral_profiles_table", profiles_table),
         ):
             with self.assertRaises(HTTPException) as raised:
-                asyncio.run(join_challenge("tok", request_with_headers({"X-Anonymous-User-Id": "anon-4"})))
+                asyncio.run(join_challenge("tok", request))
         self.assertEqual(raised.exception.status_code, 401)
+        # TASK-140: same known, UI-handled login gate - must not trigger an
+        # ops alert email.
+        self.assertTrue(request.state.expected_business_error)
 
     def test_join_allowed_with_a_prior_profile_when_authenticated(self):
         challenges_table = Mock()
@@ -639,13 +648,17 @@ class RematchChallengeTests(unittest.TestCase):
         }}
         participants_table = Mock()
         participants_table.get_item.return_value = {"Item": {"anonymousUserId": "anon-1", "profilePublicId": "profile-1"}}
+        request = request_with_headers({"X-Anonymous-User-Id": "anon-1"})
         with (
             patch.object(backend_module, "challenges_table", challenges_table),
             patch.object(backend_module, "challenge_participants_table", participants_table),
         ):
             with self.assertRaises(HTTPException) as raised:
-                asyncio.run(rematch_challenge("tok", request_with_headers({"X-Anonymous-User-Id": "anon-1"})))
+                asyncio.run(rematch_challenge("tok", request))
         self.assertEqual(raised.exception.status_code, 401)
+        # TASK-140: same known, UI-handled login gate as create/join - must
+        # not trigger an ops alert email.
+        self.assertTrue(request.state.expected_business_error)
 
 
 if __name__ == "__main__":

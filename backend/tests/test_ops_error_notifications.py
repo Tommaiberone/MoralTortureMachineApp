@@ -1,6 +1,10 @@
+import asyncio
 import os
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
+
+from fastapi import HTTPException
 
 os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")
@@ -164,6 +168,71 @@ class NotifyOpsOfErrorTests(unittest.TestCase):
         self.assertEqual(item["pathSignature"], "/profiles/x")
         self.assertIn("alertId", item)
         self.assertIn("expirationTime", item)
+
+
+class NotifyOpsMiddlewareExpectedErrorTests(unittest.TestCase):
+    """TASK-140: request.state.expected_business_error lets a route opt a
+    specific, already-known-expected 4xx (e.g. the TASK-136 login gate) out
+    of the ops alert entirely, without weakening the default "alert on every
+    4xx" behavior (ADR-045) for everything else."""
+
+    def _fake_request(self, expected_business_error=False):
+        request = Mock()
+        request.state = SimpleNamespace(expected_business_error=expected_business_error)
+        return request
+
+    def test_flagged_response_skips_the_ops_alert(self):
+        request = self._fake_request(expected_business_error=True)
+        response = Mock(status_code=401)
+
+        async def call_next(_request):
+            return response
+
+        with patch.object(backend_module, "_notify_ops_of_error") as notify:
+            result = asyncio.run(backend_module.notify_ops_of_errors(request, call_next))
+
+        notify.assert_not_called()
+        self.assertIs(result, response)
+
+    def test_unflagged_4xx_still_alerts(self):
+        request = self._fake_request(expected_business_error=False)
+        response = Mock(status_code=404)
+
+        async def call_next(_request):
+            return response
+
+        with patch.object(backend_module, "_notify_ops_of_error") as notify:
+            asyncio.run(backend_module.notify_ops_of_errors(request, call_next))
+
+        notify.assert_called_once_with(request, 404, "See CloudWatch logs for the request detail.")
+
+    def test_missing_state_attribute_defaults_to_alerting(self):
+        # A request whose state was never touched (the common case) must
+        # still alert - the opt-out is explicit-only, never implicit.
+        request = Mock()
+        request.state = SimpleNamespace()
+        response = Mock(status_code=500)
+
+        async def call_next(_request):
+            return response
+
+        with patch.object(backend_module, "_notify_ops_of_error") as notify:
+            asyncio.run(backend_module.notify_ops_of_errors(request, call_next))
+
+        notify.assert_called_once()
+
+
+class RaiseLoginRequiredTests(unittest.TestCase):
+    def test_flags_the_request_and_raises_401(self):
+        request = Mock()
+        request.state = SimpleNamespace()
+
+        with self.assertRaises(HTTPException) as raised:
+            backend_module._raise_login_required(request)
+
+        self.assertEqual(raised.exception.status_code, 401)
+        self.assertEqual(raised.exception.detail, "login_required")
+        self.assertTrue(request.state.expected_business_error)
 
 
 if __name__ == "__main__":

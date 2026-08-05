@@ -1297,6 +1297,38 @@ situations, not one bug:
    exactly this kind of confirmed-expected alert from `ops_error_alerts`. No
    code change made for this one.
 
+### ADR-068 — Narrow, explicit opt-out from the ops alert for the confirmed-expected `login_required` 401 (TASK-140)
+
+Immediate follow-up to `ADR-067`: having confirmed the `rematch` 401 is
+expected, the user asked to stop getting emailed for it specifically, rather
+than wait for `ops-alerts-sweep` to prune it after the fact each time. Rather
+than reopen `ADR-045`'s "alert on every 4xx by default" stance globally
+(still correct for `409`/`404`/`403`, which are genuinely ambiguous without
+route-specific knowledge), added a narrow, opt-in-only escape hatch:
+`request.state.expected_business_error`, set by a new `_raise_login_required`
+helper the instant the route itself already knows, with certainty, that this
+specific outcome needs no alert - `notify_ops_of_errors` checks it via
+`getattr(..., False)` so any request that never touches it (i.e. everything
+else) keeps alerting exactly as before. Applied at both call sites of the
+`TASK-136`/`ADR-063` login gate (`require_authenticated_for_repeat_duel`,
+covering `create_challenge`/`join_challenge`, and `rematch_challenge`
+directly) - the user only named the `rematch` case, but all three raise the
+identical `login_required` 401 for the identical reason, so suppressing only
+one would have been an arbitrary, inconsistent carve-out of the same design
+intent. Considered and rejected: teaching `_should_notify_ops`/
+`_notify_ops_of_error` to special-case `detail == "login_required"` by
+string content (more fragile - couples an unrelated generic function to one
+route's exact wording, whereas the request-scoped flag keeps the knowledge
+at the point that already knows it); adding a general per-path exclusion
+list (rejected as premature - this is the first, and so far only, confirmed
+case that is unconditionally non-actionable regardless of context, unlike
+e.g. a `404` whose triage still benefits from seeing it at least once).
+Verified `request.state` set inside the route handler is actually visible to
+the outer `@app.middleware("http")` after `call_next` returns (both share
+the same ASGI `scope` dict) with a real `TestClient` request through the
+full middleware stack, not just mocked unit tests. Backend suite: 138/138
+passing.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

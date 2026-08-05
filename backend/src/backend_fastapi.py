@@ -496,6 +496,17 @@ def _has_prior_profile(anonymous_user_id: str, exclude_public_id: Optional[str] 
     return any(item.get("publicId") != exclude_public_id for item in items)
 
 
+def _raise_login_required(request: Request) -> None:
+    """The TASK-136/ADR-063 mandatory-login gate: a known, UI-handled 401
+    (ChallengeCompareScreen.jsx and friends render a login CTA for it, never
+    a generic error), not an operational error - flag the request so
+    notify_ops_of_errors (TASK-104/ADR-045) skips its ops alert for this one
+    specific expected outcome instead of emailing/persisting it every time
+    (TASK-140)."""
+    request.state.expected_business_error = True
+    raise HTTPException(status_code=401, detail="login_required")
+
+
 def require_authenticated_for_repeat_duel(request: Request, anonymous_user_id: str, exclude_public_id: Optional[str] = None) -> None:
     """TASK-136: the first Moral Duel challenge/join stays fully anonymous
     (doc-2 social MVP definition of done, TASK-14 AC1); from the second one
@@ -517,7 +528,7 @@ def require_authenticated_for_repeat_duel(request: Request, anonymous_user_id: s
     if not _has_prior_profile(anonymous_user_id, exclude_public_id=exclude_public_id):
         return
     if get_optional_user(request) is None:
-        raise HTTPException(status_code=401, detail="login_required")
+        _raise_login_required(request)
 
 
 def get_challenge_or_404(token: str) -> Dict[str, Any]:
@@ -1168,13 +1179,21 @@ def _notify_ops_of_error(request: Request, status_code: int, detail: str) -> Non
 async def notify_ops_of_errors(request: Request, call_next):
     """TASK-104: email any 4xx/5xx through SNS, including uncaught exceptions
     (which Starlette would otherwise turn into a bare 500 further up the
-    stack). Registered after the burst guard so it also observes its 429s."""
+    stack). Registered after the burst guard so it also observes its 429s.
+    ADR-045 deliberately keeps this broad (most 4xx here are expected
+    business outcomes, not bugs) - `request.state.expected_business_error`
+    (TASK-140) is a narrow, explicit opt-out for the rare case where a route
+    already knows for certain, at the point it happens, that a given
+    response is not just expected but not worth an ops alert at all (e.g.
+    the TASK-136 login-required gate, which the frontend already handles
+    with its own UI); it is not a general-purpose escape hatch for ordinary
+    404/409/403s, which stay covered by the cooldown + later sweep."""
     try:
         response = await call_next(request)
     except Exception as exc:
         _notify_ops_of_error(request, 500, f"Unhandled exception: {exc}")
         raise
-    if response.status_code >= 400:
+    if response.status_code >= 400 and not getattr(request.state, "expected_business_error", False):
         _notify_ops_of_error(request, response.status_code, "See CloudWatch logs for the request detail.")
     return response
 
@@ -1644,7 +1663,7 @@ async def rematch_challenge(token: str, request: Request):
     # is more useful feedback than a login prompt for a request that would
     # have failed anyway.
     if get_optional_user(request) is None:
-        raise HTTPException(status_code=401, detail="login_required")
+        _raise_login_required(request)
 
     new_token = generate_public_token()
     now = int(time.time() * 1000)
