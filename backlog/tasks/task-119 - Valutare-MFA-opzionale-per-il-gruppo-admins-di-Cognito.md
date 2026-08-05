@@ -1,9 +1,10 @@
 ---
 id: TASK-119
 title: Valutare MFA opzionale per il gruppo admins di Cognito
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-01 14:45'
+updated_date: '2026-08-05 18:55'
 labels:
   - security
   - backend
@@ -20,5 +21,5 @@ backend/terraform/main.tf ha mfa_configuration = OFF sull'unico User Pool Cognit
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 E' stata presa e documentata in un ADR una decisione esplicita (abilitare MFA opzionale solo TOTP per admins, o accettare esplicitamente il rischio con MFA off)
+- [x] #1 E' stata presa e documentata in un ADR una decisione esplicita (abilitare MFA opzionale solo TOTP per admins, o accettare esplicitamente il rischio con MFA off)
 <!-- AC:END -->

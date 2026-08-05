@@ -1365,6 +1365,62 @@ participant key on a Party Room poll vs. the IP-only key on an unrelated
 endpoint, and two same-IP participants no longer share a bucket at a poll
 limit of 1. Backend suite: 144/144 passing.
 
+### ADR-070 — Defer the Daily Moral Crime priority decision to the 2026-08-19 growth check (TASK-167)
+
+Context: a direct read-only scan of the prod DynamoDB analytics tables on
+2026-08-05 (no native tooling yet - `TASK-41` is still `To Do`) measured D7
+retention at ~1.4% (6/429 identities in the 2026-07-15..2026-07-29 cohort
+returned on any later day at all; 0% in a day+5..+9 window), far below
+`doc-2`'s 12-15% gate. `doc-2` explicitly gates paid acquisition and any
+subscription launch on measured, sufficient retention, and its delivery
+sequence places "retention through a daily dilemma" immediately after Party
+Room (already shipped). The only planned retention mechanic - Daily Moral
+Crime (`TASK-42`/`43`/`44`) plus opt-in push (`TASK-45`) - sits in `Backlog`
+with no priority assigned. `TASK-167` was created to put this in front of
+the user as an explicit product decision rather than silently promoting or
+silently ignoring it. Options presented: (a) promote `TASK-42`-`45` to `To
+Do` now; (b) defer the decision to the next growth check, alongside
+`TASK-166`'s share-rate re-measurement; (c) accept the failed gate for now
+and keep working other planned tasks. Chose: (b) - defer to 2026-08-19,
+the same date `TASK-166` re-measures result-to-share and challenge
+open-to-complete post-`TASK-149`. Consequence: `TASK-42`-`45` remain in
+`Backlog` unpromoted until then; `TASK-167` moved from `Open Points` to
+`Backlog` with a hard dependency on `TASK-166` so both growth gates are
+revisited together on one pass instead of two. Per `doc-2`, paid acquisition
+and subscription work stay out of scope until retention is remeasured and
+either clears the gate or a renewed decision is made.
+
+### ADR-071 — Cognito MFA left off; the admins group has no native-password login path to protect (TASK-119)
+
+`backend/terraform/main.tf`'s single Cognito user pool has `mfa_configuration = "OFF"`.
+Before deciding, this session queried production directly (`aws --profile personal
+cognito-idp list-users-in-group --user-pool-id eu-west-1_VOxU2Onzd --group-name
+admins`): exactly one member, `UserStatus: EXTERNAL_PROVIDER`, confirming the
+admins group is the owner's single Google-federated account, not a shared or
+growing group. More importantly, both app clients
+(`aws_cognito_user_pool_client.web`/`.android`) set
+`supported_identity_providers = [google]` and
+`explicit_auth_flows = ["ALLOW_REFRESH_TOKEN_AUTH"]` only - there is no
+`ALLOW_USER_PASSWORD_AUTH`/`ALLOW_ADMIN_USER_PASSWORD_AUTH`/SRP flow enabled
+anywhere in the pool. Every sign-in, admin or anonymous-to-authenticated, goes
+exclusively through Google OAuth; Cognito's own username/password challenge
+(the thing `mfa_configuration` actually gates) is never reached at all in this
+architecture. Turning MFA on would add a setting with no login path to attach
+to, not a real second factor - the actual second-factor boundary for the
+`/admin/analytics` account today is whatever 2-Step Verification the owner's
+own Google account has, which is outside this repo's control surface.
+Options considered: `mfa_configuration = "OPTIONAL"` with software-token TOTP
+(rejected - Cognito TOTP prompts during Cognito-native authentication, which
+this pool's app clients never trigger, so it would be dead configuration, not
+a control); requiring MFA at the Google IdP level from Terraform (rejected -
+Google account 2-Step Verification is not a Cognito/Terraform-managed
+setting). Decision: accept `mfa_configuration = "OFF"` as-is; revisit only if
+the admins group ever grows past the owner, if a native
+password/SRP auth flow is ever added to either app client, or if `TASK-119`'s
+own cost note (Cognito Essentials includes TOTP at no extra charge) becomes
+relevant because a different login path is introduced. No Terraform change
+made.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

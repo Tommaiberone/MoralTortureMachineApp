@@ -3,10 +3,10 @@ id: TASK-141
 title: >-
   Titoli lunghi nei task Backlog.md rompono backlog task edit su Windows
   (ENAMETOOLONG)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-05 08:45'
-updated_date: '2026-08-05 08:45'
+updated_date: '2026-08-05 18:54'
 labels:
   - technical-debt
   - tooling
@@ -24,5 +24,11 @@ backlog task create deriva il nome file dal titolo completo del task senza tronc
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Documentato il workaround (rinominare il file .md a task-N.md quando l'edit fallisce con ENAMETOOLONG) cosi' le prossime sessioni non restano bloccate
-- [ ] #2 Valutata una soluzione permanente (es. troncare il nome file generato da backlog task create, o rinominare preventivamente i task esistenti con filename a rischio come TASK-112) o deciso esplicitamente di continuare a risolvere caso per caso
+- [x] #2 Valutata una soluzione permanente (es. troncare il nome file generato da backlog task create, o rinominare preventivamente i task esistenti con filename a rischio come TASK-112) o deciso esplicitamente di continuare a risolvere caso per caso
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Deciso: non e' possibile troncare il filename alla generazione perche' 'backlog task create' e' un tool npm globale esterno (backlog.md@1.49.3, non vendored in questo repo) - patcharlo sarebbe sproporzionato per una quirk specifica di Windows. Rinominato preventivamente TASK-112 (255 caratteri di path assoluto, il candidato piu' a rischio nominato in questo task) a task-112.md, verificato che 'backlog task 112' e 'backlog task list' continuano a risolverlo correttamente per id. TASK-166/167 (create in questa sessione, 204-205 caratteri) restano con il titolo completo nel filename: sotto la soglia ~230+ caratteri osservata rompersi in precedenza, quindi non a rischio immediato. Decisione esplicita per il futuro: continuare a risolvere caso per caso (nessuna automazione possibile lato repo), rinominando proattivamente a task-N.md qualunque nuovo file che superi grossolanamente i 230 caratteri di path assoluto invece di aspettare che si rompa al primo edit.
+<!-- SECTION:NOTES:END -->
