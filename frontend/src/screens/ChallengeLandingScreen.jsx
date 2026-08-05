@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
 
 import SEO from '../components/SEO';
 import { getApiHeaders, getAuthenticatedApiHeaders } from '../utils/session';
@@ -17,6 +18,27 @@ const STEP = {
   SUBMITTING: 'submitting',
 };
 
+// TASK-124: same fix as EvaluationDilemmasScreen - render the pie label text
+// ourselves so it's always readable, instead of Recharts' unstyled default.
+const RADIAN = Math.PI / 180;
+const renderPieLabel = ({ cx, cy, midAngle, outerRadius, percent }) => {
+  const radius = outerRadius + 18;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  return (
+    <text
+      x={x}
+      y={y}
+      fill="var(--text-highlight)"
+      textAnchor={x > cx ? 'start' : 'end'}
+      dominantBaseline="central"
+      fontSize={14}
+    >
+      {`${(percent * 100).toFixed(0)}%`}
+    </text>
+  );
+};
+
 const ChallengeLandingScreen = () => {
   const { token } = useParams();
   const navigate = useNavigate();
@@ -28,6 +50,10 @@ const ChallengeLandingScreen = () => {
   const [dilemmas, setDilemmas] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [collectedAnswers, setCollectedAnswers] = useState([]);
+  const [voting, setVoting] = useState(false);
+  const [choiceMade, setChoiceMade] = useState(false);
+  const [selectedTease, setSelectedTease] = useState('');
+  const [choiceCounts, setChoiceCounts] = useState({ first: 0, second: 0 });
   const openTracked = useRef(false);
 
   const API_URL = import.meta.env.VITE_API_URL;
@@ -111,6 +137,27 @@ const ChallengeLandingScreen = () => {
 
   const handleChoice = async (choice) => {
     const dilemma = dilemmas[currentIndex];
+    if (!dilemma || voting) return;
+
+    setVoting(true);
+    setSelectedTease(choice === 'first' ? dilemma.teaseOption1 : dilemma.teaseOption2);
+
+    try {
+      const response = await fetch(`${API_URL}/vote`, {
+        method: 'POST',
+        headers: getApiHeaders(),
+        body: JSON.stringify({ _id: dilemma._id, vote: choice === 'first' ? 'yes' : 'no' }),
+      });
+      if (!response.ok) throw new Error(`vote failed: ${response.status}`);
+    } catch (voteError) {
+      console.error('Error during voting:', voteError);
+      alert(t('evaluation.failed_vote'));
+      setVoting(false);
+      return;
+    }
+
+    setChoiceCounts((prevCounts) => ({ ...prevCounts, [choice]: prevCounts[choice] + 1 }));
+
     const chosenValues = choice === 'first'
       ? {
           Empathy: dilemma.firstAnswerEmpathy,
@@ -129,13 +176,20 @@ const ChallengeLandingScreen = () => {
           Honesty: dilemma.secondAnswerHonesty,
         };
     const answer = { dilemmaBaseId: dilemma.baseId || dilemma._id, chosenValues };
-    const nextAnswers = [...collectedAnswers, answer];
+    setCollectedAnswers([...collectedAnswers, answer]);
 
     trackEvent('challenge_answer_selected', { question_number: currentIndex + 1, challenge_token: token });
 
+    setChoiceMade(true);
+    setVoting(false);
+  };
+
+  const handleNext = async () => {
     if (currentIndex + 1 < dilemmas.length) {
-      setCollectedAnswers(nextAnswers);
       setCurrentIndex(currentIndex + 1);
+      setChoiceMade(false);
+      setSelectedTease('');
+      setChoiceCounts({ first: 0, second: 0 });
       return;
     }
 
@@ -144,7 +198,7 @@ const ChallengeLandingScreen = () => {
       const response = await fetch(`${API_URL}/challenges/${token}/submit`, {
         method: 'POST',
         headers: getApiHeaders(),
-        body: JSON.stringify({ answers: nextAnswers }),
+        body: JSON.stringify({ answers: collectedAnswers }),
       });
       if (!response.ok) throw new Error(`submit failed: ${response.status}`);
       trackEvent('challenge_completed_client', { challenge_token: token });
@@ -252,15 +306,55 @@ const ChallengeLandingScreen = () => {
   const currentDilemma = dilemmas[currentIndex];
   if (!currentDilemma) return null;
 
+  // TASK-110: /dilemmas/by-ids returns the raw stored item with no
+  // setdefault (unlike /get-dilemma), so yesCount/noCount can be absent on
+  // older dilemma documents.
+  const pieChartData = [
+    { name: currentDilemma.firstAnswer, value: (currentDilemma.yesCount || 0) + choiceCounts.first, color: '#7a4a4a' },
+    { name: currentDilemma.secondAnswer, value: (currentDilemma.noCount || 0) + choiceCounts.second, color: '#2a3a2a' },
+  ];
+  const isLastDilemma = currentIndex + 1 >= dilemmas.length;
+
   return (
     <main className="challenge-screen">
       <p className="challenge-progress">{currentIndex + 1} / {dilemmas.length}</p>
       <div className="card-default challenge-dilemma-card">
         <p className="text-box-default challenge-dilemma-text">{currentDilemma.dilemma}</p>
-        <div className="evaluation-response-buttons">
-          <button className="btn-yes" onClick={() => handleChoice('first')}>{currentDilemma.firstAnswer}</button>
-          <button className="btn-no" onClick={() => handleChoice('second')}>{currentDilemma.secondAnswer}</button>
-        </div>
+        {!choiceMade ? (
+          <div className="evaluation-response-buttons">
+            <button className="btn-yes" onClick={() => handleChoice('first')} disabled={voting}>{currentDilemma.firstAnswer}</button>
+            <button className="btn-no" onClick={() => handleChoice('second')} disabled={voting}>{currentDilemma.secondAnswer}</button>
+            {voting && <div className="spinner" style={{ marginTop: '10px' }}></div>}
+          </div>
+        ) : (
+          <div>
+            <p className="challenge-tease-text">{selectedTease}</p>
+            <div className="challenge-chart-container">
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={pieChartData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={renderPieLabel}
+                    outerRadius={window.innerWidth < 480 ? 60 : 80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {pieChartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Legend wrapperStyle={{ fontSize: window.innerWidth < 480 ? '12px' : '14px' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <button type="button" className="btn-primary challenge-next-button" onClick={handleNext}>
+              {isLastDilemma ? t('challenge.view_comparison_button') : t('challenge.next_dilemma_button')}
+            </button>
+          </div>
+        )}
       </div>
     </main>
   );

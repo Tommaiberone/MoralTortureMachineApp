@@ -69,6 +69,40 @@
   margin-bottom: 20px;
 }
 
+.challenge-tease-text {
+  margin-top: 25px;
+  padding: 18px 20px;
+  border-radius: 0;
+  font-size: 17px;
+  font-weight: 400;
+  text-align: center;
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.5);
+  font-family: 'Courier New', Courier, monospace;
+  letter-spacing: 0.05em;
+  background-color: var(--creepy-dark-gray);
+  color: var(--text-normal);
+  border: 2px solid var(--creepy-fog);
+  line-height: 1.5;
+}
+
+.challenge-chart-container {
+  margin-top: 25px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  filter: grayscale(0.5) contrast(1.2);
+}
+
+.challenge-next-button {
+  margin-top: 25px;
+  background-color: var(--creepy-charcoal);
+  border: 2px solid var(--creepy-sickly-green);
+}
+
+.challenge-next-button:hover:not(:disabled) {
+  background-color: var(--creepy-dark-gray);
+}
+
 .challenge-own-notice {
   width: 100%;
   max-width: 480px;

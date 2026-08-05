@@ -228,7 +228,9 @@
     "link_copied": "Link copied!",
     "login_required_title": "[ ONE MORE STEP ]",
     "login_required_text": "You've already done a Moral Duel before. Sign in to accept another one and keep your comparisons.",
-    "login_required_button": "Sign in to continue"
+    "login_required_button": "Sign in to continue",
+    "next_dilemma_button": "[ NEXT DILEMMA ]",
+    "view_comparison_button": "[ VIEW COMPARISON ]"
   },
   "challengeCompare": {
     "loading": "Unlocking your comparison...",
