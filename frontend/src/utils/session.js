@@ -6,6 +6,9 @@ import { getPlatform, isNativePlatform } from './platform';
 const ANONYMOUS_USER_KEY = 'mtm_anonymous_user_id';
 const INSTALL_KEY = 'mtm_install_id';
 const SESSION_KEY = 'mtm_session_id';
+// VITE_APP_VERSION is injected at build time by deploy.yml from
+// frontend/package.json's `version` (TASK-165); the literal fallback below is
+// only reached for a local `pnpm dev`/build without that env var set.
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || '1.5.0';
 
 let anonymousUserId;

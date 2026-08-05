@@ -347,9 +347,15 @@ jobs:
         working-directory: frontend
         run: pnpm install --no-frozen-lockfile --ignore-workspace
 
+      - name: Read app version
+        id: app_version
+        working-directory: frontend
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
       - name: Build frontend
         working-directory: frontend
         env:
+          VITE_APP_VERSION: ${{ steps.app_version.outputs.version }}
           VITE_COGNITO_DOMAIN: ${{ needs.backend-deploy.outputs.cognito_domain }}
           VITE_COGNITO_CLIENT_ID: ${{ needs.backend-deploy.outputs.cognito_client_id }}
           VITE_COGNITO_NATIVE_CLIENT_ID: ${{ needs.backend-deploy.outputs.cognito_native_client_id }}
@@ -416,10 +422,16 @@ jobs:
         working-directory: frontend
         run: pnpm install --no-frozen-lockfile --ignore-workspace
 
+      - name: Read app version
+        id: app_version
+        working-directory: frontend
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
       - name: Build web app
         working-directory: frontend
         env:
           VITE_API_URL: ${{ needs.backend-deploy.outputs.api_url }}
+          VITE_APP_VERSION: ${{ steps.app_version.outputs.version }}
           VITE_COGNITO_DOMAIN: ${{ needs.backend-deploy.outputs.cognito_domain }}
           VITE_COGNITO_CLIENT_ID: ${{ needs.backend-deploy.outputs.cognito_client_id }}
           VITE_COGNITO_NATIVE_CLIENT_ID: ${{ needs.backend-deploy.outputs.cognito_native_client_id }}

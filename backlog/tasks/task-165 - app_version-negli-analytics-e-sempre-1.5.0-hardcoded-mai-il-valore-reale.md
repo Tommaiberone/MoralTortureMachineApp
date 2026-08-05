@@ -1,9 +1,10 @@
 ---
 id: TASK-165
 title: 'app_version negli analytics e'' sempre 1.5.0 hardcoded, mai il valore reale'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-05 13:43'
+updated_date: '2026-08-05 18:38'
 labels:
   - bug
   - frontend
@@ -22,7 +23,7 @@ Trovato per caso nei log logcat durante la verifica TASK-18/86/136 (2026-08-05):
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 VITE_APP_VERSION e' impostata a build time nel job android-build e nel job frontend build/deploy (deploy.yml), lette da frontend/package.json version - stesso pattern gia' usato per VITE_COGNITO_* (vedi bug TASK-18 corretto in precedenza per lo stesso job)
-- [ ] #2 Verificato su un build reale (web o Android) che l'header X-App-Version/x-app-version riporti la versione corretta invece del fallback 1.5.0
-- [ ] #3 Il fallback hardcoded in session.js resta solo come default per sviluppo locale senza .env, non come valore di produzione
+- [x] #1 VITE_APP_VERSION e' impostata a build time nel job android-build e nel job frontend build/deploy (deploy.yml), lette da frontend/package.json version - stesso pattern gia' usato per VITE_COGNITO_* (vedi bug TASK-18 corretto in precedenza per lo stesso job)
+- [x] #2 Verificato su un build reale (web o Android) che l'header X-App-Version/x-app-version riporti la versione corretta invece del fallback 1.5.0
+- [x] #3 Il fallback hardcoded in session.js resta solo come default per sviluppo locale senza .env, non come valore di produzione
 <!-- AC:END -->
