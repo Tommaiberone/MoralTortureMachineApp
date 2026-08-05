@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 import unittest
 import uuid
 from unittest.mock import Mock, patch
@@ -417,6 +418,95 @@ class CognitoAuthenticationTests(unittest.TestCase):
 
         with patch.object(backend_module, "verify_cognito_id_token", return_value={"cognito:groups": ["admins"]}):
             require_analytics_admin(request_with_headers({"Authorization": "Bearer token"}))
+
+
+class CognitoTokenExpiryAndSignatureTests(unittest.TestCase):
+    """TASK-16 AC1: exercise real PyJWT expiry/signature checks, not a mocked jwt.decode.
+
+    CognitoAuthenticationTests above mocks jwt.decode itself, which only proves
+    verify_cognito_id_token wires its arguments correctly. These tests mock only
+    the network-dependent JWKS lookup and let PyJWT's own decode run for real,
+    so a regression in the actual expiry/signature enforcement would fail here.
+    """
+
+    def setUp(self):
+        backend_module._cognito_jwks_client = None
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        self.private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    def _issue_token(self, private_key, **claim_overrides):
+        import jwt as pyjwt
+
+        now = int(time.time())
+        claims = {
+            "sub": "user-sub",
+            "iat": now - 60,
+            "exp": now + 3600,
+            "token_use": "id",
+            "aud": "web-client-id",
+            "iss": "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_example",
+        }
+        claims.update(claim_overrides)
+        return pyjwt.encode(claims, private_key, algorithm="RS256")
+
+    def _verify_with_signing_key(self, token, public_key):
+        jwks_client = Mock()
+        jwks_client.get_signing_key_from_jwt.return_value = Mock(key=public_key)
+        with (
+            patch.object(backend_module, "COGNITO_USER_POOL_ID", "eu-west-1_example"),
+            patch.object(backend_module, "COGNITO_APP_CLIENT_IDS", ("web-client-id", "android-client-id")),
+            patch.object(backend_module, "_cognito_jwks_client", jwks_client),
+        ):
+            return verify_cognito_id_token(token)
+
+    def test_expired_token_is_rejected(self):
+        now = int(time.time())
+        token = self._issue_token(self.private_key, iat=now - 7200, exp=now - 3600)
+
+        with self.assertRaises(HTTPException) as raised:
+            self._verify_with_signing_key(token, self.private_key.public_key())
+
+        self.assertEqual(raised.exception.status_code, 401)
+
+    def test_token_signed_by_an_unexpected_key_is_rejected(self):
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        token = self._issue_token(other_key)
+
+        # Verified against the *legitimate* pool's public key, not the one that
+        # actually signed the token - simulates a forged/tampered token.
+        with self.assertRaises(HTTPException) as raised:
+            self._verify_with_signing_key(token, self.private_key.public_key())
+
+        self.assertEqual(raised.exception.status_code, 401)
+
+    def test_token_missing_required_claims_is_rejected(self):
+        import jwt as pyjwt
+
+        now = int(time.time())
+        # No "sub" claim at all - options={"require": [...]} must reject this.
+        claims = {
+            "iat": now - 60,
+            "exp": now + 3600,
+            "token_use": "id",
+            "aud": "web-client-id",
+            "iss": "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_example",
+        }
+        token = pyjwt.encode(claims, self.private_key, algorithm="RS256")
+
+        with self.assertRaises(HTTPException) as raised:
+            self._verify_with_signing_key(token, self.private_key.public_key())
+
+        self.assertEqual(raised.exception.status_code, 401)
+
+    def test_well_formed_unexpired_token_is_accepted(self):
+        token = self._issue_token(self.private_key)
+
+        claims = self._verify_with_signing_key(token, self.private_key.public_key())
+
+        self.assertEqual(claims["sub"], "user-sub")
 
 
 if __name__ == "__main__":
