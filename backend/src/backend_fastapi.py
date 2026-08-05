@@ -195,8 +195,8 @@ PARTY_ROOM_SAFETY_TIMEOUT_MS = 10 * 60 * 1000
 # moonshotai/kimi-k2 variants, llama-guard-4-12b, allam-2-7b) were dropped
 # rather than left to silently fail; qwen/qwen3.6-27b is new. Rate limits
 # below are the Developer plan TPM/RPM shown on that page (it no longer
-# publishes TPD). The two prompt-guard models are narrow classifiers, not
-# general chat models - kept at low priority since they're still listed, but
+# publishes TPD). The two prompt-guard classifier models (not general chat
+# models) were dropped at the user's explicit request (TASK-163) - they were
 # unlikely to ever produce a usable completion for this app's prompts.
 MODEL_FALLBACK_CHAIN = [
     "llama-3.3-70b-versatile",             # 300K TPM, 1K RPM - High capability
@@ -204,8 +204,6 @@ MODEL_FALLBACK_CHAIN = [
     "qwen/qwen3.6-27b",                    # 250K TPM, 1K RPM - High capability
     "llama-3.1-8b-instant",                # 250K TPM, 1K RPM - Medium capability
     "openai/gpt-oss-20b",                  # 250K TPM, 1K RPM - Medium capability
-    "meta-llama/llama-prompt-guard-2-86m", # 30K TPM, 100 RPM - narrow classifier, last resort
-    "meta-llama/llama-prompt-guard-2-22m", # 30K TPM, 100 RPM - narrow classifier, last resort
     "groq/compound",                       # 200K TPM, 200 RPM - agentic system, last resort
     "groq/compound-mini",                  # 200K TPM, 200 RPM - agentic system, last resort
 ]
