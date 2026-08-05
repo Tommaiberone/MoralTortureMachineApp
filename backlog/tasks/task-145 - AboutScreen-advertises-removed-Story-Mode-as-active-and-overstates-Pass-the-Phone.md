@@ -3,9 +3,10 @@ id: TASK-145
 title: >-
   AboutScreen advertises removed Story Mode as active and overstates
   Pass-the-Phone
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-05 09:05'
+updated_date: '2026-08-05 12:50'
 labels:
   - bug
   - frontend
@@ -23,6 +24,12 @@ AboutScreen.jsx:112-119 markets Story Mode as one of three active game modes wit
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 AboutScreen no longer describes Story Mode as an available feature (removed or clearly marked as coming later, consistent with whatever App.jsx actually ships)
-- [ ] #2 The Pass-the-Phone description no longer claims a peer/friend comparison it does not provide
+- [x] #1 AboutScreen no longer describes Story Mode as an available feature (removed or clearly marked as coming later, consistent with whatever App.jsx actually ships)
+- [x] #2 The Pass-the-Phone description no longer claims a peer/friend comparison it does not provide
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-08-05: rimossa la card Story Mode (feature non esistente, route commentata in App.jsx) e corretta la descrizione di Pass-the-Phone che affermava un confronto tra amici mai implementato (e' un feed solo-device con pie chart aggregata, nessun confronto peer). Grid CSS gia' responsive (auto-fit), nessuna modifica necessaria per il layout a 2 card. Lint+build puliti.
+<!-- SECTION:NOTES:END -->

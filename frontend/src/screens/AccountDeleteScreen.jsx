@@ -81,6 +81,7 @@ const AccountDeleteScreen = () => {
       <main className="legal-screen">
         <article>
           <h1>{t('account.title')}</h1>
+          <p>{t('account.notLoggedInBenefits')}</p>
           <p>{t('account.notLoggedIn')}</p>
           <button type="button" className="btn-primary" onClick={() => login(window.location.pathname)}>
             {t('auth.loginGoogle')}
@@ -96,7 +97,7 @@ const AccountDeleteScreen = () => {
     <main className="legal-screen">
       <article>
         <h1>{t('account.title')}</h1>
-        <p>{t('account.loggedInAs', { email: user?.email || user?.sub })}</p>
+        <p>{user?.email ? t('account.loggedInAs', { email: user.email }) : t('account.loggedInGeneric')}</p>
 
         {error && <p role="alert">{error}</p>}
 

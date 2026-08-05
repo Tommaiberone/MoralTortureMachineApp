@@ -3,9 +3,10 @@ id: TASK-147
 title: >-
   AccountDeleteScreen dead end for anonymous visitors, plus raw Cognito sub
   fallback
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-05 09:06'
+updated_date: '2026-08-05 12:50'
 labels:
   - bug
   - frontend
@@ -23,6 +24,12 @@ AccountDeleteScreen.jsx:79-93 - an anonymous visitor who clicks the homepage pro
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An anonymous visitor landing on /account sees a short explanation of what signing in unlocks, not just a bare login button
-- [ ] #2 The logged-in identity line never falls back to the raw sub; if email is unavailable it shows a neutral label instead
+- [x] #1 An anonymous visitor landing on /account sees a short explanation of what signing in unlocks, not just a bare login button
+- [x] #2 The logged-in identity line never falls back to the raw sub; if email is unavailable it shows a neutral label instead
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-08-05: aggiunta una riga di spiegazione (account.notLoggedInBenefits) prima del bottone di login per i visitatori anonimi. loggedInAs ora usa user.email quando disponibile, altrimenti account.loggedInGeneric ('Signed in.') - non passa piu' il sub raw come fallback nell'interpolazione. Lint+build puliti.
+<!-- SECTION:NOTES:END -->

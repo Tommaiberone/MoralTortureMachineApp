@@ -104,17 +104,9 @@ const AboutScreen = () => {
             <div className="mode-card">
               <h3>Pass-the-Phone Mode</h3>
               <p>
-                Play with friends and family! In this multiplayer mode, everyone answers the same
-                <strong>ethical dilemmas</strong>, and you can compare your moral frameworks.
-                Great for sparking deep philosophical discussions about ethics and morality.
-              </p>
-            </div>
-            <div className="mode-card">
-              <h3>Story Mode</h3>
-              <p>
-                Experience a narrative-driven journey through <strong>moral philosophy</strong>.
-                Your choices shape the story while revealing insights about your ethical principles
-                and moral compass.
+                Play with friends and family! In this multiplayer mode, everyone takes turns answering the
+                same <strong>ethical dilemmas</strong> on one device, then sees how the group split on each
+                choice. Great for sparking deep philosophical discussions about ethics and morality.
               </p>
             </div>
           </div>

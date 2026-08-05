@@ -3,9 +3,10 @@ id: TASK-149
 title: >-
   Reorder Results screen CTAs so Challenge a friend is not visually secondary to
   Share
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-05 09:06'
+updated_date: '2026-08-05 12:50'
 labels:
   - frontend
   - growth
@@ -23,5 +24,11 @@ ResultsScreen.jsx renders the Share this result block (lines 264-318) before the
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Challenge a friend is visually at least as prominent as Share this result on the results screen (e.g. rendered first, or given equal/greater visual weight)
+- [x] #1 Challenge a friend is visually at least as prominent as Share this result on the results screen (e.g. rendered first, or given equal/greater visual weight)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-08-05: invertito l'ordine dei blocchi JSX in ResultsScreen - 'Sfida un amico' ora precede 'Condividi il risultato', coerente con doc-2 (le challenge completate sono la North Star metric, non gli share). Nessun'altra modifica. Lint+build puliti.
+<!-- SECTION:NOTES:END -->

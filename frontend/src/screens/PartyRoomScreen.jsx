@@ -11,6 +11,10 @@ import './PartyRoomScreen.css';
 
 const API_URL = import.meta.env.VITE_API_URL;
 const POLL_INTERVAL_MS = 1500;
+// TASK-148: consecutive poll failures before showing a connection-lost
+// indicator - high enough to not flap on a single dropped request, low
+// enough to still surface a real stall quickly (~4.5s at POLL_INTERVAL_MS).
+const CONNECTION_LOST_THRESHOLD = 3;
 
 const DIMENSIONS = ['Empathy', 'Integrity', 'Responsibility', 'Justice', 'Altruism', 'Honesty'];
 
@@ -64,6 +68,7 @@ const PartyRoomScreen = () => {
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [revealHistory, setRevealHistory] = useState({});
   const [revealStage, setRevealStage] = useState(0);
+  const [pollFailureCount, setPollFailureCount] = useState(0);
   const pollTracked = useRef(false);
 
   const fetchRoom = useCallback(async () => {
@@ -78,10 +83,12 @@ const PartyRoomScreen = () => {
       }
       if (!response.ok) throw new Error(`room fetch failed: ${response.status}`);
       const data = await response.json();
+      setPollFailureCount(0);
       setRoom(data);
       return data;
     } catch (fetchError) {
       console.error('Error fetching party room:', fetchError);
+      setPollFailureCount((count) => count + 1);
       return null;
     }
   }, [roomCode, i18n.language, t]);
@@ -287,6 +294,9 @@ const PartyRoomScreen = () => {
   if (room.status === 'lobby') {
     return (
       <main className="screen-container party-room-screen">
+        {pollFailureCount >= CONNECTION_LOST_THRESHOLD && (
+          <p role="status" className="party-connection-banner">{t('party.connectionLost')}</p>
+        )}
         <h1 className="screen-title-large">{t('party.lobbyTitle')}</h1>
         <p className="party-room-code">{roomCode}</p>
         {qrDataUrl && <img className="party-room-qr" src={qrDataUrl} alt={t('party.qrAlt')} />}
@@ -323,6 +333,9 @@ const PartyRoomScreen = () => {
   if (room.status === 'question' && room.currentDilemma) {
     return (
       <main className="screen-container party-room-screen">
+        {pollFailureCount >= CONNECTION_LOST_THRESHOLD && (
+          <p role="status" className="party-connection-banner">{t('party.connectionLost')}</p>
+        )}
         <p className="screen-subtitle">
           {t('party.roundProgress', { current: room.currentRoundIndex + 1, total: room.dilemmaCount })}
         </p>
@@ -360,6 +373,9 @@ const PartyRoomScreen = () => {
 
     return (
       <main className="screen-container party-room-screen">
+        {pollFailureCount >= CONNECTION_LOST_THRESHOLD && (
+          <p role="status" className="party-connection-banner">{t('party.connectionLost')}</p>
+        )}
         <p className="screen-subtitle">
           {t('party.roundProgress', { current: room.currentRoundIndex + 1, total: room.dilemmaCount })}
         </p>

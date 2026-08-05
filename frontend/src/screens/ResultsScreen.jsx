@@ -261,62 +261,6 @@ const ResultsScreen = () => {
           </div>
         )}
 
-        <div className="results-share-container">
-          <h2 className="results-share-title">{t('results.share_title')}</h2>
-          <div className="results-share-buttons">
-            <button
-              className="results-share-button whatsapp"
-              onClick={() => {
-                trackEvent('share_clicked', { channel: 'whatsapp', object_type: 'result' });
-                const shareText = t('results.share_text');
-                const shareChallenge = t('results.share_challenge');
-                const url = window.location.origin;
-                const message = `${shareText}\n\n${archetypeShareLine}${aiAnalysis}\n\n${shareChallenge} ${url}`;
-                window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`);
-              }}
-            >
-              WhatsApp
-            </button>
-            <button
-              className="results-share-button facebook"
-              onClick={() => {
-                trackEvent('share_clicked', { channel: 'facebook', object_type: 'result' });
-                const shareText = t('results.share_text');
-                const shareChallenge = t('results.share_challenge');
-                const url = window.location.origin;
-                const message = `${shareText}\n\n${archetypeShareLine}${aiAnalysis}\n\n${shareChallenge} ${url}`;
-                navigator.clipboard.writeText(message);
-                alert(t('results.facebook_share_alert'));
-                window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`);
-              }}
-            >
-              Facebook
-            </button>
-            {archetype && (
-              <>
-                <button
-                  className="results-share-button card-download"
-                  onClick={async () => {
-                    const method = await shareOrDownloadCard(archetype, 'stories', t('results.share_text'), data);
-                    trackEvent('share_card_downloaded', { format: 'stories', method });
-                  }}
-                >
-                  {t('results.download_card_stories')}
-                </button>
-                <button
-                  className="results-share-button card-download"
-                  onClick={async () => {
-                    const method = await shareOrDownloadCard(archetype, 'square', t('results.share_text'), data);
-                    trackEvent('share_card_downloaded', { format: 'square', method });
-                  }}
-                >
-                  {t('results.download_card_square')}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
         {archetype && (
           <div className="results-challenge-container">
             <h2 className="results-challenge-title">{t('results.challenge_title')}</h2>
@@ -379,6 +323,62 @@ const ResultsScreen = () => {
             {challengeError && <p role="alert" className="results-challenge-error">{challengeError}</p>}
           </div>
         )}
+
+        <div className="results-share-container">
+          <h2 className="results-share-title">{t('results.share_title')}</h2>
+          <div className="results-share-buttons">
+            <button
+              className="results-share-button whatsapp"
+              onClick={() => {
+                trackEvent('share_clicked', { channel: 'whatsapp', object_type: 'result' });
+                const shareText = t('results.share_text');
+                const shareChallenge = t('results.share_challenge');
+                const url = window.location.origin;
+                const message = `${shareText}\n\n${archetypeShareLine}${aiAnalysis}\n\n${shareChallenge} ${url}`;
+                window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`);
+              }}
+            >
+              WhatsApp
+            </button>
+            <button
+              className="results-share-button facebook"
+              onClick={() => {
+                trackEvent('share_clicked', { channel: 'facebook', object_type: 'result' });
+                const shareText = t('results.share_text');
+                const shareChallenge = t('results.share_challenge');
+                const url = window.location.origin;
+                const message = `${shareText}\n\n${archetypeShareLine}${aiAnalysis}\n\n${shareChallenge} ${url}`;
+                navigator.clipboard.writeText(message);
+                alert(t('results.facebook_share_alert'));
+                window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`);
+              }}
+            >
+              Facebook
+            </button>
+            {archetype && (
+              <>
+                <button
+                  className="results-share-button card-download"
+                  onClick={async () => {
+                    const method = await shareOrDownloadCard(archetype, 'stories', t('results.share_text'), data);
+                    trackEvent('share_card_downloaded', { format: 'stories', method });
+                  }}
+                >
+                  {t('results.download_card_stories')}
+                </button>
+                <button
+                  className="results-share-button card-download"
+                  onClick={async () => {
+                    const method = await shareOrDownloadCard(archetype, 'square', t('results.share_text'), data);
+                    trackEvent('share_card_downloaded', { format: 'square', method });
+                  }}
+                >
+                  {t('results.download_card_square')}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
     </div>
   );
 };

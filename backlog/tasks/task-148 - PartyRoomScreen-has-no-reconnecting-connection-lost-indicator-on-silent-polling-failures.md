@@ -3,9 +3,10 @@ id: TASK-148
 title: >-
   PartyRoomScreen has no reconnecting/connection-lost indicator on silent
   polling failures
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-05 09:06'
+updated_date: '2026-08-05 12:50'
 labels:
   - bug
   - frontend
@@ -23,6 +24,12 @@ PartyRoomScreen.jsx fetchRoom's catch block (around line 83-86) only logs to con
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 After N consecutive failed polls, PartyRoomScreen shows a visible connection lost/reconnecting state instead of silently doing nothing
-- [ ] #2 Recovery (a poll succeeding again) clears the indicator automatically
+- [x] #1 After N consecutive failed polls, PartyRoomScreen shows a visible connection lost/reconnecting state instead of silently doing nothing
+- [x] #2 Recovery (a poll succeeding again) clears the indicator automatically
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-08-05: aggiunto pollFailureCount in PartyRoomScreen, incrementato nel catch di fetchRoom (copre sia errori di rete sia risposte non-ok/non-404/410) e azzerato a ogni fetch riuscito. Da 3 fallimenti consecutivi (~4.5s) mostra un banner 'Connection lost - trying to reconnect...' nelle schermate lobby/question/reveal; sparisce automaticamente al primo poll riuscito. Lint+build puliti.
+<!-- SECTION:NOTES:END -->

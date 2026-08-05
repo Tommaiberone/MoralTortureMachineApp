@@ -254,8 +254,10 @@
   "account": {
     "title": "Your account",
     "loading": "Loading…",
+    "notLoggedInBenefits": "Signing in keeps your results and Moral Duels linked to one account across devices, so you never lose them.",
     "notLoggedIn": "Sign in to export or delete your account data.",
     "loggedInAs": "Signed in as {{email}}.",
+    "loggedInGeneric": "Signed in.",
     "exportButton": "Export my data",
     "exportError": "Could not export your data. Please try again.",
     "deleteButton": "Delete my account",
@@ -286,6 +288,7 @@
     "loading": "Loading...",
     "roomNotFound": "This room does not exist.",
     "roomExpired": "This room has expired.",
+    "connectionLost": "Connection lost - trying to reconnect...",
     "backToPartyHome": "Back to Party Room",
     "lobbyTitle": "[ LOBBY ]",
     "qrAlt": "QR code to join this room",

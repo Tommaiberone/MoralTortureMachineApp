@@ -18,6 +18,41 @@ const STEP = {
   SUBMITTING: 'submitting',
 };
 
+// TASK-146: an invitee's in-progress answers were local-only React state, so
+// a refresh or remount mid-answering silently wiped everything back to the
+// teaser step. sessionStorage matches this session's other per-tab-scoped
+// data (utils/session.js) - it survives a reload but not a new tab/device.
+const PROGRESS_STORAGE_PREFIX = 'mtm_challenge_progress_';
+
+const loadStoredProgress = (challengeToken) => {
+  try {
+    const raw = sessionStorage.getItem(`${PROGRESS_STORAGE_PREFIX}${challengeToken}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed.dilemmas) || !Array.isArray(parsed.collectedAnswers)) return null;
+    return parsed;
+  } catch (error) {
+    console.error('Error reading stored challenge progress:', error);
+    return null;
+  }
+};
+
+const saveStoredProgress = (challengeToken, progress) => {
+  try {
+    sessionStorage.setItem(`${PROGRESS_STORAGE_PREFIX}${challengeToken}`, JSON.stringify(progress));
+  } catch (error) {
+    console.error('Error saving challenge progress:', error);
+  }
+};
+
+const clearStoredProgress = (challengeToken) => {
+  try {
+    sessionStorage.removeItem(`${PROGRESS_STORAGE_PREFIX}${challengeToken}`);
+  } catch (error) {
+    console.error('Error clearing challenge progress:', error);
+  }
+};
+
 // TASK-124: same fix as EvaluationDilemmasScreen - render the pie label text
 // ourselves so it's always readable, instead of Recharts' unstyled default.
 const RADIAN = Math.PI / 180;
@@ -79,9 +114,21 @@ const ChallengeLandingScreen = () => {
         }
 
         if (data.status === 'completed') {
+          clearStoredProgress(token);
           navigate(`/challenge/${token}/compare`, { replace: true });
           return;
         }
+
+        const storedProgress = loadStoredProgress(token);
+        if (storedProgress) {
+          setDilemmas(storedProgress.dilemmas);
+          setCurrentIndex(storedProgress.currentIndex);
+          setCollectedAnswers(storedProgress.collectedAnswers);
+          setChallenge(data);
+          setStep(STEP.ANSWERING);
+          return;
+        }
+
         setChallenge(data);
         setStep(STEP.TEASER);
       } catch (openError) {
@@ -94,6 +141,13 @@ const ChallengeLandingScreen = () => {
     return () => { cancelled = true; };
     // A deep link and a page refresh must both resolve the exact same challenge.
   }, [token, i18n.language, navigate, API_URL]);
+
+  // TASK-146: persist progress as it's made so a refresh/remount can resume
+  // instead of restarting from dilemma 1 (see the openChallenge effect above).
+  useEffect(() => {
+    if (step !== STEP.ANSWERING || dilemmas.length === 0) return;
+    saveStoredProgress(token, { dilemmas, currentIndex, collectedAnswers });
+  }, [step, token, dilemmas, currentIndex, collectedAnswers]);
 
   const handleAccept = async () => {
     setStep(STEP.LOADING);
@@ -201,6 +255,7 @@ const ChallengeLandingScreen = () => {
         body: JSON.stringify({ answers: collectedAnswers }),
       });
       if (!response.ok) throw new Error(`submit failed: ${response.status}`);
+      clearStoredProgress(token);
       trackEvent('challenge_completed_client', { challenge_token: token });
       navigate(`/challenge/${token}/compare`);
     } catch (submitError) {

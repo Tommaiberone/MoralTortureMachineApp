@@ -1,9 +1,10 @@
 ---
 id: TASK-146
 title: ChallengeLandingScreen loses all invitee progress on refresh mid-answering
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-05 09:05'
+updated_date: '2026-08-05 12:50'
 labels:
   - bug
   - frontend
@@ -21,5 +22,11 @@ ChallengeLandingScreen.jsx:61-96 re-runs openChallenge() on every mount and alwa
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An invitee who refreshes or remounts the page mid-answering resumes from where they left off instead of restarting from dilemma 1 (e.g. persist currentIndex/collectedAnswers to sessionStorage keyed by challenge token)
+- [x] #1 An invitee who refreshes or remounts the page mid-answering resumes from where they left off instead of restarting from dilemma 1 (e.g. persist currentIndex/collectedAnswers to sessionStorage keyed by challenge token)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-08-05: dilemmas/currentIndex/collectedAnswers ora persistiti in sessionStorage (chiave per challenge token) mentre l'invitato risponde; l'effect di apertura challenge ripristina il progresso salvato e salta direttamente ad ANSWERING invece di tornare a TEASER, se il progresso esiste e la challenge non e' gia' completed. Pulizia dello storage dopo submit riuscito o se la challenge risulta gia' completed al caricamento. Lint+build puliti.
+<!-- SECTION:NOTES:END -->
