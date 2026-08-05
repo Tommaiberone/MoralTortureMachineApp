@@ -3,9 +3,10 @@ id: TASK-117
 title: >-
   Valutare l'aggiornamento di lodash (via recharts) per prototype pollution e
   code injection
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-01 14:45'
+updated_date: '2026-08-05 18:49'
 labels:
   - security
   - frontend
@@ -22,5 +23,5 @@ pnpm audit segnala lodash <=4.17.23 (dipendenza transitiva di recharts, usato pe
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 E' stato verificato se una versione di recharts gia' pubblicata risolve la dipendenza lodash vulnerabile, altrimenti e' stato valutato un pnpm override mirato
+- [x] #1 E' stato verificato se una versione di recharts gia' pubblicata risolve la dipendenza lodash vulnerabile, altrimenti e' stato valutato un pnpm override mirato
 <!-- AC:END -->
