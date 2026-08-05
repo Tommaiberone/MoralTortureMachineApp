@@ -1329,6 +1329,42 @@ the same ASGI `scope` dict) with a real `TestClient` request through the
 full middleware stack, not just mocked unit tests. Backend suite: 138/138
 passing.
 
+### ADR-069 — Party Room poll rate limit keyed by IP + anonymous_user_id, not IP alone (TASK-132)
+
+`enforce_zero_cost_burst_guard`'s `_rate_limit_source()` hashed only the
+source IP for every rule, including `party_room_poll` (90/min) and `global`
+(120/min). Party Room is designed for `PARTY_ROOM_MAX_PARTICIPANTS` (20)
+people in the same room, commonly on the same WiFi/NAT, each polling at
+`POLL_INTERVAL_MS` (~40 req/min); an IP-only bucket makes them share one
+budget, so as few as 3 co-located participants already exceed both limits
+and get false `429`s unrelated to actual abuse - reproduced from a real
+`ops_error_alerts` entry (`GET /party-rooms/V9NX5F` → 429). Considered: (a)
+raise the numeric limits enough to cover 20 co-located participants -
+rejected, since any fixed number large enough for the max room size weakens
+the abuse ceiling for every IP, including ones with no Party Room traffic at
+all; (b) key by `anonymous_user_id` alone, dropping the IP - rejected, since
+that header is entirely client-supplied and trivially rotated, so it would
+have removed abuse resistance rather than adding granularity. Chose:
+`_rate_limit_participant_source()` hashes `IP + X-Anonymous-User-Id`
+(additive, not a replacement) and is used for both rules that fire on a
+Party Room poll (`global` and `party_room_poll`); every other endpoint keeps
+the plain IP-only `_rate_limit_source()` unchanged, so this cannot be used to
+bypass rate limiting on any other route, and a single IP still cannot poll
+Party Room without bound - each distinct `anonymous_user_id` still gets its
+own, separately capped budget rather than an unlimited one. Residual
+weakness accepted as consistent with the guard's existing "best-effort,
+zero-cost" scope (its own docstring): a script on one IP rotating
+`anonymous_user_id` per request could still evade the `party_room_poll`/
+`global` ceiling specifically for `GET /party-rooms/*`; this endpoint is a
+cheap, already-authorization-checked read, and no stronger guarantee was
+promised anywhere else in this guard either. Added `PartyRoomPollRateLimitKeyTests`
+covering: participant-source differs by `anonymous_user_id` on the same IP,
+is deterministic, the plain IP-only source ignores `anonymous_user_id`
+(control), the middleware consumes `global`+`party_room_poll` with the
+participant key on a Party Room poll vs. the IP-only key on an unrelated
+endpoint, and two same-IP participants no longer share a bucket at a poll
+limit of 1. Backend suite: 144/144 passing.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

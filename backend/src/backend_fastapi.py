@@ -1046,6 +1046,20 @@ def _rate_limit_source(request: Request) -> str:
     return hashlib.sha256(source.encode("utf-8")).hexdigest()
 
 
+def _rate_limit_participant_source(request: Request) -> str:
+    """TASK-132/ADR-069: Party Room poll key, adding the per-installation
+    anonymous_user_id on top of the IP. Party Room is played by multiple
+    people in the same room, often on the same WiFi/NAT, so the IP-only
+    source makes them share one bucket and false-429 each other well below
+    PARTY_ROOM_MAX_PARTICIPANTS. The IP is still part of the key (this is
+    additive, not a replacement), so it does not on its own let a single
+    network bypass rate limiting; every other rule keeps the IP-only source
+    as its abuse backstop."""
+    ip = request.client.host if request.client else "unknown"
+    anonymous_user_id = request.headers.get("X-Anonymous-User-Id") or "unknown"
+    return hashlib.sha256(f"{ip}:{anonymous_user_id}".encode("utf-8")).hexdigest()
+
+
 def _rate_limit_cors_headers(request: Request) -> Dict[str, str]:
     origin = request.headers.get("Origin")
     if not origin or origin not in CORS_ALLOWED_ORIGINS:
@@ -1064,7 +1078,17 @@ async def enforce_zero_cost_burst_guard(request: Request, call_next):
     if not rules:
         return await call_next(request)
 
-    source = _rate_limit_source(request)
+    # TASK-132/ADR-069: a Party Room poll is the one traffic pattern where
+    # several distinct, legitimate participants (same room, often same
+    # WiFi/NAT) are expected to share an IP, so both rules that fire for it
+    # ("global" and "party_room_poll") use the per-participant key instead
+    # of the IP-only one; every other request keeps the IP-only source.
+    is_party_room_poll = any(rule_name == "party_room_poll" for rule_name, _ in rules)
+    source = (
+        _rate_limit_participant_source(request)
+        if is_party_room_poll
+        else _rate_limit_source(request)
+    )
     for rule_name, limit in rules:
         allowed, retry_after = _consume_burst_window(f"{rule_name}:{source}", limit)
         if not allowed:

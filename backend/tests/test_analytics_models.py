@@ -1,3 +1,4 @@
+import asyncio
 import os
 import unittest
 import uuid
@@ -18,8 +19,11 @@ from backend.src.backend_fastapi import (  # noqa: E402
     AnalyticsEvent,
     _consume_burst_window,
     _network_fingerprint,
+    _rate_limit_participant_source,
     _rate_limit_rules_for_request,
+    _rate_limit_source,
     build_analytics_overview,
+    enforce_zero_cost_burst_guard,
     infer_platform,
     normalize_analytics_event,
     require_analytics_admin,
@@ -255,6 +259,88 @@ class AbuseGuardTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertNotEqual(first, other)
         self.assertNotIn("203.0.113.10", first)
+
+
+class PartyRoomPollRateLimitKeyTests(unittest.TestCase):
+    """TASK-132/ADR-069: Party Room participants sharing a WiFi/NAT share an
+    IP, so an IP-only bucket makes them false-429 each other well below
+    PARTY_ROOM_MAX_PARTICIPANTS. Party Room polling keys its rules by
+    IP + anonymous_user_id instead so each participant gets their own
+    budget; every other endpoint must stay IP-only."""
+
+    def _fake_request(self, path, method="GET", ip="203.0.113.5", anonymous_user_id="alice"):
+        request = Mock()
+        request.url.path = path
+        request.method = method
+        request.client = Mock(host=ip)
+        request.headers = {"X-Anonymous-User-Id": anonymous_user_id}
+        return request
+
+    async def _call_next(self, _request):
+        return Mock(status_code=200)
+
+    def test_participant_source_differs_by_anonymous_user_id_on_the_same_ip(self):
+        alice = self._fake_request("/party-rooms/ROOM1", anonymous_user_id="alice")
+        bob = self._fake_request("/party-rooms/ROOM1", anonymous_user_id="bob")
+
+        self.assertNotEqual(
+            _rate_limit_participant_source(alice),
+            _rate_limit_participant_source(bob),
+        )
+
+    def test_participant_source_is_deterministic(self):
+        request = self._fake_request("/party-rooms/ROOM1", anonymous_user_id="alice")
+
+        self.assertEqual(
+            _rate_limit_participant_source(request),
+            _rate_limit_participant_source(request),
+        )
+
+    def test_plain_ip_source_ignores_anonymous_user_id(self):
+        # Control: every rule other than party_room_poll must stay IP-only,
+        # so it keeps acting as the abuse backstop regardless of a
+        # client-supplied anonymous_user_id.
+        alice = self._fake_request("/profiles", method="POST", anonymous_user_id="alice")
+        bob = self._fake_request("/profiles", method="POST", anonymous_user_id="bob")
+
+        self.assertEqual(_rate_limit_source(alice), _rate_limit_source(bob))
+
+    def test_party_room_poll_request_consumes_both_rules_with_the_participant_key(self):
+        request = self._fake_request("/party-rooms/ROOM1")
+        expected_key = _rate_limit_participant_source(request)
+
+        with patch.object(backend_module, "_consume_burst_window", return_value=(True, 0)) as consume:
+            asyncio.run(enforce_zero_cost_burst_guard(request, self._call_next))
+
+        called_keys = [call.args[0] for call in consume.call_args_list]
+        self.assertEqual(called_keys, [f"global:{expected_key}", f"party_room_poll:{expected_key}"])
+
+    def test_non_party_room_request_consumes_rules_with_the_ip_only_key(self):
+        request = self._fake_request("/profiles/abc123", method="GET")
+        expected_key = _rate_limit_source(request)
+
+        with patch.object(backend_module, "_consume_burst_window", return_value=(True, 0)) as consume:
+            asyncio.run(enforce_zero_cost_burst_guard(request, self._call_next))
+
+        called_keys = [call.args[0] for call in consume.call_args_list]
+        self.assertEqual(called_keys, [f"global:{expected_key}", f"public_read:{expected_key}"])
+
+    def test_two_participants_on_the_same_ip_do_not_share_a_party_room_poll_bucket(self):
+        # End-to-end regression for the reported false-positive: same IP,
+        # different participants, a poll limit of 1 each - both must be
+        # allowed instead of the second tripping a shared bucket.
+        alice = self._fake_request("/party-rooms/ROOM1", anonymous_user_id="alice")
+        bob = self._fake_request("/party-rooms/ROOM1", anonymous_user_id="bob")
+
+        with (
+            patch.object(backend_module, "ABUSE_GLOBAL_REQUESTS_PER_MINUTE", 100),
+            patch.object(backend_module, "ABUSE_PARTY_ROOM_POLL_REQUESTS_PER_MINUTE", 1),
+        ):
+            alice_response = asyncio.run(enforce_zero_cost_burst_guard(alice, self._call_next))
+            bob_response = asyncio.run(enforce_zero_cost_burst_guard(bob, self._call_next))
+
+        self.assertEqual(alice_response.status_code, 200)
+        self.assertEqual(bob_response.status_code, 200)
 
 
 class CognitoAuthenticationTests(unittest.TestCase):

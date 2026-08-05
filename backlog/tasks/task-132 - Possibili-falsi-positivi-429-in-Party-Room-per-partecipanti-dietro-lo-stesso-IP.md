@@ -3,10 +3,10 @@ id: TASK-132
 title: >-
   Possibili falsi positivi 429 in Party Room per partecipanti dietro lo stesso
   IP
-status: Open Points
+status: Done
 assignee: []
 created_date: '2026-08-04 07:28'
-updated_date: '2026-08-04 07:34'
+updated_date: '2026-08-05 08:34'
 labels: []
 dependencies: []
 priority: high
@@ -20,6 +20,12 @@ Trovato mentre si indagava una mail di alert reale (GET /party-rooms/V9NX5F retu
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Deciso e documentato (ADR) come evitare che piu' partecipanti Party Room sulla stessa rete/IP si autolimitino a vicenda, mantenendo comunque una protezione anti-abuso best-effort
-- [ ] #2 party_room_poll (e se necessario global) non genera piu' 429 per un party room con partecipanti multipli su una singola rete domestica entro un numero ragionevole di partecipanti (es. fino a PARTY_ROOM_MAX_PARTICIPANTS o una soglia esplicitamente concordata)
+- [x] #1 Deciso e documentato (ADR) come evitare che piu' partecipanti Party Room sulla stessa rete/IP si autolimitino a vicenda, mantenendo comunque una protezione anti-abuso best-effort
+- [x] #2 party_room_poll (e se necessario global) non genera piu' 429 per un party room con partecipanti multipli su una singola rete domestica entro un numero ragionevole di partecipanti (es. fino a PARTY_ROOM_MAX_PARTICIPANTS o una soglia esplicitamente concordata)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-08-05: implementato ADR-069. enforce_zero_cost_burst_guard (backend_fastapi.py) ora usa _rate_limit_participant_source() (hash di IP + X-Anonymous-User-Id) per le regole global e party_room_poll SOLO quando la richiesta e' un GET /party-rooms/*; ogni altro endpoint resta sulla chiave IP-only invariata (_rate_limit_source), quindi la protezione anti-abuso per tutte le altre rotte non cambia. Nessun limite numerico alzato: bastava dare a ogni partecipante il proprio bucket. Nuova classe di test PartyRoomPollRateLimitKeyTests in test_analytics_models.py (5 test). Suite backend completa: 144/144 passano. Decisione e trade-off documentati in ADR-069 (rifiutate le opzioni 'alzare i limiti' e 'chiave solo anonymous_user_id').
+<!-- SECTION:NOTES:END -->
