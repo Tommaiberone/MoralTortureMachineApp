@@ -293,5 +293,11 @@
     "awardMostDivided": "Round piu' diviso: {{first}} vs {{second}}",
     "shareRecapButton": "Condividi il recap",
     "recapShareText": "Abbiamo appena giocato a Moral Torture Machine Party Room."
+  },
+  "errorBoundary": {
+    "title": "Qualcosa è andato storto",
+    "message": "La Moral Torture Machine ha incontrato un errore imprevisto.",
+    "detailsSummary": "Dettagli Errore (Solo in Development)",
+    "footer": "Se il problema persiste, prova a ricaricare la pagina o contattare il supporto."
   }
 }

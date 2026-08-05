@@ -322,5 +322,11 @@
     "rematchButton": "Play again",
     "shareRecapButton": "Share recap",
     "recapShareText": "We just played Moral Torture Machine Party Room."
+  },
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "message": "Moral Torture Machine encountered an unexpected error.",
+    "detailsSummary": "Error Details (Development Only)",
+    "footer": "If the problem persists, try reloading the page or contact support."
   }
 }

@@ -1,6 +1,7 @@
 // components/ErrorBoundary.jsx
 import React from 'react';
 import { reportError } from '../utils/errorReporting';
+import i18n from '../i18n';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -66,7 +67,7 @@ class ErrorBoundary extends React.Component {
               marginBottom: '20px',
               color: '#ff4444'
             }}>
-              ⚠️ Qualcosa è andato storto
+              ⚠️ {i18n.t('errorBoundary.title')}
             </h1>
 
             <p style={{
@@ -74,7 +75,7 @@ class ErrorBoundary extends React.Component {
               marginBottom: '30px',
               color: '#ccc'
             }}>
-              La Moral Torture Machine ha incontrato un errore imprevisto.
+              {i18n.t('errorBoundary.message')}
             </p>
 
             {import.meta.env.DEV && this.state.error && (
@@ -92,7 +93,7 @@ class ErrorBoundary extends React.Component {
                   color: '#ff4444',
                   fontWeight: 'bold'
                 }}>
-                  Dettagli Errore (Solo in Development)
+                  {i18n.t('errorBoundary.detailsSummary')}
                 </summary>
                 <pre style={{
                   fontSize: '0.9rem',
@@ -122,7 +123,7 @@ class ErrorBoundary extends React.Component {
               onMouseOver={(e) => e.target.style.backgroundColor = '#ff6666'}
               onMouseOut={(e) => e.target.style.backgroundColor = '#ff4444'}
             >
-              🏠 Torna alla Home
+              🏠 {i18n.t('common.backToHome')}
             </button>
 
             <p style={{
@@ -130,7 +131,7 @@ class ErrorBoundary extends React.Component {
               fontSize: '0.9rem',
               color: '#666'
             }}>
-              Se il problema persiste, prova a ricaricare la pagina o contattare il supporto.
+              {i18n.t('errorBoundary.footer')}
             </p>
           </div>
         </div>

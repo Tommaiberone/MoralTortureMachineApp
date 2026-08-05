@@ -1,9 +1,10 @@
 ---
 id: TASK-144
 title: 'ErrorBoundary crash screen is hardcoded Italian, violates the EN-only mandate'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-05 09:05'
+updated_date: '2026-08-05 18:34'
 labels:
   - bug
   - frontend
@@ -21,5 +22,5 @@ ErrorBoundary.jsx has no i18next import at all and shows hardcoded Italian strin
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 ErrorBoundary uses i18next like every other screen and renders in English (matching the current EN-only mandate), with Italian strings still present in it.json per the drift exception so nothing breaks if Italian is reactivated later
+- [x] #1 ErrorBoundary uses i18next like every other screen and renders in English (matching the current EN-only mandate), with Italian strings still present in it.json per the drift exception so nothing breaks if Italian is reactivated later
 <!-- AC:END -->
