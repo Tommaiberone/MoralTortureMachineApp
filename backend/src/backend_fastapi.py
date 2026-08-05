@@ -3142,16 +3142,56 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
             ],
         }
 
-        logger.info("Sending request to Groq API for results analysis with fallback chain")
-        result = call_groq_api_with_fallback(
-            payload=payload,
-            api_key=api_key,
-            operation="Analyze results"
-        )
-
-        analysis_text = result['choices'][0]['message']['content']
-
-        logger.info("Successfully generated analysis from Groq API")
+        # The AI text is an enrichment, never the source of the archetype
+        # (ADR-003/ADR-025): any failure past this point must still return the
+        # already-computed archetype/averages in the body, not just an empty
+        # error, so the frontend's core growth loop (Challenge CTA, share
+        # cards) never depends on Groq being reachable (TASK-143).
+        try:
+            logger.info("Sending request to Groq API for results analysis with fallback chain")
+            result = call_groq_api_with_fallback(
+                payload=payload,
+                api_key=api_key,
+                operation="Analyze results"
+            )
+            analysis_text = result['choices'][0]['message']['content']
+            logger.info("Successfully generated analysis from Groq API")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Request error in /analyze-results: {str(e)}")
+            return JSONResponse(
+                status_code=502,
+                content={
+                    "analysis": None,
+                    "averages": averages,
+                    "archetype": archetype,
+                    "aiUnavailable": True,
+                    "error": "Failed to connect to external API",
+                },
+            )
+        except HTTPException as e:
+            logger.error(f"AI analysis failed in /analyze-results: {e.detail}")
+            return JSONResponse(
+                status_code=e.status_code,
+                content={
+                    "analysis": None,
+                    "averages": averages,
+                    "archetype": archetype,
+                    "aiUnavailable": True,
+                    "error": str(e.detail),
+                },
+            )
+        except (json.JSONDecodeError, KeyError, IndexError) as e:
+            logger.error(f"Invalid AI response in /analyze-results: {str(e)}")
+            return JSONResponse(
+                status_code=502,
+                content={
+                    "analysis": None,
+                    "averages": averages,
+                    "archetype": archetype,
+                    "aiUnavailable": True,
+                    "error": "Invalid response from external API",
+                },
+            )
 
         # Track analytics event
         session_id = extract_session_id(request)
@@ -3176,12 +3216,6 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
             "archetype": archetype,
         }
 
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Request error in /analyze-results: {str(e)}")
-        raise HTTPException(status_code=502, detail="Failed to connect to external API")
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON decode error in /analyze-results: {str(e)}")
-        raise HTTPException(status_code=500, detail="Invalid JSON response from external API")
     except HTTPException:
         raise
     except Exception as e:

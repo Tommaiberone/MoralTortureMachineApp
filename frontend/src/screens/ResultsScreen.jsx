@@ -89,21 +89,26 @@ const ResultsScreen = () => {
           }),
         });
 
+        const result = await response.json().catch(() => null);
+
+        // The backend always includes the deterministic archetype/averages in
+        // the body, even on a non-ok response (TASK-143), so the Challenge CTA
+        // and share cards stay available whenever an archetype comes back -
+        // regardless of whether the AI text itself succeeded.
+        if (result?.archetype) {
+          setArchetype(result.archetype);
+        }
+
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+          if (response.status === 429) {
+            setAiAnalysis(t('results.rate_limit_error'));
+          } else {
+            setAiAnalysis(t('results.analysis_error'));
+          }
+          return;
         }
 
-        const result = await response.json();
-
-        // Check if it's a rate limit error
-        if (response.status === 429) {
-          setAiAnalysis(t('results.rate_limit_error'));
-        } else if (!response.ok) {
-          setAiAnalysis(t('results.analysis_error'));
-        } else {
-          setAiAnalysis(result.analysis);
-          setArchetype(result.archetype || null);
-        }
+        setAiAnalysis(result.analysis);
       } catch (error) {
         console.error("Error fetching AI analysis:", error);
         setAiAnalysis(t('results.analysis_error'));
@@ -243,9 +248,9 @@ const ResultsScreen = () => {
                 <p className="results-ai-loading-text">{t('results.analyzing')}</p>
               </div>
             ) : (
-              // If /analyze-results failed entirely, archetype never got set but
-              // aiAnalysis still carries a fallback error message (TASK-121 AC3):
-              // this keeps the card visible instead of silently disappearing.
+              // Even when /analyze-results fails outright, archetype is still set
+              // from the response body (TASK-143) and aiAnalysis carries a fallback
+              // error message (TASK-121 AC3): the card stays visible either way.
               <p className="results-ai-text">{aiAnalysis}</p>
             )}
             {archetype && (

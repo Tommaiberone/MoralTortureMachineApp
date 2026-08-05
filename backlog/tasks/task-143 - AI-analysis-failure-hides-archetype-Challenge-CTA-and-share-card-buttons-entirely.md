@@ -3,9 +3,10 @@ id: TASK-143
 title: >-
   AI analysis failure hides archetype, Challenge CTA and share-card buttons
   entirely
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-05 09:05'
+updated_date: '2026-08-05 18:32'
 labels:
   - bug
   - frontend
@@ -25,7 +26,7 @@ backend_fastapi.py:3067-3069 computes the deterministic archetype (assign_archet
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 POST /analyze-results returns the deterministic archetype in its response body even when the Groq call fails (429 or any other error), not only on the AI success path
-- [ ] #2 ResultsScreen.jsx checks response.status===429 before throwing on a non-ok response, so the rate-limit-specific message is actually reachable
-- [ ] #3 When /analyze-results fails, the user still sees their archetype and can still use the Challenge a friend flow and download share cards - only the AI-generated text is affected
+- [x] #1 POST /analyze-results returns the deterministic archetype in its response body even when the Groq call fails (429 or any other error), not only on the AI success path
+- [x] #2 ResultsScreen.jsx checks response.status===429 before throwing on a non-ok response, so the rate-limit-specific message is actually reachable
+- [x] #3 When /analyze-results fails, the user still sees their archetype and can still use the Challenge a friend flow and download share cards - only the AI-generated text is affected
 <!-- AC:END -->
