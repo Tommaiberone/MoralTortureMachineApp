@@ -23,6 +23,7 @@ from threading import Lock
 from typing import Optional, Dict, Any
 from decimal import Decimal
 import json
+from urllib.parse import urlparse
 
 # archetype_engine.py is deployed as a flat sibling of this file (see
 # .github/workflows/deploy.yml), so the same import must resolve whether this
@@ -66,7 +67,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=[
         "Content-Type",
         "Accept",
@@ -169,6 +170,16 @@ OPS_ERROR_ALERT_TTL_SECONDS = 30 * 24 * 60 * 60
 # TASK-34: abandoned challenges (never joined/completed) expire via TTL.
 CHALLENGE_TTL_SECONDS = 30 * 24 * 60 * 60
 
+# TASK-64: accounts and shareable profiles expire after twelve months without
+# activity. Shorter domain-specific limits (analytics, challenges, Party Room,
+# and operational alerts) remain defined separately below/above.
+ACCOUNT_RETENTION_SECONDS = 365 * 24 * 60 * 60
+PROFILE_RETENTION_SECONDS = 365 * 24 * 60 * 60
+# Refreshing an activity timestamp at most once a day is sufficient for a
+# twelve-month lifecycle while avoiding one DynamoDB write per authenticated
+# request/poll.
+ACTIVITY_REFRESH_INTERVAL_SECONDS = 24 * 60 * 60
+
 # TASK-46/47: Party Room (ADR-050 - HTTP polling, not WebSocket). Rooms are a
 # short-lived, same-session activity, so a much shorter TTL than Duel
 # challenges is appropriate. The room code is short/typeable (for QR fallback
@@ -223,6 +234,7 @@ party_participants_table = dynamodb.Table(PARTY_PARTICIPANTS_TABLE)
 ops_error_alerts_table = dynamodb.Table(OPS_ERROR_ALERTS_TABLE)
 ssm_client = boto3.client('ssm', region_name=AWS_REGION)
 sns_client = boto3.client('sns', region_name=AWS_REGION)
+cognito_idp_client = boto3.client('cognito-idp', region_name=AWS_REGION)
 
 # Cache for API key (retrieved once at cold start)
 _api_key_cache = None
@@ -338,7 +350,41 @@ def require_authenticated_user(request: Request) -> Dict[str, Any]:
     token = _extract_bearer_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="Authentication required")
-    return verify_cognito_id_token(token)
+    claims = verify_cognito_id_token(token)
+    claims = require_active_cognito_user(claims)
+    _touch_existing_account_activity(claims)
+    return claims
+
+
+def require_active_cognito_user(claims: Dict[str, Any]) -> Dict[str, Any]:
+    """Reject a locally valid JWT once its Cognito identity was deleted.
+
+    Signature verification alone deliberately has no network call, but a
+    deleted/revoked user can otherwise keep an unexpired ID token for up to
+    its normal lifetime. Authenticated routes must not recreate an account
+    record during that interval after an account-deletion request.
+    """
+    if not COGNITO_USER_POOL_ID:
+        # Local unit tests patch token verification without provisioning
+        # Cognito. Production always sets the pool id through Terraform.
+        return claims
+
+    cognito_username = claims.get("cognito:username")
+    if not isinstance(cognito_username, str) or not cognito_username:
+        raise HTTPException(status_code=401, detail="Invalid authenticated user")
+
+    try:
+        cognito_idp_client.admin_get_user(
+            UserPoolId=COGNITO_USER_POOL_ID,
+            Username=cognito_username,
+        )
+    except ClientError as error:
+        code = error.response.get("Error", {}).get("Code")
+        if code == "UserNotFoundException":
+            raise HTTPException(status_code=401, detail="Account no longer exists")
+        logger.warning("Unable to verify active Cognito user: %s", code or type(error).__name__)
+        raise HTTPException(status_code=503, detail="Authentication service unavailable")
+    return claims
 
 def _claims_are_admin(claims: Dict[str, Any]) -> bool:
     groups = claims.get("cognito:groups", [])
@@ -351,7 +397,8 @@ def require_analytics_admin(request: Request) -> None:
     bearer_token = _extract_bearer_token(request)
     if not bearer_token:
         raise HTTPException(status_code=401, detail="Administrator authentication required")
-    claims = verify_cognito_id_token(bearer_token)
+    claims = require_active_cognito_user(verify_cognito_id_token(bearer_token))
+    _touch_existing_account_activity(claims)
     if not _claims_are_admin(claims):
         raise HTTPException(status_code=403, detail="Administrator role required")
 
@@ -361,25 +408,74 @@ def get_optional_user(request: Request) -> Optional[Dict[str, Any]]:
     if not token:
         return None
     try:
-        return verify_cognito_id_token(token)
+        claims = require_active_cognito_user(verify_cognito_id_token(token))
+        _touch_existing_account_activity(claims)
+        return claims
     except HTTPException:
         return None
 
 def upsert_user_record(sub: str, claims: Dict[str, Any]) -> None:
     """Idempotently persist a user record keyed by the immutable Cognito sub."""
     now = int(time.time() * 1000)
+    expiration_time = int(time.time()) + ACCOUNT_RETENTION_SECONDS
     users_table.update_item(
         Key={"sub": sub},
         UpdateExpression=(
             "SET createdAt = if_not_exists(createdAt, :now), "
             "updatedAt = :now, "
-            "email = :email"
+            "lastActiveAt = :now, "
+            "email = :email, "
+            "cognitoUsername = :cognito_username, "
+            "expirationTime = :expiration_time"
         ),
         ExpressionAttributeValues={
             ":now": now,
             ":email": claims.get("email"),
+            ":cognito_username": claims.get("cognito:username"),
+            ":expiration_time": expiration_time,
         },
     )
+
+
+def _touch_existing_account_activity(claims: Dict[str, Any]) -> None:
+    """Refresh a known app account's lifecycle without write amplification.
+
+    The client heartbeats `/auth/me` after session restoration, while optional
+    authenticated social routes also call this helper. The condition keeps the
+    normal path to at most one retention write per account per day. New app
+    records are created by the explicit auth/claim routes, not by an optional
+    bearer token encountered on a public endpoint.
+    """
+    if not COGNITO_USER_POOL_ID:
+        # Keep local unit tests and standalone local development free of a
+        # DynamoDB dependency; deployed environments always configure a pool.
+        return
+    account_sub = claims.get("sub")
+    if not isinstance(account_sub, str) or not account_sub:
+        return
+    now_ms = int(time.time() * 1000)
+    try:
+        users_table.update_item(
+            Key={"sub": account_sub},
+            UpdateExpression="SET updatedAt = :now, lastActiveAt = :now, expirationTime = :expiration_time",
+            ConditionExpression=(
+                "attribute_exists(#sub) AND "
+                "(attribute_not_exists(lastActiveAt) OR lastActiveAt < :refresh_before)"
+            ),
+            ExpressionAttributeNames={"#sub": "sub"},
+            ExpressionAttributeValues={
+                ":now": now_ms,
+                ":refresh_before": now_ms - (ACTIVITY_REFRESH_INTERVAL_SECONDS * 1000),
+                ":expiration_time": int(time.time()) + ACCOUNT_RETENTION_SECONDS,
+            },
+        )
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+            logger.warning("Unable to refresh account retention: %s", type(error).__name__)
+    except Exception:
+        # Activity refresh is a lifecycle enhancement, never a reason to make
+        # a successfully authenticated game request unavailable.
+        logger.exception("Unable to refresh account retention")
 
 def claim_anonymous_user_id(owner_sub: str, anonymous_user_id: str) -> None:
     """Atomically link an anonymous_user_id to a user; reject a conflicting owner.
@@ -390,6 +486,7 @@ def claim_anonymous_user_id(owner_sub: str, anonymous_user_id: str) -> None:
     """
     claim_key = f"anon#{anonymous_user_id}"
     now = int(time.time() * 1000)
+    expiration_time = int(time.time()) + ACCOUNT_RETENTION_SECONDS
     try:
         users_table.put_item(
             Item={"sub": claim_key, "ownerSub": owner_sub, "claimedAt": now},
@@ -406,8 +503,15 @@ def claim_anonymous_user_id(owner_sub: str, anonymous_user_id: str) -> None:
         raise
     users_table.update_item(
         Key={"sub": owner_sub},
-        UpdateExpression="ADD claimedAnonymousUserIds :ids SET updatedAt = :now",
-        ExpressionAttributeValues={":ids": {anonymous_user_id}, ":now": now},
+        UpdateExpression=(
+            "ADD claimedAnonymousUserIds :ids "
+            "SET updatedAt = :now, lastActiveAt = :now, expirationTime = :expiration_time"
+        ),
+        ExpressionAttributeValues={
+            ":ids": {anonymous_user_id},
+            ":now": now,
+            ":expiration_time": expiration_time,
+        },
     )
 
 
@@ -438,6 +542,7 @@ def create_moral_profile(anonymous_user_id: str, answers: list, language: str) -
 
     public_id = generate_public_token()
     now = int(time.time() * 1000)
+    expiration_time = int(time.time()) + PROFILE_RETENTION_SECONDS
     moral_profiles_table.put_item(Item={
         "publicId": public_id,
         "ownerAnonymousUserId": anonymous_user_id,
@@ -447,6 +552,8 @@ def create_moral_profile(anonymous_user_id: str, answers: list, language: str) -
         "dilemmaBaseIds": dilemma_base_ids,
         "language": language,
         "createdAt": now,
+        "lastAccessedAt": now,
+        "expirationTime": expiration_time,
     })
     return {
         "publicId": public_id,
@@ -462,19 +569,74 @@ def get_profile_or_404(public_id: str) -> Dict[str, Any]:
     item = response.get("Item")
     if not item:
         raise HTTPException(status_code=404, detail="Profile not found")
+    expiration_time = item.get("expirationTime")
+    if expiration_time is not None and int(expiration_time) <= int(time.time()):
+        # DynamoDB TTL is asynchronous. Enforce the retention boundary in the
+        # read path so an expired profile is never served while its TTL delete
+        # is still pending.
+        try:
+            moral_profiles_table.delete_item(Key={"publicId": public_id})
+        except Exception:
+            logger.exception("Unable to immediately remove expired moral profile")
+        raise HTTPException(status_code=404, detail="Profile not found")
+    if not _touch_profile_activity(public_id):
+        # A concurrent TTL/sweep/delete can remove a profile after GetItem.
+        # Never recreate a partial record just because someone followed an old
+        # unlisted link.
+        raise HTTPException(status_code=404, detail="Profile not found")
     return item
 
 
+def _touch_profile_activity(public_id: str) -> bool:
+    """Refresh retention for a successfully used profile without recreating it.
+
+    A profile participates in social flow reads as well as its own public
+    route. DynamoDB TTL is asynchronous, so require the existing primary key
+    on the touch to avoid reintroducing data after a concurrent deletion.
+    """
+    try:
+        now_ms = int(time.time() * 1000)
+        moral_profiles_table.update_item(
+            Key={"publicId": public_id},
+            UpdateExpression="SET lastAccessedAt = :now, expirationTime = :expiration_time",
+            ConditionExpression="attribute_exists(publicId)",
+            ExpressionAttributeValues={
+                ":now": now_ms,
+                ":expiration_time": int(time.time()) + PROFILE_RETENTION_SECONDS,
+            },
+        )
+        return True
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        logger.warning("Unable to refresh profile retention: %s", type(error).__name__)
+    except Exception:
+        # A transient refresh failure must not make a still-live shared result
+        # unavailable. The next successful use or daily sweep will retry.
+        logger.exception("Unable to refresh profile retention")
+    return True
+
+
 def get_latest_profile_for_anonymous_user(anonymous_user_id: str) -> Optional[Dict[str, Any]]:
-    response = moral_profiles_table.query(
+    items = _query_all(
+        moral_profiles_table,
         IndexName="OwnerIndex",
         KeyConditionExpression="ownerAnonymousUserId = :owner",
         ExpressionAttributeValues={":owner": anonymous_user_id},
         ScanIndexForward=False,
-        Limit=1,
     )
-    items = response.get("Items", [])
-    return items[0] if items else None
+    now_seconds = int(time.time())
+    for item in items:
+        expiration_time = item.get("expirationTime")
+        if expiration_time is None or int(expiration_time) > now_seconds:
+            if _touch_profile_activity(item["publicId"]):
+                return item
+            continue
+        try:
+            moral_profiles_table.delete_item(Key={"publicId": item["publicId"]})
+        except Exception:
+            logger.exception("Unable to immediately remove expired moral profile")
+    return None
 
 
 def _has_prior_profile(anonymous_user_id: str, exclude_public_id: Optional[str] = None) -> bool:
@@ -489,11 +651,25 @@ def _has_prior_profile(anonymous_user_id: str, exclude_public_id: Optional[str] 
         IndexName="OwnerIndex",
         KeyConditionExpression="ownerAnonymousUserId = :owner",
         ExpressionAttributeValues={":owner": anonymous_user_id},
-        ProjectionExpression="publicId",
+        ProjectionExpression="publicId, expirationTime",
         Limit=5,
     )
-    items = response.get("Items", [])
-    return any(item.get("publicId") != exclude_public_id for item in items)
+    now_seconds = int(time.time())
+    for item in response.get("Items", []):
+        if item.get("publicId") == exclude_public_id:
+            continue
+        expiration_time = item.get("expirationTime")
+        if expiration_time is not None and int(expiration_time) <= now_seconds:
+            # Do not let a TTL lag turn an expired profile into a repeat-duel
+            # login requirement. The daily retention sweep remains the
+            # backstop; this removes it promptly when encountered.
+            try:
+                moral_profiles_table.delete_item(Key={"publicId": item["publicId"]})
+            except Exception:
+                logger.exception("Unable to immediately remove expired moral profile")
+            continue
+        return True
+    return False
 
 
 def _raise_login_required(request: Request) -> None:
@@ -781,6 +957,16 @@ class StoryNodeVoteRequest(BaseModel):
 # the property key name (see validate_properties below).
 _EMAIL_LIKE_PATTERN = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
 _JWT_LIKE_PATTERN = re.compile(r'^[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}$')
+_ATTRIBUTION_VALUE_PATTERN = re.compile(r'^[A-Za-z0-9._+-]{1,120}$')
+_IDENTIFYING_ANALYTICS_PROPERTY_KEYS = {
+    "anonymous_user_id",
+    "install_id",
+    "session_id",
+    "public_id",
+    "profile_id",
+    "room_code",
+    "previous_room_code",
+}
 
 
 class AnalyticsEvent(BaseModel):
@@ -815,15 +1001,45 @@ class AnalyticsEvent(BaseModel):
         if len(value) > len(allowed_keys):
             raise ValueError("Too many UTM parameters")
         for key, item in value.items():
-            if key not in allowed_keys or not isinstance(item, str) or len(item) > 200:
+            if (
+                key not in allowed_keys
+                or not isinstance(item, str)
+                or not _ATTRIBUTION_VALUE_PATTERN.fullmatch(item)
+            ):
                 raise ValueError("Invalid UTM parameter")
         return value
+
+    @field_validator("referrer")
+    @classmethod
+    def validate_referrer(cls, value: Optional[str]) -> Optional[str]:
+        """Keep attribution at origin granularity, never a link path/query."""
+        if value is None:
+            return value
+        parsed = urlparse(value)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.path not in {"", "/"}
+            or parsed.params
+            or parsed.query
+            or parsed.fragment
+            or parsed.username
+            or parsed.password
+        ):
+            raise ValueError("Referrer must be an origin without a path or query")
+        return f"{parsed.scheme}://{parsed.netloc}"
 
     @field_validator("properties")
     @classmethod
     def validate_properties(cls, value: Dict[str, Any]) -> Dict[str, Any]:
         forbidden_tokens = {"email", "password", "token", "secret", "ip", "analysis"}
-        forbidden_keys = {"dilemma_text", "answer_text", "ip_address", "hashed_ip"}
+        forbidden_keys = {
+            "dilemma_text",
+            "answer_text",
+            "ip_address",
+            "hashed_ip",
+            *_IDENTIFYING_ANALYTICS_PROPERTY_KEYS,
+        }
         if len(value) > 20:
             raise ValueError("Too many analytics properties")
 
@@ -958,18 +1174,13 @@ async def add_security_headers(request: Request, call_next):
 # Middleware for request logging with PII filtering
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    # Sanitize URL by removing query parameters that might contain PII
-    sanitized_path = request.url.path
-    # Only log safe query parameters (language)
-    safe_params = []
-    for key, value in request.query_params.items():
-        if key in ['language']:
-            safe_params.append(f"{key}={value}")
-    sanitized_url = f"{sanitized_path}?{'&'.join(safe_params)}" if safe_params else sanitized_path
-
-    logger.info(f"Incoming request: {request.method} {sanitized_url}")
     response = await call_next(request)
-    logger.info(f"Response status: {response.status_code}")
+    logger.info(
+        "Request completed: %s %s -> %s",
+        request.method,
+        _request_path_signature(request, response.status_code),
+        response.status_code,
+    )
     return response
 
 
@@ -1093,8 +1304,8 @@ async def enforce_zero_cost_burst_guard(request: Request, call_next):
         allowed, retry_after = _consume_burst_window(f"{rule_name}:{source}", limit)
         if not allowed:
             logger.warning(
-                "Burst guard rejected request: path=%s rule=%s retry_after=%s",
-                request.url.path,
+                "Burst guard rejected request: route=%s rule=%s retry_after=%s",
+                _request_path_signature(request, 429),
                 rule_name,
                 retry_after,
             )
@@ -1137,9 +1348,9 @@ def _request_path_signature(request: Request, status_code: Optional[int] = None)
     reaches the router (it short-circuits before routing), so scope['route']
     is never set for it; fall back to the same rule name the burst guard
     itself used (e.g. 'party_room_poll'), which is already
-    parameter-independent. Only a genuinely unmapped route (e.g. a bot probing
-    /robots.txt) falls all the way back to the literal path, which is itself
-    useful signal to keep distinct."""
+    parameter-independent. A genuinely unmapped route is intentionally
+    grouped as 'unmatched' rather than storing an arbitrary literal path,
+    which may itself contain a user-supplied identifier."""
     route = request.scope.get("route")
     path_template = getattr(route, "path", None)
     if path_template:
@@ -1148,7 +1359,7 @@ def _request_path_signature(request: Request, status_code: Optional[int] = None)
         rules = _rate_limit_rules_for_request(request.method, request.url.path)
         if rules:
             return f"rate_limit:{rules[-1][0]}"
-    return request.url.path
+    return "unmatched"
 
 
 def _record_ops_error_alert(method: str, status_code: int, path: str, path_signature: str, detail: str) -> None:
@@ -1177,11 +1388,10 @@ def _notify_ops_of_error(request: Request, status_code: int, detail: str) -> Non
     (TASK-104/TASK-129). Reuses the existing ops_alerts topic
     (ADR-031/backend/terraform/observability.tf); a failure here must never
     affect the response already produced."""
-    literal_path = request.url.path
     signature = _request_path_signature(request, status_code)
     if not _should_notify_ops(status_code, signature):
         return
-    _record_ops_error_alert(request.method, status_code, literal_path, signature, detail)
+    _record_ops_error_alert(request.method, status_code, signature, signature, detail)
     if not OPS_ERROR_NOTIFICATIONS_ENABLED or not OPS_ALERTS_TOPIC_ARN:
         return
     try:
@@ -1189,7 +1399,7 @@ def _notify_ops_of_error(request: Request, status_code: int, detail: str) -> Non
             TopicArn=OPS_ALERTS_TOPIC_ARN,
             Subject=f"[Moral Torture Machine] {status_code} on {signature}"[:100],
             Message=(
-                f"{request.method} {literal_path} returned {status_code}.\n\n"
+                f"{request.method} {signature} returned {status_code}.\n\n"
                 f"Detail: {detail}\n\n"
                 "This alert is coalesced: at most one email per (status code, route) "
                 f"every {OPS_ERROR_NOTIFICATION_COOLDOWN_SECONDS}s per warm Lambda container."
@@ -1265,41 +1475,439 @@ async def claim_anonymous_data(claim_request: ClaimAnonymousDataRequest, request
     claim_anonymous_user_id(claims["sub"], claim_request.anonymousUserId)
     return {"claimed": True, "anonymousUserId": claim_request.anonymousUserId}
 
+
+def _query_all(dynamodb_table, **query_kwargs) -> list[Dict[str, Any]]:
+    """Return every page of a DynamoDB query without exposing pagination to
+    account export/deletion callers."""
+    items = []
+    while True:
+        response = dynamodb_table.query(**query_kwargs)
+        items.extend(response.get("Items", []))
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key:
+            return items
+        query_kwargs["ExclusiveStartKey"] = last_key
+
+
+def _scan_all(dynamodb_table, **scan_kwargs) -> list[Dict[str, Any]]:
+    """Return every page of a narrowly filtered DynamoDB scan."""
+    items = []
+    while True:
+        response = dynamodb_table.scan(**scan_kwargs)
+        items.extend(response.get("Items", []))
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key:
+            return items
+        scan_kwargs["ExclusiveStartKey"] = last_key
+
+
+def _claimed_anonymous_ids(account_sub: str) -> tuple[list[str], list[Dict[str, Any]]]:
+    """Use claim-lock rows as the authoritative account-to-device mapping.
+
+    The duplicated set on the user record is useful for display, but an
+    account deletion must not trust a stale value that could theoretically be
+    claimed by a different account after a partial historic cleanup.
+    """
+    claim_locks = _scan_all(
+        users_table,
+        FilterExpression="ownerSub = :owner",
+        ExpressionAttributeValues={":owner": account_sub},
+    )
+    anonymous_ids = sorted({
+        str(lock["sub"])[len("anon#"):]
+        for lock in claim_locks
+        if str(lock.get("sub", "")).startswith("anon#")
+    })
+    return anonymous_ids, claim_locks
+
+
+def _scan_for_anonymous_ids(
+    dynamodb_table,
+    attribute_name: str,
+    anonymous_ids: list[str],
+) -> list[Dict[str, Any]]:
+    """Scan an unindexed anonymous-id attribute once per claimed identity.
+
+    These domains are currently small and have bounded retention. The profile
+    and product-events paths use their existing GSIs instead; adding broad new
+    GSIs only for an infrequent privacy request would add persistent cost.
+    """
+    items = []
+    for anonymous_id in anonymous_ids:
+        items.extend(_scan_all(
+            dynamodb_table,
+            FilterExpression="#anonymous_id = :anonymous_id",
+            ExpressionAttributeNames={"#anonymous_id": attribute_name},
+            ExpressionAttributeValues={":anonymous_id": anonymous_id},
+        ))
+    return items
+
+
+def _profiles_for_anonymous_ids(anonymous_ids: list[str]) -> list[Dict[str, Any]]:
+    profiles = []
+    for anonymous_id in anonymous_ids:
+        profiles.extend(_query_all(
+            moral_profiles_table,
+            IndexName="OwnerIndex",
+            KeyConditionExpression="ownerAnonymousUserId = :owner",
+            ExpressionAttributeValues={":owner": anonymous_id},
+        ))
+    return profiles
+
+
+def _product_events_for_anonymous_ids(anonymous_ids: list[str]) -> list[Dict[str, Any]]:
+    events = []
+    for anonymous_id in anonymous_ids:
+        events.extend(_query_all(
+            product_events_table,
+            IndexName="AnonymousUserIndex",
+            KeyConditionExpression="anonymousUserId = :owner",
+            ExpressionAttributeValues={":owner": anonymous_id},
+        ))
+    return events
+
+
+def _collect_account_data(account_sub: str) -> Dict[str, Any]:
+    """Build one complete, repeatable data plan for export or deletion."""
+    account = users_table.get_item(Key={"sub": account_sub}).get("Item", {})
+    anonymous_ids, claim_locks = _claimed_anonymous_ids(account_sub)
+    return {
+        "account": account,
+        "anonymousIds": anonymous_ids,
+        "claimLocks": claim_locks,
+        "profiles": _profiles_for_anonymous_ids(anonymous_ids),
+        "duelParticipations": _scan_for_anonymous_ids(
+            challenge_participants_table,
+            "anonymousUserId",
+            anonymous_ids,
+        ),
+        "partyParticipations": _scan_for_anonymous_ids(
+            party_participants_table,
+            "participantId",
+            anonymous_ids,
+        ),
+        "productEvents": _product_events_for_anonymous_ids(anonymous_ids),
+        "legacyEvents": _scan_for_anonymous_ids(
+            analytics_table,
+            "anonymousUserId",
+            anonymous_ids,
+        ),
+    }
+
+
+def _portable_value(value: Any) -> Any:
+    """Convert DynamoDB values into JSON-safe portable export values."""
+    if isinstance(value, Decimal):
+        return decimal_to_native(value)
+    if isinstance(value, set):
+        return sorted(_portable_value(item) for item in value)
+    if isinstance(value, list):
+        return [_portable_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _portable_value(item) for key, item in value.items()}
+    return value
+
+
+def _portable_profile(profile: Dict[str, Any]) -> Dict[str, Any]:
+    result = _portable_value(profile)
+    averages = result.get("dimensionAverages")
+    if isinstance(averages, str):
+        try:
+            result["dimensionAverages"] = json.loads(averages)
+        except json.JSONDecodeError:
+            # Existing rows should always contain valid JSON. Preserve an
+            # unexpected historic value rather than making export fail.
+            pass
+    return result
+
+
+def _portable_duel_participation(participation: Dict[str, Any]) -> Dict[str, Any]:
+    return _portable_value({
+        key: participation[key]
+        for key in ("challengeToken", "role", "profilePublicId", "joinedAt", "submittedAt")
+        if key in participation
+    })
+
+
+def _portable_party_participation(participation: Dict[str, Any]) -> Dict[str, Any]:
+    return _portable_value({
+        key: participation[key]
+        for key in ("roomCode", "displayName", "isHost", "joinedAt", "votes", "completedAt")
+        if key in participation
+    })
+
+
 @app.get("/users/export")
 async def export_user_data(request: Request):
-    """Return the caller's own account data in a portable JSON format.
-
-    Scope is limited to what this account currently owns (the Users table
-    record); profile, duel and pack data will extend this export once those
-    domains exist (TASK-28+).
-    """
+    """Return every current data domain linked to the caller's account."""
     claims = require_authenticated_user(request)
-    response = users_table.get_item(Key={"sub": claims["sub"]})
-    item = response.get("Item", {})
+    data = _collect_account_data(claims["sub"])
+    account = data["account"]
     return {
-        "sub": claims["sub"],
-        "email": item.get("email"),
-        "createdAt": item.get("createdAt"),
-        "updatedAt": item.get("updatedAt"),
-        "claimedAnonymousUserIds": sorted(item.get("claimedAnonymousUserIds", set())),
+        "schemaVersion": 2,
+        "exportedAt": datetime.now(timezone.utc).isoformat(),
+        "account": _portable_value({
+            "sub": claims["sub"],
+            "email": account.get("email"),
+            "createdAt": account.get("createdAt"),
+            "updatedAt": account.get("updatedAt"),
+            "lastActiveAt": account.get("lastActiveAt"),
+        }),
+        "claimedAnonymousUserIds": data["anonymousIds"],
+        "moralProfiles": [_portable_profile(profile) for profile in data["profiles"]],
+        "duelParticipations": [
+            _portable_duel_participation(participation)
+            for participation in data["duelParticipations"]
+        ],
+        "partyParticipations": [
+            _portable_party_participation(participation)
+            for participation in data["partyParticipations"]
+        ],
+        "analytics": {
+            "productEvents": _portable_value(data["productEvents"]),
+            "legacyEvents": _portable_value(data["legacyEvents"]),
+        },
     }
+
+
+def _delete_records(dynamodb_table, keys: list[Dict[str, Any]]) -> int:
+    deleted = 0
+    seen = set()
+    for key in keys:
+        marker = tuple(sorted(key.items()))
+        if marker in seen:
+            continue
+        seen.add(marker)
+        dynamodb_table.delete_item(Key=key)
+        deleted += 1
+    return deleted
+
+
+def _remove_rematch_references(deleted_tokens: set[str]) -> None:
+    for token in deleted_tokens:
+        for challenge in _scan_all(
+            challenges_table,
+            FilterExpression="rematchOfToken = :token",
+            ExpressionAttributeValues={":token": token},
+        ):
+            challenges_table.update_item(
+                Key={"challengeToken": challenge["challengeToken"]},
+                UpdateExpression="REMOVE rematchOfToken",
+            )
+
+
+def _delete_duel_data(participations: list[Dict[str, Any]]) -> int:
+    tokens = {str(item["challengeToken"]) for item in participations if item.get("challengeToken")}
+    for token in tokens:
+        all_participants = _query_all(
+            challenge_participants_table,
+            KeyConditionExpression="challengeToken = :token",
+            ExpressionAttributeValues={":token": token},
+        )
+        _delete_records(
+            challenge_participants_table,
+            [
+                {"challengeToken": item["challengeToken"], "role": item["role"]}
+                for item in all_participants
+            ],
+        )
+        challenges_table.delete_item(Key={"challengeToken": token})
+    _remove_rematch_references(tokens)
+    return len(tokens)
+
+
+def _delete_party_data(participations: list[Dict[str, Any]]) -> int:
+    room_codes = {str(item["roomCode"]) for item in participations if item.get("roomCode")}
+    for room_code in room_codes:
+        all_participants = _query_all(
+            party_participants_table,
+            KeyConditionExpression="roomCode = :room",
+            ExpressionAttributeValues={":room": room_code},
+        )
+        _delete_records(
+            party_participants_table,
+            [
+                {"roomCode": item["roomCode"], "participantId": item["participantId"]}
+                for item in all_participants
+            ],
+        )
+        party_rooms_table.delete_item(Key={"roomCode": room_code})
+    return len(room_codes)
+
+
+def _delete_linked_account_data(data: Dict[str, Any]) -> Dict[str, int]:
+    """Delete raw user-linked domains while preserving only aggregates.
+
+    This deliberately removes an entire shared Duel/Party object when the
+    caller contributed to it: derived scores, archetypes and pair insights
+    would otherwise still retain information about the deleted participant.
+    """
+    counts = {
+        "moralProfiles": _delete_records(
+            moral_profiles_table,
+            [{"publicId": profile["publicId"]} for profile in data["profiles"]],
+        ),
+        "challenges": _delete_duel_data(data["duelParticipations"]),
+        "partyRooms": _delete_party_data(data["partyParticipations"]),
+        "productEvents": _delete_records(
+            product_events_table,
+            [{"eventId": item["eventId"]} for item in data["productEvents"]],
+        ),
+        "legacyEvents": _delete_records(
+            analytics_table,
+            [
+                {"sessionId": item["sessionId"], "timestamp": item["timestamp"]}
+                for item in data["legacyEvents"]
+            ],
+        ),
+    }
+    _analytics_overview_cache.clear()
+    return counts
+
+
+def _resolve_cognito_username(cognito_username: Optional[str], account_sub: str) -> Optional[str]:
+    """Find a legacy federated username only when it was never persisted.
+
+    New account records retain ``cognito:username``. Historic rows may
+    predate that field and a Cognito federated username is not safely inferred
+    from an email address, so the retention job looks up the immutable sub.
+    """
+    if cognito_username or not COGNITO_USER_POOL_ID:
+        return cognito_username
+    safe_sub = account_sub.replace('"', '')
+    try:
+        response = cognito_idp_client.list_users(
+            UserPoolId=COGNITO_USER_POOL_ID,
+            Filter=f'sub = "{safe_sub}"',
+            Limit=1,
+        )
+    except ClientError as error:
+        code = error.response.get("Error", {}).get("Code")
+        logger.warning("Unable to find Cognito user for retention: %s", code or type(error).__name__)
+        raise HTTPException(status_code=503, detail="Account identity lookup unavailable")
+    users = response.get("Users", [])
+    return users[0].get("Username") if users else None
+
+
+def _delete_cognito_user(cognito_username: Optional[str], account_sub: str) -> None:
+    if not COGNITO_USER_POOL_ID:
+        # Unit tests intentionally run without an external Cognito pool.
+        return
+    cognito_username = _resolve_cognito_username(cognito_username, account_sub)
+    if not cognito_username:
+        # A retention retry can reach a row whose Cognito identity has already
+        # been removed by a prior partial request. Treat that as success.
+        return
+    try:
+        cognito_idp_client.admin_delete_user(
+            UserPoolId=COGNITO_USER_POOL_ID,
+            Username=cognito_username,
+        )
+    except ClientError as error:
+        code = error.response.get("Error", {}).get("Code")
+        if code != "UserNotFoundException":
+            logger.warning("Unable to delete Cognito user: %s", code or type(error).__name__)
+            raise HTTPException(status_code=503, detail="Account deletion service unavailable")
+
+
+def _delete_account_by_sub(account_sub: str, cognito_username: Optional[str]) -> Dict[str, int]:
+    """Idempotently cascade app data first, then remove the sign-in identity."""
+    data = _collect_account_data(account_sub)
+    counts = _delete_linked_account_data(data)
+    _delete_cognito_user(cognito_username, account_sub)
+    _delete_records(
+        users_table,
+        [{"sub": lock["sub"]} for lock in data["claimLocks"]],
+    )
+    users_table.delete_item(Key={"sub": account_sub})
+    return counts
+
+
+def _retention_expiration_from_activity(item: Dict[str, Any], retention_seconds: int) -> int:
+    """Derive a seconds-based expiry from the millisecond activity fields."""
+    for field in ("lastActiveAt", "lastAccessedAt", "updatedAt", "createdAt"):
+        value = item.get(field)
+        if value is None:
+            continue
+        try:
+            return int(int(value) / 1000) + retention_seconds
+        except (TypeError, ValueError):
+            continue
+    return int(time.time()) + retention_seconds
+
+
+def _sweep_expired_profiles(now_seconds: int) -> int:
+    deleted = 0
+    for profile in _scan_all(moral_profiles_table):
+        expiration_time = profile.get("expirationTime")
+        if expiration_time is None:
+            expiration_time = _retention_expiration_from_activity(profile, PROFILE_RETENTION_SECONDS)
+            moral_profiles_table.update_item(
+                Key={"publicId": profile["publicId"]},
+                UpdateExpression="SET expirationTime = :expiration_time",
+                ExpressionAttributeValues={":expiration_time": expiration_time},
+            )
+        if int(expiration_time) <= now_seconds:
+            moral_profiles_table.delete_item(Key={"publicId": profile["publicId"]})
+            deleted += 1
+    return deleted
+
+
+def _sweep_expired_accounts(now_seconds: int) -> int:
+    deleted = 0
+    for account in _scan_all(users_table):
+        # Claim-lock rows are handled by their owning account's cascade.
+        if not account.get("createdAt") or str(account.get("sub", "")).startswith("anon#"):
+            continue
+        expiration_time = account.get("expirationTime")
+        if expiration_time is None:
+            expiration_time = _retention_expiration_from_activity(account, ACCOUNT_RETENTION_SECONDS)
+            users_table.update_item(
+                Key={"sub": account["sub"]},
+                UpdateExpression="SET expirationTime = :expiration_time",
+                ExpressionAttributeValues={":expiration_time": expiration_time},
+            )
+        if int(expiration_time) > now_seconds:
+            continue
+        try:
+            _delete_account_by_sub(
+                account["sub"],
+                account.get("cognitoUsername"),
+            )
+            deleted += 1
+        except Exception:
+            # Preserve the account/claim locks when Cognito is temporarily
+            # unavailable. The next daily run retries the idempotent cascade.
+            logger.exception("Retention sweep failed for expired account")
+    return deleted
+
+
+def retention_sweep_handler(_event, _context):
+    """Daily retention job for twelve-month profiles and authenticated users.
+
+    DynamoDB TTL alone cannot delete a Cognito identity or cascade through
+    shared Duel/Party records, so EventBridge invokes this handler once per
+    day. Short-lived raw analytics and social-session tables keep their own
+    native TTLs.
+    """
+    now_seconds = int(time.time())
+    deleted_profiles = _sweep_expired_profiles(now_seconds)
+    deleted_accounts = _sweep_expired_accounts(now_seconds)
+    _analytics_overview_cache.clear()
+    result = {
+        "deletedProfiles": deleted_profiles,
+        "deletedAccounts": deleted_accounts,
+    }
+    logger.info("Retention sweep completed: %s", result)
+    return result
+
 
 @app.delete("/users/me")
 async def delete_user_account(request: Request):
-    """Delete the caller's account data.
-
-    Releases every anonymous_user_id this account claimed (so it can be
-    claimed again) and removes the user record. No other domain currently
-    stores data keyed by this account; nothing is retained.
-    """
+    """Delete the caller's account, linked app data, and Cognito identity."""
     claims = require_authenticated_user(request)
-    sub = claims["sub"]
-    response = users_table.get_item(Key={"sub": sub})
-    claimed_ids = response.get("Item", {}).get("claimedAnonymousUserIds", set())
-    for anonymous_user_id in claimed_ids:
-        users_table.delete_item(Key={"sub": f"anon#{anonymous_user_id}"})
-    users_table.delete_item(Key={"sub": sub})
-    return {"deleted": True}
+    counts = _delete_account_by_sub(claims["sub"], claims.get("cognito:username"))
+    return {"deleted": True, "deletedData": counts}
 
 def _track_duel_event(request: Request, action_type: str, action_data: Optional[Dict[str, Any]] = None) -> None:
     session_id = extract_session_id(request)

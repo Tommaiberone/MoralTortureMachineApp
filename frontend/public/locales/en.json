@@ -261,6 +261,7 @@
     "exportButton": "Export my data",
     "exportError": "Could not export your data. Please try again.",
     "deleteButton": "Delete my account",
+    "deleteScope": "Export includes your account data and records linked to anonymous IDs you claimed. Deletion removes your Cognito account, claimed linked profiles, raw analytics, and shared Duel/Party objects containing your derived data; non-linkable aggregate statistics may remain.",
     "deleteConfirmPrompt": "This permanently deletes your account data and cannot be undone. Are you sure?",
     "deleteConfirmButton": "Yes, delete my account",
     "deleteCancelButton": "Cancel",

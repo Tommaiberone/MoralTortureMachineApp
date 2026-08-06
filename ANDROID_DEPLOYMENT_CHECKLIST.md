@@ -52,7 +52,8 @@ cd android
 - [ ] Store listing completato (descrizioni, screenshot)
 - [ ] Privacy Policy pubblicata e accessibile
 - [ ] Content rating completato (IARC)
-- [ ] Data safety compilato
+- [ ] Data safety compilato e verificato contro `growth-intelligence/data-safety.md`
+- [ ] URL Privacy, Cookie e Terms verificati (`/privacy`, `/cookies`, `/terms`)
 - [ ] Target audience selezionato
 
 ### Assets

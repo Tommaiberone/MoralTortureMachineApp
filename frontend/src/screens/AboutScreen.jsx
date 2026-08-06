@@ -10,8 +10,8 @@ const AboutScreen = () => {
   // Rich structured data for SEO
   const structuredData = combineSchemas(
     getArticleSchema({
-      title: "About Moral Torture Machine - AI-Powered Ethical Dilemmas Platform",
-      description: "Learn how Moral Torture Machine uses AI to analyze your moral framework through interactive ethical dilemmas like the trolley problem.",
+      title: "About Moral Torture Machine - Interactive Ethical Dilemma Game",
+      description: "Learn how Moral Torture Machine uses deterministic game scoring and optional AI-written commentary for interactive ethical dilemmas.",
       datePublished: "2024-10-01",
       dateModified: new Date().toISOString().split('T')[0],
       url: "https://moraltorturemachine.com/about"
@@ -26,9 +26,9 @@ const AboutScreen = () => {
   return (
     <div className="screen-container about-container">
       <SEO
-        title="About - AI-Powered Moral Philosophy Platform"
-        description="Discover how Moral Torture Machine analyzes your ethical decision-making through the trolley problem and other moral dilemmas. Free AI-powered moral compass test with detailed analysis."
-        keywords="moral philosophy, ethical dilemmas, trolley problem, moral compass test, AI ethics analysis, philosophical test, moral framework analysis, ethical decision making, moral reasoning, philosophy game, ethics test online"
+        title="About - Interactive Moral Dilemma Game"
+        description="Discover Moral Torture Machine, an interactive ethical-dilemma game with deterministic scoring and optional AI-written commentary for reflection and discussion."
+        keywords="moral philosophy, ethical dilemmas, trolley problem, philosophy game, ethical decision making, moral reasoning, interactive dilemmas"
         url="/about"
         structuredData={structuredData}
       />
@@ -39,16 +39,14 @@ const AboutScreen = () => {
         <section className="about-section">
           <h2>What is the Moral Torture Machine?</h2>
           <p>
-            The <strong>Moral Torture Machine</strong> is an innovative, AI-powered platform designed to explore
-            your moral framework through interactive ethical dilemmas. Inspired by classical philosophical
-            thought experiments like the famous <strong>trolley problem</strong>, our application challenges
-            you to make difficult moral decisions and provides deep insights into your ethical reasoning patterns.
+            The <strong>Moral Torture Machine</strong> is an interactive moral-dilemma game. Inspired by
+            philosophical thought experiments like the famous <strong>trolley problem</strong>, it invites you
+            to make difficult fictional choices, compare perspectives, and start conversations about ethics.
           </p>
           <p>
-            Whether you're a philosophy student studying <strong>moral philosophy</strong>, someone curious
-            about their <strong>moral compass</strong>, or just looking for thought-provoking entertainment,
-            the Moral Torture Machine offers a unique experience that combines <strong>ethical theory</strong>
-            with cutting-edge AI analysis.
+            Whether you study <strong>moral philosophy</strong> or simply want thought-provoking entertainment,
+            the Moral Torture Machine combines ethical thought experiments with a game-like result and optional
+            AI-written commentary. It is not a psychological assessment or professional advice.
           </p>
         </section>
 
@@ -56,7 +54,7 @@ const AboutScreen = () => {
           <h2>How Does It Work?</h2>
           <p>
             Our platform presents you with a series of carefully crafted <strong>ethical dilemmas</strong>
-            that test different aspects of your moral reasoning:
+            that explore different ethical perspectives:
           </p>
           <ul>
             <li><strong>Utilitarian scenarios</strong> - Testing whether you prioritize the greatest good for the greatest number</li>
@@ -65,10 +63,10 @@ const AboutScreen = () => {
             <li><strong>Real-world applications</strong> - Modern ethical challenges in technology, medicine, and society</li>
           </ul>
           <p>
-            After you complete the dilemmas, our <strong>AI-powered analysis engine</strong> evaluates your
-            responses, identifying patterns in your <strong>ethical decision-making</strong> and providing
-            a comprehensive breakdown of your moral framework. You'll discover whether you lean more towards
-            consequentialist thinking, rule-based ethics, or other philosophical approaches.
+            After you complete the dilemmas, a <strong>deterministic, versioned game-scoring model</strong>
+            groups the choices into six value dimensions and an archetype. Optional AI-generated copy only
+            presents that result in a more conversational way; it does not determine scores, diagnose you, or
+            measure your real-world character.
           </p>
         </section>
 
@@ -113,22 +111,20 @@ const AboutScreen = () => {
         </section>
 
         <section className="about-section">
-          <h2>Why Explore Your Moral Framework?</h2>
+          <h2>Why Play With Moral Dilemmas?</h2>
           <p>
-            Understanding your <strong>moral framework</strong> has numerous benefits:
+            Moral dilemmas can be a playful starting point for:
           </p>
           <ul>
             <li>
-              <strong>Self-awareness</strong> - Gain deeper insights into your values and
-              decision-making processes
+              <strong>Reflection</strong> - Notice how you approach a fictional difficult choice
             </li>
             <li>
               <strong>Philosophical education</strong> - Learn about major ethical theories
               through interactive experience
             </li>
             <li>
-              <strong>Better decision-making</strong> - Understand the principles that guide
-              your choices in difficult situations
+              <strong>Discussion</strong> - Compare different perspectives without treating either as a verdict
             </li>
             <li>
               <strong>Social discussions</strong> - Use the results as a starting point for
@@ -138,22 +134,20 @@ const AboutScreen = () => {
         </section>
 
         <section className="about-section">
-          <h2>The Science Behind Our Analysis</h2>
+          <h2>How the Game Is Scored</h2>
           <p>
-            Our <strong>AI-powered moral analysis</strong> is based on established frameworks in
-            <strong>moral philosophy</strong> and psychology. We evaluate your responses against
-            well-researched ethical theories including:
+            The game uses a versioned deterministic score across six value dimensions. Ethical traditions may
+            inspire a scenario, but the result is a game construct rather than a scientific, psychological, or
+            clinical model. The optional AI text is presentation only.
           </p>
           <ul>
-            <li><strong>Utilitarianism</strong> (Jeremy Bentham, John Stuart Mill)</li>
-            <li><strong>Deontological Ethics</strong> (Immanuel Kant)</li>
-            <li><strong>Virtue Ethics</strong> (Aristotle)</li>
-            <li><strong>Care Ethics</strong> (Carol Gilligan)</li>
-            <li><strong>Social Contract Theory</strong> (Thomas Hobbes, John Rawls)</li>
+            <li><strong>Empathy</strong> and <strong>integrity</strong></li>
+            <li><strong>Responsibility</strong> and <strong>justice</strong></li>
+            <li><strong>Altruism</strong> and <strong>honesty</strong></li>
           </ul>
           <p>
-            The analysis identifies patterns in your reasoning, consistency in your moral judgments,
-            and provides personalized insights into your <strong>ethical decision-making</strong> style.
+            It produces a repeatable in-game archetype from those values. It should not be used to make
+            consequential judgments about yourself or anyone else.
           </p>
         </section>
 
@@ -161,19 +155,18 @@ const AboutScreen = () => {
           <h2>Free & Privacy-Focused</h2>
           <p>
             The Moral Torture Machine is <strong>completely free</strong> to use. We believe everyone
-            should have access to tools for philosophical exploration and self-reflection. Your privacy
-            is important to us - we don't store your individual responses permanently, and all analysis
-            is done securely.
+            should have access to tools for philosophical exploration and self-reflection. Your privacy is
+            important to us: the service applies specific retention periods and gives signed-in users export
+            and deletion controls. Read the <a href="/privacy">Privacy notice</a> for the exact data scope,
+            retention, and sharing rules.
           </p>
         </section>
 
         <section className="about-section cta-section">
           <h2>Ready to Explore Your Moral Compass?</h2>
           <p>
-            Join thousands of users who have discovered insights about their ethical frameworks
-            through our <strong>interactive moral philosophy platform</strong>. Take the
-            <strong>moral compass test</strong> today and see where you stand on the great
-            questions of ethics and morality.
+            Start a short ethical-dilemma game, compare perspectives with friends if you choose, and use it as
+            a prompt for discussion rather than a verdict about who anyone is.
           </p>
           <button
             className="cta-button"

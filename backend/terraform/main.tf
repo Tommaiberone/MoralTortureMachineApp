@@ -201,12 +201,10 @@ resource "aws_dynamodb_table" "users" {
   }
 }
 
-# TASK-28: persistent, shareable moral profiles. Owner is the anonymous_user_id
+# TASK-28: shareable moral profiles. Owner is the anonymous_user_id
 # (anonymous-first, per ADR-002), not the Cognito sub, so a profile can exist
-# before any login. No TTL: profiles are core shareable product content, not
-# ephemeral analytics; retention is revisited by the per-domain policy in
-# TASK-64. Provisioned capacity within the shared Free Tier, no PITR by
-# default, matching the TASK-12 Users table precedent.
+# before any login. TASK-64 establishes a twelve-month inactivity limit;
+# EventBridge backfills historic rows and DynamoDB TTL removes expired rows.
 resource "aws_dynamodb_table" "moral_profiles" {
   name           = "${var.environment}-${var.stack_name}-moral-profiles"
   billing_mode   = "PROVISIONED"
@@ -236,6 +234,11 @@ resource "aws_dynamodb_table" "moral_profiles" {
     projection_type = "ALL"
     read_capacity   = 1
     write_capacity  = 1
+  }
+
+  ttl {
+    attribute_name = "expirationTime"
+    enabled        = true
   }
 
   tags = {
@@ -681,12 +684,98 @@ resource "aws_iam_role_policy" "lambda_permissions" {
         ]
       },
       {
+        # TASK-15.1/TASK-64: authenticated deletion and the daily retention
+        # sweep must verify then remove only the corresponding Cognito user.
+        Effect = "Allow"
+        Action = [
+          "cognito-idp:AdminGetUser",
+          "cognito-idp:AdminDeleteUser"
+        ]
+        Resource = [aws_cognito_user_pool.users.arn]
+      },
+      {
         # TASK-104: the API emails the existing ops_alerts topic on every
         # 4xx/5xx response, reusing the same topic the CloudWatch alarms and
         # budget notifications already post to (ADR-031).
         Effect   = "Allow"
         Action   = ["sns:Publish"]
         Resource = [aws_sns_topic.ops_alerts.arn]
+      }
+    ]
+  })
+}
+
+# TASK-15.1/TASK-64: the retention worker needs a smaller permission set than
+# the public API Lambda. Keeping the scheduled cascade separate prevents a
+# timer-triggered function from reading dilemmas, calling Groq, or publishing
+# operational alerts.
+resource "aws_iam_role" "retention_sweep_role" {
+  name = "${var.stack_name}-retention-sweep-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+
+  tags = {
+    Name        = "Moral Torture Machine Retention Sweep Role"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
+
+resource "aws_iam_role_policy" "retention_sweep_permissions" {
+  name = "retention-sweep-data-lifecycle"
+  role = aws_iam_role.retention_sweep_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Scan",
+          "dynamodb:Query"
+        ]
+        Resource = [
+          aws_dynamodb_table.user_analytics.arn,
+          aws_dynamodb_table.product_events.arn,
+          "${aws_dynamodb_table.product_events.arn}/index/*",
+          aws_dynamodb_table.users.arn,
+          aws_dynamodb_table.moral_profiles.arn,
+          "${aws_dynamodb_table.moral_profiles.arn}/index/*",
+          aws_dynamodb_table.challenges.arn,
+          aws_dynamodb_table.challenge_participants.arn,
+          aws_dynamodb_table.party_rooms.arn,
+          aws_dynamodb_table.party_participants.arn,
+        ]
+      },
+      {
+        # Only historic account rows without cognitoUsername need this lookup;
+        # all new rows use their stored immutable Cognito username directly.
+        Effect = "Allow"
+        Action = [
+          "cognito-idp:ListUsers",
+          "cognito-idp:AdminDeleteUser"
+        ]
+        Resource = [aws_cognito_user_pool.users.arn]
+      },
+      {
+        # Terraform pre-creates this group, so the worker needs no wildcard
+        # CreateLogGroup permission from AWSLambdaBasicExecutionRole.
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = ["${aws_cloudwatch_log_group.retention_sweep_logs.arn}:*"]
       }
     ]
   })
@@ -759,6 +848,86 @@ resource "aws_lambda_function" "api" {
   }
 }
 
+# TASK-64: DynamoDB TTL cannot delete a Cognito identity or cascade through
+# shared Duel/Party rows. Run the same idempotent deletion logic once per day
+# for accounts and profiles that have been inactive for twelve months.
+resource "aws_cloudwatch_log_group" "retention_sweep_logs" {
+  name              = "/aws/lambda/${var.stack_name}-retention-sweep"
+  retention_in_days = var.log_retention_days
+
+  tags = {
+    Name        = "Moral Torture Machine Retention Sweep Logs"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
+
+resource "aws_lambda_function" "retention_sweep" {
+  function_name    = "${var.stack_name}-retention-sweep"
+  filename         = "${path.module}/../lambda_function.zip"
+  source_code_hash = filebase64sha256("${path.module}/../lambda_function.zip")
+  handler          = "backend_fastapi.retention_sweep_handler"
+  runtime          = "python3.11"
+  role             = aws_iam_role.retention_sweep_role.arn
+  timeout          = 30
+  memory_size      = 512
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE                          = aws_dynamodb_table.dilemmas.name
+      ANALYTICS_TABLE                         = aws_dynamodb_table.user_analytics.name
+      STORY_FLOWS_TABLE                       = aws_dynamodb_table.story_flows.name
+      PRODUCT_EVENTS_TABLE                    = aws_dynamodb_table.product_events.name
+      USERS_TABLE                             = aws_dynamodb_table.users.name
+      MORAL_PROFILES_TABLE                    = aws_dynamodb_table.moral_profiles.name
+      CHALLENGES_TABLE                        = aws_dynamodb_table.challenges.name
+      CHALLENGE_PARTICIPANTS_TABLE            = aws_dynamodb_table.challenge_participants.name
+      PARTY_ROOMS_TABLE                       = aws_dynamodb_table.party_rooms.name
+      PARTY_PARTICIPANTS_TABLE                = aws_dynamodb_table.party_participants.name
+      OPS_ERROR_ALERTS_TABLE                  = aws_dynamodb_table.ops_error_alerts.name
+      GROQ_API_KEY_SSM_NAME                   = aws_ssm_parameter.groq_api_key.name
+      ANALYTICS_FINGERPRINT_SECRET_SSM_NAME   = aws_ssm_parameter.analytics_fingerprint_pepper.name
+      COGNITO_USER_POOL_ID                    = aws_cognito_user_pool.users.id
+      COGNITO_APP_CLIENT_ID                   = aws_cognito_user_pool_client.web.id
+      COGNITO_APP_CLIENT_IDS                  = join(",", [aws_cognito_user_pool_client.web.id, aws_cognito_user_pool_client.android.id])
+      OPS_ALERTS_TOPIC_ARN                    = aws_sns_topic.ops_alerts.arn
+      OPS_ERROR_NOTIFICATIONS_ENABLED         = tostring(var.ops_error_notifications_enabled)
+      OPS_ERROR_NOTIFICATION_COOLDOWN_SECONDS = tostring(var.ops_error_notification_cooldown_seconds)
+    }
+  }
+
+  depends_on = [
+    aws_iam_role_policy.retention_sweep_permissions,
+    aws_cloudwatch_log_group.retention_sweep_logs,
+  ]
+
+  tags = {
+    Name        = "Moral Torture Machine Retention Sweep"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
+
+resource "aws_cloudwatch_event_rule" "retention_sweep" {
+  name                = "${var.stack_name}-retention-sweep"
+  description         = "Delete expired account/profile data once per day"
+  schedule_expression = "rate(1 day)"
+}
+
+resource "aws_cloudwatch_event_target" "retention_sweep" {
+  rule      = aws_cloudwatch_event_rule.retention_sweep.name
+  target_id = "retention-sweep"
+  arn       = aws_lambda_function.retention_sweep.arn
+}
+
+resource "aws_lambda_permission" "retention_sweep" {
+  statement_id  = "allow-retention-sweep"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.retention_sweep.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.retention_sweep.arn
+}
+
 # API Gateway HTTP API
 resource "aws_apigatewayv2_api" "api" {
   name          = "${var.stack_name}-api"
@@ -801,7 +970,6 @@ resource "aws_apigatewayv2_stage" "default" {
     destination_arn = aws_cloudwatch_log_group.api_logs.arn
     format = jsonencode({
       httpMethod     = "$context.httpMethod"
-      path           = "$context.path"
       protocol       = "$context.protocol"
       requestId      = "$context.requestId"
       requestTime    = "$context.requestTime"

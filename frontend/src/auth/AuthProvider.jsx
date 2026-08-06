@@ -11,6 +11,7 @@ import {
   isNativeAuthCallbackUrl,
   isNativeAuthLogoutUrl,
   isGoogleAuthAvailable,
+  refreshAccountActivity,
   signOut,
 } from './authClient';
 import { trackEvent } from '../utils/analytics';
@@ -25,6 +26,7 @@ const AuthProvider = ({ children }) => {
     setLoading(true);
     const nextSession = await getValidAuthSession();
     setSession(nextSession);
+    if (nextSession?.idToken) void refreshAccountActivity(nextSession.idToken);
     setLoading(false);
     return nextSession;
   }, []);
@@ -51,6 +53,7 @@ const AuthProvider = ({ children }) => {
         const result = await completeGoogleSignIn(url);
         if (cancelled) return;
         setSession(result.session);
+        void refreshAccountActivity(result.session.idToken);
         window.history.replaceState({}, '', result.returnTo);
         window.dispatchEvent(new PopStateEvent('popstate'));
       } catch (callbackError) {

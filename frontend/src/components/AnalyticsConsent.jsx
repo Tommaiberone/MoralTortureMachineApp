@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { isWeb } from '../utils/platform';
 import {
   consent,
@@ -10,15 +9,19 @@ import {
 } from '../utils/googleAnalytics';
 
 const copy = {
-  en: { title: 'Your privacy choices', body: 'Essential browser storage runs the game. With permission, Google Analytics measures aggregate web use only. No advertising, profiling or personalised ads are used.', accept: 'Accept analytics', reject: 'Reject analytics', prefs: 'Privacy preferences', privacy: 'Privacy', cookies: 'Cookies' },
-  it: { title: 'Le tue scelte privacy', body: 'Lo storage essenziale del browser fa funzionare il gioco. Con il tuo consenso, Google Analytics misura solo l’uso aggregato del sito. Non usiamo advertising, profilazione o annunci personalizzati.', accept: 'Accetta analytics', reject: 'Rifiuta analytics', prefs: 'Preferenze privacy', privacy: 'Privacy', cookies: 'Cookie' },
+  title: 'Your privacy choices',
+  body: 'Essential browser storage runs the game. With permission, Google Analytics measures aggregate web use only. We do not sell data, run advertising, personalise ads, or create cross-site advertising profiles; game results are processed to provide the feature itself.',
+  accept: 'Accept analytics',
+  reject: 'Reject analytics',
+  prefs: 'Privacy preferences',
+  privacy: 'Privacy',
+  cookies: 'Cookies',
+  terms: 'Terms',
 };
 
 export const AnalyticsConsent = () => {
-  const { i18n } = useTranslation();
   const [choice, setChoice] = useState(consent());
   if (!isWeb() || choice) return null;
-  const text = copy[i18n.resolvedLanguage === 'it' ? 'it' : 'en'];
   const set = (value) => {
     saveConsent(value);
     setChoice(value);
@@ -28,16 +31,18 @@ export const AnalyticsConsent = () => {
   return (
     <div className="consent-overlay">
       <section className="consent-card" role="dialog" aria-modal="true" aria-labelledby="consent-title">
-        <h2 id="consent-title">{text.title}</h2>
-        <p>{text.body}</p>
+        <h2 id="consent-title">{copy.title}</h2>
+        <p>{copy.body}</p>
         <p>
-          <a href="/privacy" onClick={() => set('denied')}>{text.privacy}</a>
+          <a href="/privacy" onClick={() => set('denied')}>{copy.privacy}</a>
           {' · '}
-          <a href="/cookies" onClick={() => set('denied')}>{text.cookies}</a>
+          <a href="/cookies" onClick={() => set('denied')}>{copy.cookies}</a>
+          {' · '}
+          <a href="/terms" onClick={() => set('denied')}>{copy.terms}</a>
         </p>
         <div className="consent-actions">
-          <button type="button" onClick={() => set('denied')}>{text.reject}</button>
-          <button type="button" className="consent-accept" onClick={() => set('granted')}>{text.accept}</button>
+          <button type="button" onClick={() => set('denied')}>{copy.reject}</button>
+          <button type="button" className="consent-accept" onClick={() => set('granted')}>{copy.accept}</button>
         </div>
       </section>
     </div>
@@ -45,18 +50,17 @@ export const AnalyticsConsent = () => {
 };
 
 export const PrivacyFooter = () => {
-  const { i18n } = useTranslation();
   if (!isWeb()) return null;
-  const text = copy[i18n.resolvedLanguage === 'it' ? 'it' : 'en'];
   const updatePreferences = consent() === 'granted'
     ? revokeGoogleAnalytics
     : resetGoogleAnalyticsConsent;
 
   return (
     <footer className="privacy-footer">
-      <a href="/privacy">{text.privacy}</a>
-      <a href="/cookies">{text.cookies}</a>
-      <button type="button" onClick={updatePreferences}>{text.prefs}</button>
+      <a href="/privacy">{copy.privacy}</a>
+      <a href="/cookies">{copy.cookies}</a>
+      <a href="/terms">{copy.terms}</a>
+      <button type="button" onClick={updatePreferences}>{copy.prefs}</button>
     </footer>
   );
 };

@@ -88,6 +88,23 @@ class AnalyticsModelTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             AnalyticsEvent(**valid_event(properties={"email": "person@example.com"}))
 
+    def test_rejects_unlisted_social_identifiers_in_properties(self):
+        for key in ("public_id", "room_code", "previous_room_code"):
+            with self.subTest(key=key):
+                with self.assertRaises(ValidationError):
+                    AnalyticsEvent(**valid_event(properties={key: "private-link-value"}))
+
+    def test_accepts_only_origin_granularity_for_referrer(self):
+        event = AnalyticsEvent(**valid_event(referrer="https://example.com"))
+        self.assertEqual(event.referrer, "https://example.com")
+
+        with self.assertRaises(ValidationError):
+            AnalyticsEvent(**valid_event(referrer="https://example.com/challenge/private-token"))
+
+    def test_rejects_unsafe_utm_value(self):
+        with self.assertRaises(ValidationError):
+            AnalyticsEvent(**valid_event(utm={"utm_campaign": "person@example.com"}))
+
     def test_rejects_nested_properties(self):
         with self.assertRaises(ValidationError):
             AnalyticsEvent(**valid_event(properties={"unsafe": {"nested": True}}))
@@ -325,6 +342,19 @@ class PartyRoomPollRateLimitKeyTests(unittest.TestCase):
 
         called_keys = [call.args[0] for call in consume.call_args_list]
         self.assertEqual(called_keys, [f"global:{expected_key}", f"public_read:{expected_key}"])
+
+    def test_rate_limit_log_uses_a_route_signature_not_the_private_path(self):
+        request = self._fake_request("/profiles/private-profile-token")
+        request.scope = {}
+        with (
+            patch.object(backend_module, "_consume_burst_window", return_value=(False, 7)),
+            patch.object(backend_module.logger, "warning") as warning,
+        ):
+            response = asyncio.run(enforce_zero_cost_burst_guard(request, self._call_next))
+
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(warning.call_args.args[1], "rate_limit:public_read")
+        self.assertNotIn("private-profile-token", str(warning.call_args))
 
     def test_two_participants_on_the_same_ip_do_not_share_a_party_room_poll_bucket(self):
         # End-to-end regression for the reported false-positive: same IP,

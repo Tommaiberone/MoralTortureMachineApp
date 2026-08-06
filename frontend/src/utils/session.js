@@ -1,11 +1,15 @@
 // Identity and session management for analytics and progressive authentication.
 
-import { getPreference, setPreference } from './storage';
+import { getPreference, removePreference, setPreference } from './storage';
 import { getPlatform, isNativePlatform } from './platform';
 
 const ANONYMOUS_USER_KEY = 'mtm_anonymous_user_id';
 const INSTALL_KEY = 'mtm_install_id';
 const SESSION_KEY = 'mtm_session_id';
+const ANALYTICS_QUEUE_KEY = 'mtm_analytics_queue_v1';
+const CHALLENGE_PROGRESS_PREFIX = 'mtm_challenge_progress_';
+const SEEN_DILEMMAS_KEY = 'mtm_seen_dilemmas';
+const TUTORIAL_COMPLETED_PREFIX = 'tutorial_completed_';
 // VITE_APP_VERSION is injected at build time by deploy.yml from
 // frontend/package.json's `version` (TASK-165); the literal fallback below is
 // only reached for a local `pnpm dev`/build without that env var set.
@@ -144,4 +148,57 @@ export const getAuthenticatedApiHeaders = (idToken) => ({
  */
 export const clearSession = () => {
   sessionStorage.removeItem(SESSION_KEY);
+};
+
+/**
+ * Remove local data linked to an account deletion without clearing unrelated
+ * browser choices such as analytics-cookie consent or display language.
+ */
+export const clearLocalAccountData = async () => {
+  try {
+    await Promise.all([
+      removePreference(ANONYMOUS_USER_KEY),
+      removePreference(INSTALL_KEY),
+    ]);
+  } catch {
+    // The account was already deleted server-side. Continue clearing the
+    // browser/WebView fallback even if a native Preferences call is briefly
+    // unavailable, rather than presenting deletion as a failed operation.
+  } finally {
+    anonymousUserId = undefined;
+    installId = undefined;
+
+    // The web fallback can contain identifiers even after a native-storage
+    // operation, so clear both browser stores deterministically. Storage can
+    // be disabled by a browser/WebView policy; that must not undo a completed
+    // server-side deletion.
+    try {
+      localStorage.removeItem(ANONYMOUS_USER_KEY);
+      localStorage.removeItem(INSTALL_KEY);
+      localStorage.removeItem(SEEN_DILEMMAS_KEY);
+      for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+        const key = localStorage.key(index);
+        if (key?.startsWith(TUTORIAL_COMPLETED_PREFIX)) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch {
+      // Nothing else to do if browser storage is unavailable.
+    }
+
+    try {
+      for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+        const key = sessionStorage.key(index);
+        if (
+          key === SESSION_KEY
+          || key === ANALYTICS_QUEUE_KEY
+          || key?.startsWith(CHALLENGE_PROGRESS_PREFIX)
+        ) {
+          sessionStorage.removeItem(key);
+        }
+      }
+    } catch {
+      // Nothing else to do if browser storage is unavailable.
+    }
+  }
 };

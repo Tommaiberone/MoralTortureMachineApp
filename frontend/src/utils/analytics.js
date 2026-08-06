@@ -12,6 +12,16 @@ const MAX_QUEUE_SIZE = 100;
 const BATCH_SIZE = 25;
 const FLUSH_INTERVAL_MS = 5000;
 const FORBIDDEN_PROPERTY_KEYS = /(^|_)(email|password|token|secret|ip|analysis|dilemma_text|answer_text)($|_)/i;
+const IDENTIFYING_PROPERTY_KEYS = new Set([
+  'anonymous_user_id',
+  'install_id',
+  'session_id',
+  'public_id',
+  'profile_id',
+  'room_code',
+  'previous_room_code',
+]);
+const SAFE_ATTRIBUTION_VALUE = /^[A-Za-z0-9._+-]{1,120}$/;
 
 let queue = [];
 let flushTimer;
@@ -40,6 +50,7 @@ const sanitizeProperties = (properties = {}) => Object.fromEntries(
   Object.entries(properties)
     .filter(([key, value]) => (
       !FORBIDDEN_PROPERTY_KEYS.test(key)
+      && !IDENTIFYING_PROPERTY_KEYS.has(key.toLowerCase())
       && ['string', 'number', 'boolean'].includes(typeof value)
     ))
     .slice(0, 20)
@@ -55,7 +66,9 @@ const getAttribution = () => {
   if (document.referrer) {
     try {
       const referrerUrl = new URL(document.referrer);
-      referrer = `${referrerUrl.origin}${referrerUrl.pathname}`.slice(0, 500);
+      // Keep campaign attribution without retaining share/profile/room paths
+      // that can contain unlisted identifiers.
+      referrer = referrerUrl.origin;
     } catch {
       referrer = undefined;
     }
@@ -66,7 +79,7 @@ const getAttribution = () => {
     utm: Object.fromEntries(
       ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']
         .map((key) => [key, params.get(key)])
-        .filter(([, value]) => value)
+        .filter(([, value]) => value && SAFE_ATTRIBUTION_VALUE.test(value))
     ),
   };
 };
@@ -145,4 +158,13 @@ export const initializeAnalytics = () => {
 export const stopAnalytics = () => {
   if (flushTimer) window.clearInterval(flushTimer);
   initialized = false;
+};
+
+export const clearAnalyticsQueue = () => {
+  queue = [];
+  try {
+    sessionStorage.removeItem(QUEUE_KEY);
+  } catch {
+    // Local cleanup should never block an already-successful server deletion.
+  }
 };

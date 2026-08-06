@@ -1444,6 +1444,58 @@ attribution, but do not freeze the current display. Every future centroid
 change must again bump the catalog version and receive an explicit product
 decision/ADR before deployment.
 
+### ADR-073 — Explicit data lifecycle, full account cascade, and manual Play Data Safety gate (TASK-15.1/63/64)
+
+The owner confirmed the following lifecycle on 2026-08-06: first-party raw
+analytics for 90 days; GA4 web data for two months; Moral Duel data for 30
+days; Party Room data for six hours; operational alerts for 30 days and
+CloudWatch/API logs for seven days; and accounts/Moral Profiles deleted after
+12 months of inactivity. A deletion request must remove Cognito, the app
+account, profiles, data linked to claimed anonymous IDs, and only leave truly
+aggregated/non-linkable statistics. Groq inference prompts/outputs are not
+stored by the app as account/analytics data, but its published reliability and
+abuse retention can be up to 30 days unless the provider account enables Zero
+Data Retention. The current product has no payment or entitlement data.
+
+Options considered: retaining profiles indefinitely because they are shareable
+(rejected: an unlisted public link is still personal game data); adding new GSIs
+to every legacy/social table for rare privacy export/deletion operations
+(rejected at present: permanent index cost and write amplification outweigh
+bounded, retention-limited scans); or relying only on DynamoDB TTL (rejected:
+TTL is asynchronous and cannot delete Cognito or clean related Duel/Party
+objects). Chosen: keep existing useful indexes, use paginated scans only for
+rare privacy workflows, hide an expired profile immediately in the API, and
+run a daily EventBridge-triggered Lambda with a dedicated least-privilege role
+for account/profile lifecycle work.
+
+Deletion of a participant removes the whole affected Duel or Party Room,
+rather than deleting only one row, because comparisons, group verdicts, and
+derived scores would still contain the deleted person's moral inferences. The
+export instead returns only the caller's participation fields and never the
+counterparty's data. Cognito usernames are persisted for new users; the
+retention job uses a sub lookup only for historic rows missing that field.
+Authenticated routes confirm the Cognito user remains active so a locally
+valid pre-deletion JWT cannot recreate an app account during its remaining
+token lifetime.
+
+Cost/Free Tier review: EventBridge rules and target delivery have no additional
+charge; one daily invocation is about 30 invocations/month (and would also be
+far below EventBridge Scheduler's 14 million monthly free invocations). Lambda
+has one million requests/400,000 GB-seconds monthly free tier; the 512 MB/30-
+second worst-case worker is about 450 GB-seconds/month. The design adds no
+provisioned concurrency, NAT, database, or paid observability feature. The local AWS
+`personal` CLI profile was unavailable during this review, so account-specific
+shared usage must be rechecked by the owner before `terraform apply`; no apply
+is authorised by this decision.
+
+Consequences: Privacy, Cookie, and Terms routes now disclose the actual data
+flows, sharing model, retention, AI processor, and non-diagnostic nature of the
+game. `growth-intelligence/data-safety.md` is the versioned declaration source,
+but the owner must manually submit/verify it in Play Console before TASK-63 can
+be closed. The Android client changes require version `1.6.4`/`versionCode 19`;
+because a push with that bump triggers automatic production Play publishing,
+that push requires a separate explicit confirmation.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

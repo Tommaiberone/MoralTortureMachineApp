@@ -78,11 +78,26 @@ dev table, or `/dev` SSM hierarchy.
   authenticated account via a single-table claim-lock item
   (`sub = "anon#<id>"`, conditional `PutItem` on `ownerSub`): idempotent for
   the same account, rejected with 409 for a different one.
-- `GET /users/export` / `DELETE /users/me` cover the account's current data
-  scope (the `users` table record); no other domain stores data keyed by
-  `sub` yet. `/delete-account` is a public, unlinked React route reusing the
-  existing Cognito web/Android auth flow, so it works in-app and on the web
-  without new auth plumbing.
+- `GET /users/export` has schema v2 and uses the account's authoritative
+  `anon#<anonymous_user_id>` claim-lock rows to include only that user's
+  account, profiles, social participations, and raw analytics. It never
+  exports a counterparty's profile, choices, display name, or derived data.
+  `DELETE /users/me` is an idempotent cascade: it removes Cognito, the app
+  account, claim locks, profiles, raw analytics, and any Duel/Party object
+  that contains the deleted participant's derived data. The whole shared
+  object is removed rather than retaining an incoherent comparison. The
+  public `/delete-account` route reuses the existing Cognito web/Android auth
+  flow, and the current client clears local IDs, queued events, challenge
+  progress, and cached game state after a successful deletion.
+- Accounts and profiles have a twelve-month inactivity policy. A restored
+  authenticated session calls `/auth/me`, and authenticated social paths also
+  refresh `lastActiveAt`; profile creation/access (including Duel use) refreshes
+  `lastAccessedAt` without recreating a row deleted concurrently.
+  DynamoDB TTL is enabled for profiles but is asynchronous, so API reads hide
+  expired profiles immediately. A daily EventBridge-triggered Lambda applies
+  the same cascade to expired accounts, including Cognito deletion, because
+  TTL alone cannot safely delete a federated account or related social data.
+  Its dedicated IAM role has only lifecycle-table and required Cognito access.
 - The `auth_write` burst-guard bucket (`ABUSE_AUTH_WRITE_REQUESTS_PER_MINUTE`,
   default 10/minute) rate-limits `/users/claim-anonymous-data`, `/users/me`,
   and `/auth/me`, independent of the `global`/`ai`/`analytics_ingest` buckets.
@@ -119,12 +134,12 @@ dev table, or `/dev` SSM hierarchy.
   `backend/src/` + `backend/data/` layout, so the same code runs unmodified
   locally, in tests, and deployed.
 - **Moral Duel** (`TASK-28`/`34`-`40`) adds three tables, all provisioned 1/1
-  within the shared Free Tier: `moral_profiles` (persistent, shareable
-  profile, PK `publicId` — a `secrets.token_urlsafe(16)` token, GSI
-  `OwnerIndex` on `ownerAnonymousUserId`+`createdAt` to find the caller's
-  latest profile; no TTL, since a profile is core shareable content, not
-  ephemeral analytics), `challenges` (PK `challengeToken`, same token scheme,
-  TTL on `expirationTime` so an abandoned challenge expires), and
+  within the shared Free Tier: `moral_profiles` (shareable profile, PK
+  `publicId` — a `secrets.token_urlsafe(16)` token, GSI `OwnerIndex` on
+  `ownerAnonymousUserId`+`createdAt` to find the caller's latest profile, TTL
+  on `expirationTime` plus API enforcement after 12 months of inactivity),
+  `challenges` (PK `challengeToken`, same token scheme, TTL on
+  `expirationTime` so an abandoned challenge expires), and
   `challenge_participants` (PK `challengeToken`, SK `role` = `creator`|
   `invitee`). A profile stores its `dilemmaBaseIds` (the language-neutral IDs
   shared across `dilemmas_en.json`/`dilemmas_it.json`, per
@@ -234,9 +249,13 @@ dev table, or `/dev` SSM hierarchy.
 - Never collect raw email, auth tokens, IP addresses, full dilemma response
   text, or AI analysis in client event properties.
 - Shared fields include anonymous and session identity, occurrence time,
-  platform, app version, locale, device-declared IANA-style timezone, referrer,
-  UTMs, and experiment assignment. Timezone is never inferred from an IP and is
-  presented as `unknown` for historical rows.
+  platform, app version, locale, device-declared IANA-style timezone, referrer
+  origin, filtered UTMs, and experiment assignment. No analytics property may
+  carry unlisted public-profile IDs, room codes, link paths, email, tokens,
+  answer/dilemma text, or AI analysis; backend validation enforces the same
+  rule for malicious or stale clients. Timezone is never inferred from an IP
+  and is presented as `unknown` for historical rows. Raw first-party analytics
+  have a 90-day TTL.
 - `/admin/analytics` consumes privacy-safe aggregates from
   `/admin/analytics/overview` and intentionally has a separate, Notion-like
   operational visual language from the public horror-themed product.
@@ -286,6 +305,17 @@ dev table, or `/dev` SSM hierarchy.
   account, updates only GA4 event and user retention fields to `TWO_MONTHS`,
   then reads them back to verify the result. It never deploys the web app or
   APK.
+- The public Privacy, Cookie, and Terms routes are `/privacy`, `/cookies`, and
+  `/terms`. `growth-intelligence/data-safety.md` is the versioned source for
+  the Google Play Data Safety declaration; it maps the Android data flows and
+  retention to the form, but an owner must still manually verify and submit the
+  declaration in Play Console before it can truthfully be called published.
+- Groq receives the prompt data necessary to generate requested analysis.
+  First-party storage does not retain the prompt/output as an account profile or
+  analytics field; Groq's published inference policy permits up to 30 days for
+  reliability/abuse monitoring unless its Zero Data Retention control is enabled.
+  The current product has no payment, receipt, or entitlement data; any future
+  billing design must define its retention and legal-obligation exception first.
 
 ## Organic discovery architecture
 
@@ -399,9 +429,12 @@ dev table, or `/dev` SSM hierarchy.
   `TASK-65`, the property *value* (rejects a string that looks like an email
   address or a JWT/bearer token), so an innocuously-named field can't leak PII
   into the event store at ingestion time.
-- API Gateway access logs record the request path for diagnosis and do not store
-  the raw source IP. Stronger distributed enforcement or AWS WAF requires a new
-  cost/Free Tier review and explicit approval.
+- API Gateway access logs record a route key rather than a literal request path
+  and do not store the raw source IP, so unlisted profile/challenge/room tokens
+  do not enter access logs. Application alerting likewise stores the matched
+  route template or an explicit rule signature, never an unmatched literal
+  path. Stronger distributed enforcement or AWS WAF requires a new cost/Free
+  Tier review and explicit approval.
 - One monthly AWS Cost Budget (`backend/terraform/observability.tf`, $200
   limit) sends progressive notifications at $10/$50/$200 actual spend, and
   four CloudWatch alarms (Lambda errors/duration, API Gateway 5xx/latency)

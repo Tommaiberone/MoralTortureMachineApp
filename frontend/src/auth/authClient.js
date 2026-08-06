@@ -208,6 +208,22 @@ const claimAnonymousData = async (idToken) => {
   }
 };
 
+export const refreshAccountActivity = async (idToken) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/me`, {
+      headers: getAuthenticatedApiHeaders(idToken),
+    });
+    if (!response.ok) {
+      console.warn('Account activity refresh failed; it will retry on the next app session.');
+    }
+  } catch (refreshError) {
+    // Session restoration must remain available during a temporary backend or
+    // network outage. The server also refreshes activity on authenticated
+    // social flows, and this heartbeat retries when the app is opened again.
+    console.warn('Account activity refresh failed; it will retry on the next app session.', refreshError);
+  }
+};
+
 export const completeGoogleSignIn = async (callbackUrl) => {
   if (!isGoogleAuthAvailable()) throw new Error('Google authentication is not configured');
   const url = parseAuthUrl(callbackUrl);
@@ -276,9 +292,9 @@ export const getValidAuthSession = async () => {
 
 export const clearAuthSession = () => removeAuthStorageItem(AUTH_SESSION_KEY);
 
-export const signOut = async () => {
+export const signOut = async ({ track = true } = {}) => {
   await Promise.all([clearAuthSession(), clearPendingSignIn()]);
-  trackEvent('auth_logout', { provider: 'google' });
+  if (track) trackEvent('auth_logout', { provider: 'google' });
   if (!isGoogleAuthAvailable()) return;
 
   const query = new URLSearchParams({

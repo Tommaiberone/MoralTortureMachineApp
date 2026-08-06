@@ -12,7 +12,7 @@ export const getWebApplicationSchema = () => ({
   "name": "Moral Torture Machine",
   "alternateName": "MTM",
   "url": "https://moraltorturemachine.com",
-  "description": "Explore your moral framework through ethical dilemmas with AI-powered analysis. Test your ethics with the trolley problem and discover your moral compass.",
+  "description": "An interactive ethical-dilemma game with deterministic scoring and optional AI-written commentary for reflection and discussion.",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Any",
   "offers": {
@@ -20,14 +20,15 @@ export const getWebApplicationSchema = () => ({
     "price": "0",
     "priceCurrency": "USD"
   },
-  "inLanguage": ["en", "it"],
+  "inLanguage": "en",
   "browserRequirements": "Requires JavaScript. Requires HTML5.",
   "featureList": [
-    "AI-powered moral framework analysis",
+    "Deterministic moral-dilemma game scoring",
+    "Optional AI-written result commentary",
     "Interactive ethical dilemmas",
     "Multiplayer pass-the-phone mode",
     "Detailed results visualization",
-    "Multi-language support"
+    "Moral Duel and Party Room comparison"
   ],
   "screenshot": "https://moraltorturemachine.com/og-image.png",
   "author": {
@@ -54,7 +55,7 @@ export const getFAQSchema = () => ({
       "name": "What is the Moral Torture Machine?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "The Moral Torture Machine is an interactive web application that explores your moral framework through ethical dilemmas. It uses AI-powered analysis to evaluate your responses to moral scenarios, similar to the famous trolley problem, and provides insights into your ethical decision-making patterns."
+        "text": "The Moral Torture Machine is an interactive moral-dilemma game. It uses deterministic scoring to create an in-game archetype from fictional ethical choices, with optional AI-written commentary for reflection and discussion."
       }
     },
     {
@@ -62,7 +63,7 @@ export const getFAQSchema = () => ({
       "name": "How does the moral analysis work?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Our AI analyzes your choices across various ethical dilemmas, identifying patterns in your moral reasoning. It evaluates factors like utilitarianism, deontological ethics, virtue ethics, and personal values to create a comprehensive profile of your moral framework."
+        "text": "A versioned deterministic score groups the game's choices into six value dimensions and an archetype. Optional AI text explains the result but does not set the score. The game is not a psychological or clinical assessment."
       }
     },
     {
@@ -70,7 +71,7 @@ export const getFAQSchema = () => ({
       "name": "Is the Moral Torture Machine free?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes, the Moral Torture Machine is completely free to use. You can explore ethical dilemmas, receive AI-powered analysis, and share your results without any cost."
+        "text": "Yes, the Moral Torture Machine is free to use. You can explore ethical dilemmas, receive an in-game result with optional AI-written commentary, and choose whether to share a result."
       }
     },
     {
@@ -86,7 +87,7 @@ export const getFAQSchema = () => ({
       "name": "Can I play with friends?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes! The Pass-the-Phone mode allows multiple players to answer the same ethical dilemmas and compare their moral frameworks. It's a great way to spark philosophical discussions with friends and family."
+        "text": "Yes. Pass-the-Phone, Moral Duel, and Party Room flows let people compare game results or discuss the same dilemmas. Shared links and room codes should only be sent to people you intend to invite."
       }
     },
     {
@@ -94,7 +95,7 @@ export const getFAQSchema = () => ({
       "name": "Do you store my responses?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "We respect your privacy. Your responses are processed to generate your moral analysis but are not permanently stored or shared. All processing happens securely, and you maintain full control over your data."
+        "text": "The service retains different data for different periods: raw first-party analytics for 90 days, Moral Duels for 30 days, Party Rooms for 6 hours, and accounts/profiles for up to 12 months of inactivity. Signed-in users can export or delete data linked to anonymous IDs they have claimed; the Privacy notice explains the full scope."
       }
     }
   ]
@@ -106,15 +107,15 @@ export const getFAQSchema = () => ({
 export const getHowToSchema = () => ({
   "@context": "https://schema.org",
   "@type": "HowTo",
-  "name": "How to Explore Your Moral Framework with Moral Torture Machine",
-  "description": "Step-by-step guide to discovering your ethical decision-making patterns through interactive moral dilemmas.",
+  "name": "How to Play Moral Torture Machine",
+  "description": "A short guide to playing interactive ethical dilemmas for reflection and discussion.",
   "image": "https://moraltorturemachine.com/og-image.png",
   "totalTime": "PT10M",
   "step": [
     {
       "@type": "HowToStep",
-      "name": "Choose Your Mode",
-      "text": "Select between Solo Evaluation, Pass-the-Phone multiplayer mode, or Story Mode for a narrative experience.",
+      "name": "Choose a way to play",
+      "text": "Choose solo play, Pass-the-Phone, or a Party Room with people you know.",
       "url": "https://moraltorturemachine.com/",
       "image": "https://moraltorturemachine.com/og-image.png"
     },
@@ -126,14 +127,14 @@ export const getHowToSchema = () => ({
     },
     {
       "@type": "HowToStep",
-      "name": "Review Your Analysis",
-      "text": "Receive detailed AI-powered analysis of your moral framework. Discover your ethical tendencies, values, and decision-making patterns.",
+      "name": "Review the game result",
+      "text": "See the deterministic in-game result and optional AI-written commentary. It is for entertainment and reflection, not a diagnosis.",
       "url": "https://moraltorturemachine.com/results"
     },
     {
       "@type": "HowToStep",
-      "name": "Share and Compare",
-      "text": "Share your results with friends and compare moral frameworks. Use Pass-the-Phone mode for group discussions about ethics and philosophy.",
+      "name": "Share and compare if you choose",
+      "text": "Use an unlisted link, a Moral Duel, or Pass-the-Phone to discuss different perspectives with people you choose.",
       "url": "https://moraltorturemachine.com/pass-the-phone"
     }
   ]
@@ -226,7 +227,7 @@ export const getOrganizationSchema = () => ({
   "name": "Moral Torture Machine",
   "url": "https://moraltorturemachine.com",
   "logo": "https://moraltorturemachine.com/favicon.svg",
-  "description": "Interactive platform for exploring moral philosophy through ethical dilemmas and AI-powered analysis.",
+  "description": "Interactive ethical-dilemma game with deterministic scoring and optional AI-written commentary.",
   "sameAs": [
     // Add social media profiles here when available
     // "https://twitter.com/moraltorturemachine",

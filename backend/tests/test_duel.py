@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import time
 import unittest
 from unittest.mock import Mock, patch
 
@@ -84,6 +85,8 @@ class CreateProfileTests(unittest.TestCase):
         self.assertEqual(stored_item["ownerAnonymousUserId"], "anon-1")
         self.assertEqual(stored_item["dilemmaBaseIds"], ["dilemma-0", "dilemma-1", "dilemma-2"])
         self.assertEqual(json.loads(stored_item["dimensionAverages"])["Empathy"], 0.85)
+        self.assertIn("lastAccessedAt", stored_item)
+        self.assertGreater(stored_item["expirationTime"], int(time.time()))
 
 
 class GetProfileTests(unittest.TestCase):
@@ -107,6 +110,65 @@ class GetProfileTests(unittest.TestCase):
             result = asyncio.run(get_profile("pub-1", request_with_headers({}), language="en"))
         self.assertNotIn("ownerAnonymousUserId", result)
         self.assertNotIn("ownerAnonymousUserId", json.dumps(result))
+        retention_call = profiles_table.update_item.call_args.kwargs
+        self.assertIn("expirationTime", retention_call["UpdateExpression"])
+        self.assertEqual(retention_call["ConditionExpression"], "attribute_exists(publicId)")
+
+    def test_expired_profile_is_deleted_and_not_returned_while_ttl_is_pending(self):
+        profiles_table = Mock()
+        profiles_table.get_item.return_value = {"Item": {
+            "publicId": "expired-profile",
+            "dimensionAverages": json.dumps({d: 0.8 for d in SIX_DIMENSIONS}),
+            "createdAt": 1000,
+            "expirationTime": 1,
+        }}
+        with patch.object(backend_module, "moral_profiles_table", profiles_table):
+            with self.assertRaises(HTTPException) as raised:
+                asyncio.run(get_profile("expired-profile", request_with_headers({}), language="en"))
+        self.assertEqual(raised.exception.status_code, 404)
+        profiles_table.delete_item.assert_called_once_with(Key={"publicId": "expired-profile"})
+
+    def test_expired_profile_does_not_trigger_repeat_duel_login_gate(self):
+        profiles_table = Mock()
+        profiles_table.query.return_value = {"Items": [{
+            "publicId": "expired-profile",
+            "expirationTime": 1,
+        }]}
+        with patch.object(backend_module, "moral_profiles_table", profiles_table):
+            has_prior_profile = backend_module._has_prior_profile("anon-1")
+
+        self.assertFalse(has_prior_profile)
+        profiles_table.delete_item.assert_called_once_with(Key={"publicId": "expired-profile"})
+
+    def test_profile_touch_does_not_recreate_a_concurrently_deleted_profile(self):
+        profiles_table = Mock()
+        profiles_table.get_item.return_value = {"Item": {
+            "publicId": "gone-profile",
+            "dimensionAverages": json.dumps({d: 0.8 for d in SIX_DIMENSIONS}),
+            "createdAt": 1000,
+        }}
+        profiles_table.update_item.side_effect = conditional_check_failed()
+        with patch.object(backend_module, "moral_profiles_table", profiles_table):
+            with self.assertRaises(HTTPException) as raised:
+                asyncio.run(get_profile("gone-profile", request_with_headers({}), language="en"))
+
+        self.assertEqual(raised.exception.status_code, 404)
+
+    def test_latest_profile_use_refreshes_its_retention(self):
+        profiles_table = Mock()
+        profiles_table.query.return_value = {"Items": [{
+            "publicId": "active-profile",
+            "ownerAnonymousUserId": "anon-1",
+            "expirationTime": int(time.time()) + 1,
+        }]}
+        with patch.object(backend_module, "moral_profiles_table", profiles_table):
+            profile = backend_module.get_latest_profile_for_anonymous_user("anon-1")
+
+        self.assertEqual(profile["publicId"], "active-profile")
+        update = profiles_table.update_item.call_args.kwargs
+        self.assertEqual(update["Key"], {"publicId": "active-profile"})
+        self.assertEqual(update["ConditionExpression"], "attribute_exists(publicId)")
+        self.assertGreater(update["ExpressionAttributeValues"][":expiration_time"], int(time.time()))
 
 
 class DilemmasByIdsTests(unittest.TestCase):

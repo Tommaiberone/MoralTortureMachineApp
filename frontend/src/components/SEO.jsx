@@ -23,13 +23,13 @@ const SEO = ({
   const fullUrl = url ? `${baseUrl}${url}` : baseUrl;
 
   // Full title with branding
-  const fullTitle = title ? `${title} | Moral Torture Machine` : 'Moral Torture Machine - Explore Your Moral Framework';
+  const fullTitle = title ? `${title} | Moral Torture Machine` : 'Moral Torture Machine - Interactive Ethical Dilemma Game';
 
   // Default description if none provided
-  const finalDescription = description || 'Explore your moral framework through ethical dilemmas. Discover your moral compass with AI-powered analysis and interactive decision-making experiences.';
+  const finalDescription = description || 'Play interactive ethical dilemmas with deterministic game scoring and optional AI-written commentary for reflection and discussion.';
 
   // Default keywords
-  const finalKeywords = keywords || 'moral philosophy, ethics, ethical dilemmas, trolley problem, moral compass, AI analysis, philosophy game, moral framework, decision making';
+  const finalKeywords = keywords || 'moral philosophy, ethics, ethical dilemmas, trolley problem, philosophy game, moral reasoning, decision making';
 
   return (
     <Helmet>

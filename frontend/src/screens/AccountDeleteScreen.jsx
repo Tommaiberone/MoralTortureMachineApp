@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next';
 
 import useAuth from '../auth/useAuth';
 import { signOut } from '../auth/authClient';
-import { getAuthenticatedApiHeaders } from '../utils/session';
-import { trackEvent } from '../utils/analytics';
+import { clearLocalAccountData, getAuthenticatedApiHeaders } from '../utils/session';
+import { clearAnalyticsQueue, trackEvent } from '../utils/analytics';
 import { PrivacyFooter } from '../components/AnalyticsConsent';
 
 const API_URL = import.meta.env.VITE_API_URL;
@@ -50,9 +50,10 @@ const AccountDeleteScreen = () => {
         headers: getAuthenticatedApiHeaders(session.idToken),
       });
       if (!response.ok) throw new Error('delete failed');
-      trackEvent('account_deleted', {});
+      clearAnalyticsQueue();
+      await clearLocalAccountData();
       setDeleted(true);
-      await signOut();
+      await signOut({ track: false });
     } catch {
       setError(t('account.deleteError'));
       setBusy(false);
@@ -98,6 +99,7 @@ const AccountDeleteScreen = () => {
       <article>
         <h1>{t('account.title')}</h1>
         <p>{user?.email ? t('account.loggedInAs', { email: user.email }) : t('account.loggedInGeneric')}</p>
+        <p>{t('account.deleteScope')}</p>
 
         {error && <p role="alert">{error}</p>}
 

@@ -70,9 +70,9 @@ class RequestPathSignatureTests(unittest.TestCase):
             "rate_limit:party_room_poll",
         )
 
-    def test_unmapped_route_falls_back_to_literal_path(self):
+    def test_unmapped_route_uses_a_non_identifying_signature(self):
         request = self._fake_request("/robots.txt")
-        self.assertEqual(backend_module._request_path_signature(request, 404), "/robots.txt")
+        self.assertEqual(backend_module._request_path_signature(request, 404), "unmatched")
 
 
 class NotifyOpsOfErrorTests(unittest.TestCase):
@@ -164,8 +164,8 @@ class NotifyOpsOfErrorTests(unittest.TestCase):
         item = table.put_item.call_args.kwargs["Item"]
         self.assertEqual(item["statusCode"], 404)
         self.assertEqual(item["method"], "GET")
-        self.assertEqual(item["path"], "/profiles/x")
-        self.assertEqual(item["pathSignature"], "/profiles/x")
+        self.assertEqual(item["path"], "unmatched")
+        self.assertEqual(item["pathSignature"], "unmatched")
         self.assertIn("alertId", item)
         self.assertIn("expirationTime", item)
 
