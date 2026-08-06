@@ -1388,6 +1388,7 @@ async def create_challenge(challenge_request: CreateChallengeRequest, request: R
 
     token = generate_public_token()
     now = int(time.time() * 1000)
+    expires_at = int(time.time()) + CHALLENGE_TTL_SECONDS
     challenges_table.put_item(Item={
         "challengeToken": token,
         "creatorProfileId": profile["publicId"],
@@ -1395,7 +1396,7 @@ async def create_challenge(challenge_request: CreateChallengeRequest, request: R
         "language": profile["language"],
         "status": "open",
         "createdAt": now,
-        "expirationTime": int(time.time()) + CHALLENGE_TTL_SECONDS,
+        "expirationTime": expires_at,
     })
     challenge_participants_table.put_item(Item={
         "challengeToken": token,
@@ -1403,6 +1404,7 @@ async def create_challenge(challenge_request: CreateChallengeRequest, request: R
         "anonymousUserId": anonymous_user_id,
         "profilePublicId": profile["publicId"],
         "submittedAt": now,
+        "expirationTime": expires_at,
     })
     _track_duel_event(request, "challenge_created", {"dilemma_count": len(profile["dilemmaBaseIds"])})
     return {"challengeToken": token, "status": "open", "dilemmaCount": len(profile["dilemmaBaseIds"])}
@@ -1691,6 +1693,7 @@ async def rematch_challenge(token: str, request: Request):
 
     new_token = generate_public_token()
     now = int(time.time() * 1000)
+    expires_at = int(time.time()) + CHALLENGE_TTL_SECONDS
     challenges_table.put_item(Item={
         "challengeToken": new_token,
         "creatorProfileId": participant["profilePublicId"],
@@ -1698,7 +1701,7 @@ async def rematch_challenge(token: str, request: Request):
         "language": challenge["language"],
         "status": "open",
         "createdAt": now,
-        "expirationTime": int(time.time()) + CHALLENGE_TTL_SECONDS,
+        "expirationTime": expires_at,
         "rematchOfToken": token,
     })
     challenge_participants_table.put_item(Item={
@@ -1707,6 +1710,7 @@ async def rematch_challenge(token: str, request: Request):
         "anonymousUserId": anonymous_user_id,
         "profilePublicId": participant["profilePublicId"],
         "submittedAt": now,
+        "expirationTime": expires_at,
     })
     _track_duel_event(request, "challenge_rematch_created", {"rematch_of_token": token})
     return {"challengeToken": new_token, "status": "open"}

@@ -158,6 +158,7 @@ class CreateChallengeTests(unittest.TestCase):
         self.assertEqual(challenge_item["dilemmaBaseIds"], ["d1", "d2"])
         participant_item = participants_table.put_item.call_args.kwargs["Item"]
         self.assertEqual(participant_item["role"], "creator")
+        self.assertEqual(participant_item["expirationTime"], challenge_item["expirationTime"])
 
     def test_400_when_caller_has_no_profile(self):
         profiles_table = Mock()
@@ -637,6 +638,8 @@ class RematchChallengeTests(unittest.TestCase):
         self.assertNotEqual(result["challengeToken"], "tok")
         new_challenge_item = challenges_table.put_item.call_args.kwargs["Item"]
         self.assertEqual(new_challenge_item["rematchOfToken"], "tok")
+        new_creator_item = participants_table.put_item.call_args.kwargs["Item"]
+        self.assertEqual(new_creator_item["expirationTime"], new_challenge_item["expirationTime"])
 
     def test_rematch_requires_login_even_for_a_valid_participant(self):
         """TASK-136: a rematch is always a repeat Duel interaction, so it

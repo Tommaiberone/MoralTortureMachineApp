@@ -1,10 +1,10 @@
 ---
 id: TASK-63
 title: Aggiornare Privacy Policy Terms e Data Safety
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-07-29 11:29'
-updated_date: '2026-07-31 15:06'
+updated_date: '2026-08-06 12:29'
 labels:
   - m9-privacy
   - legal
