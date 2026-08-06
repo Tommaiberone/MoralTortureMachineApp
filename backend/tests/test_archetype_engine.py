@@ -51,18 +51,18 @@ class ArchetypeEngineTests(unittest.TestCase):
         self.assertEqual(first, second)
 
     def test_boundary_tie_is_broken_deterministically_by_lowest_id(self):
-        # Exact midpoint between ruthless_pragmatist and noble_liar centroids:
+        # Exact midpoint between self_preservationist and bleak_nihilist centroids:
         # equidistant from both and strictly closer to them than any other
         # archetype, so this is a genuine tie, not an approximation.
-        a = self.archetypes_by_id["ruthless_pragmatist"]["centroid"]
-        b = self.archetypes_by_id["noble_liar"]["centroid"]
+        a = self.archetypes_by_id["self_preservationist"]["centroid"]
+        b = self.archetypes_by_id["bleak_nihilist"]["centroid"]
         midpoint = {dim: (a[dim] + b[dim]) / 2 for dim in a}
 
         result = assign_archetype(midpoint, language="en")
 
-        self.assertEqual(result["archetypeId"], "noble_liar")
+        self.assertEqual(result["archetypeId"], "bleak_nihilist")
         # Re-running must not flip the tie-break to the other archetype.
-        self.assertEqual(assign_archetype(midpoint, language="en")["archetypeId"], "noble_liar")
+        self.assertEqual(assign_archetype(midpoint, language="en")["archetypeId"], "bleak_nihilist")
 
     def test_missing_dimension_falls_back_to_neutral_without_crashing(self):
         incomplete_averages = {
@@ -89,7 +89,7 @@ class ArchetypeEngineTests(unittest.TestCase):
     def test_unrecognized_language_defaults_to_english(self):
         centroid = self.archetypes_by_id["saintly_martyr"]["centroid"]
         result = assign_archetype(centroid, language="fr")
-        self.assertEqual(result["name"], "The Saintly Martyr")
+        self.assertEqual(result["name"], "The Moral Idealist")
 
     def test_compute_dimension_averages_matches_manual_mean(self):
         answers = [

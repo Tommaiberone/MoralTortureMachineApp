@@ -1,271 +1,418 @@
 {
-  "version": 1,
-  "dimensions": ["Empathy", "Integrity", "Responsibility", "Justice", "Altruism", "Honesty"],
+  "version": 2,
+  "dimensions": [
+    "Empathy",
+    "Integrity",
+    "Responsibility",
+    "Justice",
+    "Altruism",
+    "Honesty"
+  ],
   "archetypes": [
     {
       "id": "ruthless_pragmatist",
-      "centroid": {"Empathy": 0.2, "Integrity": 0.5, "Responsibility": 0.85, "Justice": 0.85, "Altruism": 0.2, "Honesty": 0.5},
-      "visual": {"emoji": "⚖️", "color": "#7A1F1F"},
+      "centroid": {
+        "Empathy": 0.2,
+        "Integrity": 0.5,
+        "Responsibility": 0.85,
+        "Justice": 0.85,
+        "Altruism": 0.2,
+        "Honesty": 0.5
+      },
+      "visual": {
+        "emoji": "⚖️",
+        "color": "#7A1F1F"
+      },
       "en": {
         "name": "The Ruthless Pragmatist",
-        "description": "You do the math before you do the mourning. When a dilemma pits numbers against feelings, the numbers win, every time.",
-        "strength": "You can make the hard call others freeze on, and you rarely let sentiment cost more lives than it saves.",
-        "blindSpot": "The people you sacrifice for \"the greater good\" are never abstractions to themselves.",
-        "sharePhrase": "I ran the numbers. You didn't like the answer."
+        "description": "You treat morality as triage: count the consequences, choose the least damaging outcome, and accept being hated for it. When one person and five people cannot both be saved, sentiment does not get a vote.",
+        "strength": "You stay decisive under pressure and can prevent a painful situation from becoming a catastrophic one.",
+        "blindSpot": "Once people become variables, it gets dangerously easy to call any cruelty \"necessary.\"",
+        "sharePhrase": "I chose the outcome with fewer graves."
       },
       "it": {
         "name": "Il Pragmatico Spietato",
-        "description": "Fai i calcoli prima di fare il lutto. Quando un dilemma mette a confronto i numeri e i sentimenti, vincono sempre i numeri.",
-        "strength": "Sai prendere la decisione difficile davanti a cui altri si bloccano, e raramente lasci che il sentimentalismo costi più vite di quante ne salvi.",
-        "blindSpot": "Le persone che sacrifichi per il \"bene superiore\" non sono mai un'astrazione, per loro stesse.",
-        "sharePhrase": "Ho fatto i calcoli. Il risultato non ti piacerà."
+        "description": "Tratti la morale come un triage: conti le conseguenze, scegli l'esito meno dannoso e accetti di essere odiato per questo. Quando non puoi salvare sia una persona sia cinque, il sentimento non ha diritto di voto.",
+        "strength": "Resti lucido sotto pressione e sai impedire che una situazione dolorosa diventi una catastrofe.",
+        "blindSpot": "Quando le persone diventano variabili, è fin troppo facile chiamare \"necessaria\" qualsiasi crudeltà.",
+        "sharePhrase": "Ho scelto l'esito con meno tombe."
       }
     },
     {
       "id": "tragic_principled",
-      "centroid": {"Empathy": 0.2, "Integrity": 0.85, "Responsibility": 0.5, "Justice": 0.5, "Altruism": 0.2, "Honesty": 0.85},
-      "visual": {"emoji": "🗿", "color": "#4B3F72"},
+      "centroid": {
+        "Empathy": 0.2,
+        "Integrity": 0.85,
+        "Responsibility": 0.2,
+        "Justice": 0.2,
+        "Altruism": 0.2,
+        "Honesty": 0.85
+      },
+      "visual": {
+        "emoji": "🗿",
+        "color": "#4B3F72"
+      },
       "en": {
-        "name": "The Tragic Principled",
-        "description": "You'd rather lose everything than break your own rules. Consistency is your religion, even when it costs you the thing you were trying to protect.",
-        "strength": "People can predict exactly what you'll do, which makes you the only one they trust when it matters.",
-        "blindSpot": "Sometimes \"I kept my principles\" is just a nicer way of saying \"I let it happen.\"",
-        "sharePhrase": "I followed the rule. The rule didn't care what it cost me."
+        "name": "The Tragic Absolutist",
+        "description": "Some lines must never be crossed, even to prevent something worse. You would rather endure a terrible consequence than become the kind of person who made the exception.",
+        "strength": "Your principles remain stable when fear, pressure, and convenience make everyone else's negotiable.",
+        "blindSpot": "Protecting your moral purity can become more important than protecting the people who will bear the consequences.",
+        "sharePhrase": "I kept my hands clean. The cost did not."
       },
       "it": {
-        "name": "Il Principista Tragico",
-        "description": "Preferisci perdere tutto piuttosto che infrangere le tue regole. La coerenza è la tua religione, anche quando ti costa proprio ciò che volevi proteggere.",
-        "strength": "Le persone sanno esattamente cosa farai, e questo ti rende l'unico di cui fidarsi quando conta davvero.",
-        "blindSpot": "A volte \"ho rispettato i miei principi\" è solo un modo elegante per dire \"ho lasciato che accadesse.\"",
-        "sharePhrase": "Ho seguito la regola. Alla regola non importava cosa mi costasse."
+        "name": "L'Assolutista Tragico",
+        "description": "Ci sono linee che non vanno superate, nemmeno per evitare qualcosa di peggio. Preferisci sopportare una conseguenza terribile piuttosto che diventare la persona che ha fatto quell'eccezione.",
+        "strength": "I tuoi principi restano saldi quando paura, pressione e convenienza rendono negoziabili quelli degli altri.",
+        "blindSpot": "Proteggere la tua purezza morale può diventare più importante che proteggere chi subirà le conseguenze.",
+        "sharePhrase": "Ho tenuto pulite le mani. Il prezzo no."
       }
     },
     {
       "id": "devoted_protector",
-      "centroid": {"Empathy": 0.85, "Integrity": 0.5, "Responsibility": 0.85, "Justice": 0.2, "Altruism": 0.85, "Honesty": 0.5},
-      "visual": {"emoji": "🛡️", "color": "#1F4E5F"},
+      "centroid": {
+        "Empathy": 0.85,
+        "Integrity": 0.5,
+        "Responsibility": 0.85,
+        "Justice": 0.2,
+        "Altruism": 0.85,
+        "Honesty": 0.5
+      },
+      "visual": {
+        "emoji": "🛡️",
+        "color": "#1F4E5F"
+      },
       "en": {
         "name": "The Devoted Protector",
-        "description": "Your circle comes first, full stop. Strangers get your sympathy; the people you love get everything else.",
-        "strength": "The people close to you never have to wonder whose side you're on.",
-        "blindSpot": "\"Everyone else\" is somebody's whole world too, and you already decided they don't count as much.",
-        "sharePhrase": "I'd burn the world down for the people I love. I did the math and I'm okay with that."
+        "description": "Morality begins with a promise: the people entrusted to you do not get abandoned. You will take the risk, break ranks, and absorb the cost before letting your own face it alone.",
+        "strength": "Your loyalty becomes courage when someone vulnerable needs a person who will not step away.",
+        "blindSpot": "Closeness can feel like moral importance, even though strangers are no less real to the people who love them.",
+        "sharePhrase": "The world had rules. I had people."
       },
       "it": {
         "name": "Il Protettore Devoto",
-        "description": "Il tuo cerchio viene prima di tutto, punto. Agli sconosciuti dai la tua compassione; alle persone che ami dai tutto il resto.",
-        "strength": "Chi ti sta vicino non deve mai chiedersi da che parte stai.",
-        "blindSpot": "\"Tutti gli altri\" sono il mondo intero di qualcun altro, e tu hai già deciso che contano meno.",
-        "sharePhrase": "Brucerei il mondo per le persone che amo. Ho fatto i conti e mi sta bene così."
+        "description": "Per te la morale comincia da una promessa: le persone affidate a te non si abbandonano. Affronti il rischio, rompi i ranghi e assorbi il costo prima di lasciare che i tuoi lo sostengano da soli.",
+        "strength": "La tua lealtà diventa coraggio quando una persona vulnerabile ha bisogno di qualcuno che non si tiri indietro.",
+        "blindSpot": "La vicinanza può sembrarti importanza morale, anche se gli sconosciuti non sono meno reali per chi li ama.",
+        "sharePhrase": "Il mondo aveva delle regole. Io avevo delle persone."
       }
     },
     {
       "id": "noble_liar",
-      "centroid": {"Empathy": 0.85, "Integrity": 0.2, "Responsibility": 0.5, "Justice": 0.5, "Altruism": 0.85, "Honesty": 0.2},
-      "visual": {"emoji": "🎭", "color": "#6B4226"},
+      "centroid": {
+        "Empathy": 0.85,
+        "Integrity": 0.2,
+        "Responsibility": 0.5,
+        "Justice": 0.5,
+        "Altruism": 0.85,
+        "Honesty": 0.2
+      },
+      "visual": {
+        "emoji": "🎭",
+        "color": "#6B4226"
+      },
       "en": {
         "name": "The Noble Liar",
-        "description": "Truth is negotiable when someone you care about is on the line. You'll bend a fact, dodge a question, or tell a flattering lie to keep people safe and happy.",
-        "strength": "You protect people from pain that wouldn't have changed anything anyway.",
-        "blindSpot": "Every lie you tell \"for their own good\" is also a decision they never got to make.",
-        "sharePhrase": "I lied straight to your face. You're welcome."
+        "description": "You see truth as a tool, not a sacred object. When honesty would only wound, expose, or destroy, you reshape the story to protect someone else's peace or safety.",
+        "strength": "You understand that tact, timing, and selective silence can sometimes prevent suffering without changing the essential outcome.",
+        "blindSpot": "Every protective lie appoints you as the person who decides which reality someone else is allowed to face.",
+        "sharePhrase": "I changed the truth to spare the damage."
       },
       "it": {
         "name": "Il Bugiardo Nobile",
-        "description": "La verità è negoziabile quando è in gioco qualcuno a cui tieni. Pieghi un fatto, eviti una domanda, dici una bugia gentile pur di tenere le persone al sicuro e serene.",
-        "strength": "Proteggi le persone da un dolore che comunque non avrebbe cambiato nulla.",
-        "blindSpot": "Ogni bugia detta \"per il loro bene\" è anche una scelta che a loro non hai mai lasciato fare.",
-        "sharePhrase": "Ti ho mentito in faccia. Di niente."
+        "description": "Consideri la verità uno strumento, non un oggetto sacro. Quando l'onestà servirebbe solo a ferire, esporre o distruggere, rimodelli il racconto per proteggere la serenità o la sicurezza di qualcun altro.",
+        "strength": "Capisci che tatto, tempismo e silenzio selettivo possono talvolta evitare sofferenza senza cambiare l'esito essenziale.",
+        "blindSpot": "Ogni bugia protettiva ti nomina arbitro della realtà che un'altra persona è autorizzata ad affrontare.",
+        "sharePhrase": "Ho cambiato la verità per limitare il danno."
       }
     },
     {
       "id": "blind_avenger",
-      "centroid": {"Empathy": 0.5, "Integrity": 0.85, "Responsibility": 0.85, "Justice": 0.85, "Altruism": 0.2, "Honesty": 0.2},
-      "visual": {"emoji": "🗡️", "color": "#8B0000"},
+      "centroid": {
+        "Empathy": 0.5,
+        "Integrity": 0.85,
+        "Responsibility": 0.5,
+        "Justice": 0.85,
+        "Altruism": 0.2,
+        "Honesty": 0.2
+      },
+      "visual": {
+        "emoji": "🗡️",
+        "color": "#8B0000"
+      },
       "en": {
-        "name": "The Blind Avenger",
-        "description": "Justice is the point, not the process. If the rulebook gets in the way of what's fair, you'll improvise — and you won't lose sleep over how.",
-        "strength": "You act when everyone else is still debating procedure, and wrongdoers rarely get away with it around you.",
-        "blindSpot": "\"What's fair\" looks suspiciously like whatever you already decided before you asked the question.",
-        "sharePhrase": "I decided what was fair. Then I made it happen."
+        "name": "The Righteous Vigilante",
+        "description": "You trust your moral judgment more than institutions that move slowly, compromise, or protect the guilty. When procedure blocks accountability, you become the procedure.",
+        "strength": "You act against impunity when everyone else is hiding behind delay, caution, or bureaucracy.",
+        "blindSpot": "A verdict delivered by one person leaves no appeal—and anger is very good at disguising itself as certainty.",
+        "sharePhrase": "The system asked for patience. I chose action."
       },
       "it": {
-        "name": "Il Vendicatore Cieco",
-        "description": "La giustizia è l'obiettivo, non la procedura. Se il regolamento si mette in mezzo a ciò che è giusto, improvvisi — e non perdi il sonno per come.",
-        "strength": "Agisci mentre tutti gli altri stanno ancora discutendo di procedura, e chi sbaglia raramente la fa franca con te.",
-        "blindSpot": "\"Ciò che è giusto\" somiglia sospettosamente a quello che avevi già deciso prima ancora di porti la domanda.",
-        "sharePhrase": "Ho deciso io cos'era giusto. Poi l'ho fatto succedere."
+        "name": "Il Giustiziere",
+        "description": "Ti fidi del tuo giudizio morale più che delle istituzioni che rallentano, scendono a compromessi o proteggono i colpevoli. Quando la procedura blocca la responsabilità, diventi tu la procedura.",
+        "strength": "Agisci contro l'impunità mentre gli altri si nascondono dietro ritardi, prudenza o burocrazia.",
+        "blindSpot": "Una sentenza emessa da una sola persona non ammette appello, e la rabbia sa travestirsi molto bene da certezza.",
+        "sharePhrase": "Il sistema ha chiesto pazienza. Io ho scelto di agire."
       }
     },
     {
       "id": "reluctant_hero",
-      "centroid": {"Empathy": 0.85, "Integrity": 0.85, "Responsibility": 0.85, "Justice": 0.5, "Altruism": 0.85, "Honesty": 0.5},
-      "visual": {"emoji": "🕯️", "color": "#B08D57"},
+      "centroid": {
+        "Empathy": 0.85,
+        "Integrity": 0.85,
+        "Responsibility": 0.85,
+        "Justice": 0.5,
+        "Altruism": 0.85,
+        "Honesty": 0.5
+      },
+      "visual": {
+        "emoji": "🕯️",
+        "color": "#B08D57"
+      },
       "en": {
         "name": "The Reluctant Hero",
-        "description": "You didn't ask for this dilemma, but once it landed on you, you did the hardest, most decent thing available — quietly, and at real cost to yourself.",
-        "strength": "You're the person who actually shows up when it's inconvenient, not just when it's easy to look good.",
-        "blindSpot": "You keep absorbing the cost of doing the right thing instead of asking why it always has to be you.",
-        "sharePhrase": "Nobody was going to do it. So I did."
+        "description": "You are not chasing virtue, recognition, or sacrifice. You simply cannot walk away once it becomes clear that someone has to carry the cost.",
+        "strength": "You show up when goodness is inconvenient, unglamorous, and unlikely to be rewarded.",
+        "blindSpot": "Your sense of responsibility can turn every unattended burden into yours, while everyone else quietly learns to let you carry it.",
+        "sharePhrase": "I didn't want the burden. I wanted even less to leave it there."
       },
       "it": {
         "name": "L'Eroe Riluttante",
-        "description": "Non hai chiesto tu questo dilemma, ma una volta capitato sulle tue spalle hai fatto la cosa più difficile e più giusta — in silenzio, e a un costo vero per te.",
-        "strength": "Sei la persona che si presenta davvero quando è scomodo, non solo quando fa fare bella figura.",
-        "blindSpot": "Continui ad assorbire il costo di fare la cosa giusta invece di chiederti perché debba toccare sempre a te.",
-        "sharePhrase": "Nessun altro l'avrebbe fatto. Quindi l'ho fatto io."
+        "description": "Non insegui la virtù, il riconoscimento o il sacrificio. Semplicemente non riesci ad andartene quando diventa chiaro che qualcuno dovrà sostenere il costo.",
+        "strength": "Ti presenti quando fare il bene è scomodo, poco spettacolare e probabilmente non verrà ricompensato.",
+        "blindSpot": "Il tuo senso di responsabilità può trasformare ogni peso incustodito in un peso tuo, mentre gli altri imparano in silenzio a lasciartelo portare.",
+        "sharePhrase": "Non volevo quel peso. Volevo ancora meno lasciarlo lì."
       }
     },
     {
       "id": "detached_analyst",
-      "centroid": {"Empathy": 0.2, "Integrity": 0.5, "Responsibility": 0.2, "Justice": 0.5, "Altruism": 0.2, "Honesty": 0.85},
-      "visual": {"emoji": "🔬", "color": "#3B3B3B"},
+      "centroid": {
+        "Empathy": 0.2,
+        "Integrity": 0.5,
+        "Responsibility": 0.2,
+        "Justice": 0.5,
+        "Altruism": 0.2,
+        "Honesty": 0.85
+      },
+      "visual": {
+        "emoji": "🔬",
+        "color": "#3B3B3B"
+      },
       "en": {
         "name": "The Detached Analyst",
-        "description": "You'll tell the truth about a dilemma without pretending you're personally invested in any side of it. Involvement is optional; honesty isn't.",
-        "strength": "You call things exactly as they are, with none of the self-serving spin most people add.",
-        "blindSpot": "Refusing to pick a side is still a choice, and the people waiting on you rarely experience it as neutral.",
-        "sharePhrase": "I told you exactly what I thought. I never said I'd help."
+        "description": "You separate what is true from what people wish were true. You diagnose the moral problem precisely, but resist turning clarity into personal obligation.",
+        "strength": "You expose contradictions, comforting myths, and emotional distortions that can derail a difficult decision.",
+        "blindSpot": "Detachment can become moral outsourcing: seeing exactly what is wrong while leaving someone else to answer it.",
+        "sharePhrase": "I saw the problem clearly. I never said it was mine."
       },
       "it": {
         "name": "L'Analista Distaccato",
-        "description": "Dici la verità su un dilemma senza fingere di essere coinvolto emotivamente in nessuna delle due parti. Il coinvolgimento è facoltativo; l'onestà no.",
-        "strength": "Chiami le cose esattamente per quello che sono, senza il giro di parole opportunista che aggiungono in molti.",
-        "blindSpot": "Rifiutarsi di schierarsi è comunque una scelta, e chi aspettava una tua risposta raramente la vive come neutrale.",
-        "sharePhrase": "Ti ho detto esattamente cosa pensavo. Non ho mai detto che ti avrei aiutato."
+        "description": "Separi ciò che è vero da ciò che le persone vorrebbero fosse vero. Diagnostichi con precisione il problema morale, ma resisti a trasformare la chiarezza in un obbligo personale.",
+        "strength": "Metti a nudo contraddizioni, miti consolatori e distorsioni emotive che possono sabotare una decisione difficile.",
+        "blindSpot": "Il distacco può diventare delega morale: vedere perfettamente cosa non va e lasciare che sia qualcun altro a risponderne.",
+        "sharePhrase": "Ho visto il problema con chiarezza. Non ho mai detto che fosse mio."
       }
     },
     {
       "id": "righteous_judge",
-      "centroid": {"Empathy": 0.2, "Integrity": 0.85, "Responsibility": 0.5, "Justice": 0.85, "Altruism": 0.2, "Honesty": 0.85},
-      "visual": {"emoji": "⚔️", "color": "#2F4F4F"},
+      "centroid": {
+        "Empathy": 0.2,
+        "Integrity": 0.85,
+        "Responsibility": 0.5,
+        "Justice": 0.85,
+        "Altruism": 0.2,
+        "Honesty": 0.85
+      },
+      "visual": {
+        "emoji": "⚔️",
+        "color": "#2F4F4F"
+      },
       "en": {
-        "name": "The Righteous Judge",
-        "description": "You hold everyone, including yourself, to the same hard standard. Rules and fairness matter more to you than how anyone feels about the verdict.",
-        "strength": "You're incorruptible in exactly the moments where other people quietly make an exception for themselves.",
-        "blindSpot": "A world run entirely on your standard would be fairer, and considerably harsher to live in.",
-        "sharePhrase": "I didn't make the rule. I just enforced it, on everyone, including you."
+        "name": "The Impartial Judge",
+        "description": "A standard that changes with the person is not justice. You apply the same rule to friends, enemies, and yourself, even when mercy would be easier.",
+        "strength": "You are difficult to corrupt because affection, status, and convenience do not rewrite your verdict.",
+        "blindSpot": "Treating everyone identically can preserve fairness on paper while ignoring unequal circumstances, needs, and power.",
+        "sharePhrase": "Same rule. Same verdict. No favorites."
       },
       "it": {
-        "name": "Il Giudice Retto",
-        "description": "Applichi a tutti, te compreso, lo stesso standard severo. Le regole e l'equità contano per te più di come qualcuno si sente riguardo al verdetto.",
-        "strength": "Sei incorruttibile esattamente nei momenti in cui gli altri fanno silenziosamente un'eccezione per se stessi.",
-        "blindSpot": "Un mondo governato interamente dal tuo standard sarebbe più giusto, e decisamente più duro da vivere.",
-        "sharePhrase": "Non ho scritto io la regola. L'ho solo fatta rispettare, con tutti, te compreso."
+        "name": "Il Giudice Imparziale",
+        "description": "Uno standard che cambia a seconda della persona non è giustizia. Applichi la stessa regola ad amici, nemici e a te stesso, anche quando la clemenza sarebbe più facile.",
+        "strength": "Sei difficile da corrompere perché affetto, status e convenienza non riscrivono il tuo verdetto.",
+        "blindSpot": "Trattare tutti in modo identico può salvare l'equità sulla carta ignorando differenze reali di condizioni, bisogni e potere.",
+        "sharePhrase": "Stessa regola. Stesso verdetto. Nessun favorito."
       }
     },
     {
       "id": "loyal_insider",
-      "centroid": {"Empathy": 0.85, "Integrity": 0.2, "Responsibility": 0.5, "Justice": 0.2, "Altruism": 0.85, "Honesty": 0.2},
-      "visual": {"emoji": "🤝", "color": "#5C4033"},
+      "centroid": {
+        "Empathy": 0.5,
+        "Integrity": 0.2,
+        "Responsibility": 0.85,
+        "Justice": 0.2,
+        "Altruism": 0.5,
+        "Honesty": 0.2
+      },
+      "visual": {
+        "emoji": "🤝",
+        "color": "#5C4033"
+      },
       "en": {
         "name": "The Loyal Insider",
-        "description": "Loyalty beats the rulebook. If protecting someone in your circle means bending justice or shading the truth, you'll do it without much hesitation.",
-        "strength": "The people who trust you never have to worry that you'll throw them under the bus when it's convenient.",
-        "blindSpot": "Every rule you bend for \"your people\" is a rule someone outside the circle needed to be able to count on.",
-        "sharePhrase": "I protected my own. Everyone else was someone else's problem."
+        "description": "Your first moral duty is loyalty to the group that trusted you. You close ranks, protect secrets, and absorb blame before handing one of your own to outsiders.",
+        "strength": "You create the kind of trust that lets people reveal weakness without fearing immediate abandonment.",
+        "blindSpot": "Loyalty stops being a virtue when it shields harm, rewards silence, or makes the injured person pay for belonging to the wrong circle.",
+        "sharePhrase": "I knew what they did. I also knew whose side I was on."
       },
       "it": {
-        "name": "Il Fedele di Cerchia",
-        "description": "La lealtà batte il regolamento. Se proteggere qualcuno del tuo cerchio significa piegare la giustizia o smussare la verità, lo fai senza troppa esitazione.",
-        "strength": "Chi si fida di te non deve mai temere che tu lo scarichi quando fa comodo.",
-        "blindSpot": "Ogni regola che pieghi per \"i tuoi\" è una regola su cui qualcuno fuori dal cerchio aveva bisogno di poter contare.",
-        "sharePhrase": "Ho protetto i miei. Tutti gli altri erano un problema di qualcun altro."
+        "name": "Il Leale di Cerchia",
+        "description": "Il tuo primo dovere morale è verso il gruppo che ti ha dato fiducia. Fai quadrato, proteggi i segreti e assorbi la colpa prima di consegnare uno dei tuoi agli estranei.",
+        "strength": "Crei un tipo di fiducia che permette alle persone di mostrare le proprie fragilità senza temere un abbandono immediato.",
+        "blindSpot": "La lealtà smette di essere una virtù quando copre il danno, premia il silenzio o fa pagare chi subisce il danno per appartenere al gruppo sbagliato.",
+        "sharePhrase": "Sapevo cosa avevano fatto. Sapevo anche da che parte stavo."
       }
     },
     {
       "id": "self_preservationist",
-      "centroid": {"Empathy": 0.2, "Integrity": 0.5, "Responsibility": 0.2, "Justice": 0.2, "Altruism": 0.2, "Honesty": 0.5},
-      "visual": {"emoji": "🚪", "color": "#556B2F"},
+      "centroid": {
+        "Empathy": 0.2,
+        "Integrity": 0.5,
+        "Responsibility": 0.2,
+        "Justice": 0.2,
+        "Altruism": 0.2,
+        "Honesty": 0.5
+      },
+      "visual": {
+        "emoji": "🚪",
+        "color": "#556B2F"
+      },
       "en": {
-        "name": "The Self-Preservationist",
-        "description": "When a dilemma turns dangerous, your instinct is to step back before you step in. You'll help when it's safe; you won't set yourself on fire for a stranger.",
-        "strength": "You don't make things worse by turning one casualty into two.",
-        "blindSpot": "\"I stayed out of it\" and \"I let it happen\" often describe the exact same five minutes.",
-        "sharePhrase": "I looked out for myself first. I'm still here to tell you about it."
+        "name": "The Cautious Survivor",
+        "description": "You do not believe self-sacrifice is automatically moral. Before stepping into danger, you ask whether your intervention will actually help—or merely create another victim.",
+        "strength": "You respect limits, assess risk, and avoid heroic gestures that make a bad situation worse.",
+        "blindSpot": "Caution is an excellent survival skill and an equally excellent story for explaining why someone else's emergency was never your responsibility.",
+        "sharePhrase": "I survived the choice. That doesn't mean I escaped it."
       },
       "it": {
         "name": "Il Sopravvissuto Prudente",
-        "description": "Quando un dilemma diventa pericoloso, il tuo istinto è tirarti indietro prima di buttarti dentro. Aiuti quando è sicuro; non ti dai fuoco per uno sconosciuto.",
-        "strength": "Non peggiori la situazione trasformando una vittima in due.",
-        "blindSpot": "\"Sono rimasto fuori\" e \"ho lasciato che succedesse\" spesso descrivono esattamente gli stessi cinque minuti.",
-        "sharePhrase": "Ho pensato prima a me stesso. Ed è per questo che sono ancora qui a raccontartelo."
+        "description": "Non credi che sacrificarsi sia automaticamente morale. Prima di entrare nel pericolo ti chiedi se il tuo intervento aiuterà davvero o creerà soltanto un'altra vittima.",
+        "strength": "Rispetti i limiti, valuti il rischio ed eviti gesti eroici che trasformano una brutta situazione in una peggiore.",
+        "blindSpot": "La prudenza è un'ottima strategia di sopravvivenza e un'ottima storia per spiegare perché l'emergenza di qualcun altro non fosse mai una tua responsabilità.",
+        "sharePhrase": "Sono sopravvissuto alla scelta. Non significa che ne sia uscito."
       }
     },
     {
       "id": "honest_opportunist",
-      "centroid": {"Empathy": 0.2, "Integrity": 0.2, "Responsibility": 0.5, "Justice": 0.2, "Altruism": 0.2, "Honesty": 0.85},
-      "visual": {"emoji": "🃏", "color": "#8A6D3B"},
+      "centroid": {
+        "Empathy": 0.2,
+        "Integrity": 0.2,
+        "Responsibility": 0.5,
+        "Justice": 0.2,
+        "Altruism": 0.2,
+        "Honesty": 0.85
+      },
+      "visual": {
+        "emoji": "🃏",
+        "color": "#8A6D3B"
+      },
       "en": {
         "name": "The Honest Opportunist",
-        "description": "You'll admit, out loud, that you're mostly looking out for yourself — and somehow that bluntness makes it easier to forgive.",
-        "strength": "Nobody has to guess your motives; you already told them.",
-        "blindSpot": "Being honest about being selfish is still, functionally, being selfish.",
-        "sharePhrase": "I did it for me. At least I didn't pretend otherwise."
+        "description": "You pursue your own advantage without decorating it as virtue. You bargain openly, disclose your motives, and prefer a selfish deal everyone can see to a noble story built on manipulation.",
+        "strength": "Your transparency makes negotiation possible because people know what you want and what your cooperation will cost.",
+        "blindSpot": "Candor can make exploitation easier to recognize, but it does not make the exploitation fair.",
+        "sharePhrase": "I chose myself. I just didn't lie about it."
       },
       "it": {
         "name": "L'Opportunista Sincero",
-        "description": "Ammetti, ad alta voce, che pensi soprattutto a te stesso — e stranamente questa franchezza lo rende più facile da perdonare.",
-        "strength": "Nessuno deve indovinare le tue motivazioni; gliele hai già dette tu.",
-        "blindSpot": "Essere onesti sull'essere egoisti resta, di fatto, essere egoisti.",
-        "sharePhrase": "L'ho fatto per me. Almeno non ho fatto finta del contrario."
+        "description": "Insegui il tuo vantaggio senza travestirlo da virtù. Tratti apertamente, dichiari i tuoi motivi e preferisci un accordo egoista visibile a tutti a una storia nobile costruita sulla manipolazione.",
+        "strength": "La tua trasparenza rende possibile negoziare, perché gli altri sanno cosa vuoi e quanto costerà la tua collaborazione.",
+        "blindSpot": "La franchezza rende lo sfruttamento più facile da riconoscere, non più giusto.",
+        "sharePhrase": "Ho scelto me stesso. Semplicemente non ho mentito."
       }
     },
     {
       "id": "bleak_nihilist",
-      "centroid": {"Empathy": 0.2, "Integrity": 0.2, "Responsibility": 0.2, "Justice": 0.2, "Altruism": 0.2, "Honesty": 0.2},
-      "visual": {"emoji": "🕳️", "color": "#1A1A1A"},
+      "centroid": {
+        "Empathy": 0.2,
+        "Integrity": 0.2,
+        "Responsibility": 0.2,
+        "Justice": 0.2,
+        "Altruism": 0.2,
+        "Honesty": 0.2
+      },
+      "visual": {
+        "emoji": "🕳️",
+        "color": "#1A1A1A"
+      },
       "en": {
         "name": "The Bleak Nihilist",
-        "description": "When the dilemma gets ugly, you stop performing virtue altogether. No empathy, no duty, no justice — just the outcome that costs you least.",
-        "strength": "You're never surprised or paralyzed by how bad people or situations can get.",
-        "blindSpot": "A framework built entirely on \"nothing matters\" leaves you with no reason to trust anyone, including future-you.",
-        "sharePhrase": "I chose what cost me the least. Don't ask me to dress it up."
+        "description": "You no longer trust moral language to mean much once pressure rises. When every option feels compromised, you minimize your own loss and refuse to pretend the result is noble.",
+        "strength": "You are difficult to manipulate with guilt, moral theater, or promises that suffering will somehow make you pure.",
+        "blindSpot": "Cynicism can become self-fulfilling: when you expect every value to collapse, you stop giving any value the chance to hold.",
+        "sharePhrase": "Nothing was clean. I chose what left the least on me."
       },
       "it": {
         "name": "Il Nichilista Cupo",
-        "description": "Quando il dilemma diventa brutto, smetti del tutto di recitare la virtù. Niente empatia, niente dovere, niente giustizia — solo l'esito che ti costa meno.",
-        "strength": "Non ti sorprendi né ti paralizzi mai davanti a quanto possano essere brutte le persone o le situazioni.",
-        "blindSpot": "Un impianto costruito interamente su \"niente ha importanza\" non ti lascia nessun motivo per fidarti di nessuno, nemmeno del te di domani.",
-        "sharePhrase": "Ho scelto quello che mi costava meno. Non chiedermi di abbellirlo."
+        "description": "Non credi più che il linguaggio morale significhi molto quando la pressione sale. Se ogni opzione ti sembra compromessa, riduci al minimo la tua perdita e rifiuti di fingere che il risultato sia nobile.",
+        "strength": "È difficile manipolarti con il senso di colpa, il teatro morale o la promessa che soffrire ti renderà in qualche modo puro.",
+        "blindSpot": "Il cinismo può autoavverarsi: se ti aspetti che ogni valore crolli, smetti di dare a qualunque valore la possibilità di reggere.",
+        "sharePhrase": "Niente era pulito. Ho scelto ciò che lasciava meno sporco su di me."
       }
     },
     {
       "id": "saintly_martyr",
-      "centroid": {"Empathy": 0.85, "Integrity": 0.85, "Responsibility": 0.85, "Justice": 0.85, "Altruism": 0.85, "Honesty": 0.85},
-      "visual": {"emoji": "😇", "color": "#D4AF37"},
+      "centroid": {
+        "Empathy": 0.85,
+        "Integrity": 0.85,
+        "Responsibility": 0.85,
+        "Justice": 0.85,
+        "Altruism": 0.85,
+        "Honesty": 0.85
+      },
+      "visual": {
+        "emoji": "😇",
+        "color": "#D4AF37"
+      },
       "en": {
-        "name": "The Saintly Martyr",
-        "description": "Given the choice, you take the harder, kinder, more honest, more just option every single time — regardless of what it costs you personally.",
-        "strength": "You're the person other archetypes secretly wish they had the nerve to be.",
-        "blindSpot": "A dilemma test is not real life, and this version of you may not survive contact with an ordinary Tuesday.",
-        "sharePhrase": "I chose the hardest right thing. Every time. Ask me how tired I am."
+        "name": "The Moral Idealist",
+        "description": "You try to honor every claim at once: compassion, fairness, truth, duty, and the welfare of others. When those values collide, you usually make yourself pay the difference.",
+        "strength": "You resist the easy excuse that one virtue must be abandoned simply because holding several at once is difficult.",
+        "blindSpot": "Self-sacrifice can become self-erasure—and people quickly learn to build systems that depend on you absorbing the cost.",
+        "sharePhrase": "I found the price of doing right. Then I paid it myself."
       },
       "it": {
-        "name": "Il Santo Martire",
-        "description": "Potendo scegliere, prendi l'opzione più difficile, più gentile, più onesta e più giusta ogni singola volta — indipendentemente da quanto ti costi personalmente.",
-        "strength": "Sei la persona che tutti gli altri archetipi vorrebbero segretamente avere il coraggio di essere.",
-        "blindSpot": "Un test di dilemmi non è la vita reale, e questa versione di te potrebbe non sopravvivere all'impatto con un martedì qualunque.",
-        "sharePhrase": "Ho scelto la cosa giusta più difficile. Ogni volta. Chiedimi quanto sono stanco."
+        "name": "L'Idealista Morale",
+        "description": "Cerchi di onorare tutto insieme: compassione, equità, verità, dovere e bene altrui. Quando questi valori entrano in conflitto, di solito fai pagare a te stesso la differenza.",
+        "strength": "Resisti alla comoda scusa che una virtù debba essere abbandonata solo perché sostenerne diverse insieme è difficile.",
+        "blindSpot": "Il sacrificio di sé può diventare cancellazione di sé, e gli altri imparano presto a costruire sistemi che dipendono dal fatto che sia tu ad assorbire il costo.",
+        "sharePhrase": "Ho trovato il prezzo della cosa giusta. Poi l'ho pagato io."
       }
     },
     {
       "id": "steadfast_enforcer",
-      "centroid": {"Empathy": 0.5, "Integrity": 0.85, "Responsibility": 0.85, "Justice": 0.85, "Altruism": 0.5, "Honesty": 0.5},
-      "visual": {"emoji": "🔒", "color": "#2E2E38"},
+      "centroid": {
+        "Empathy": 0.5,
+        "Integrity": 0.85,
+        "Responsibility": 0.85,
+        "Justice": 0.85,
+        "Altruism": 0.5,
+        "Honesty": 0.5
+      },
+      "visual": {
+        "emoji": "🔒",
+        "color": "#2E2E38"
+      },
       "en": {
-        "name": "The Steadfast Enforcer",
-        "description": "Duty, fairness, and follow-through define you. You don't need to feel good about a decision to make it — you just need it to be right and to see it through.",
-        "strength": "You're the one who actually finishes the hard thing everyone else abandoned halfway.",
-        "blindSpot": "Doing the right thing without warmth still lands on people as coldness, whatever your intentions were.",
-        "sharePhrase": "I didn't need to feel it. I just needed to do it, and I did."
+        "name": "The Duty-Bearer",
+        "description": "Once a legitimate duty becomes yours, you carry it through without needing applause, affection, or certainty that it will feel good. Your morality lives in follow-through.",
+        "strength": "You turn principles into completed action and remain dependable after urgency, praise, and emotion have faded.",
+        "blindSpot": "Commitment can outlive judgment: finishing the mission may become more important than asking whether the mission still deserves obedience.",
+        "sharePhrase": "I accepted the duty. Then I finished it."
       },
       "it": {
-        "name": "L'Esecutore Inflessibile",
-        "description": "Dovere, equità e costanza ti definiscono. Non hai bisogno di sentirti bene per prendere una decisione — ti basta che sia giusta e portarla fino in fondo.",
-        "strength": "Sei quello che finisce davvero la cosa difficile che tutti gli altri hanno abbandonato a metà.",
-        "blindSpot": "Fare la cosa giusta senza calore umano arriva comunque alle persone come freddezza, qualunque fossero le tue intenzioni.",
-        "sharePhrase": "Non avevo bisogno di sentirlo. Avevo solo bisogno di farlo, e l'ho fatto."
+        "name": "Il Custode del Dovere",
+        "description": "Quando un dovere legittimo diventa tuo, lo porti fino in fondo senza aver bisogno di applausi, affetto o della certezza che ti farà stare bene. La tua morale vive nella costanza.",
+        "strength": "Trasformi i principi in azioni compiute e resti affidabile anche quando urgenza, lodi ed emozione sono svanite.",
+        "blindSpot": "L'impegno può sopravvivere al giudizio: completare la missione può diventare più importante che chiedersi se meriti ancora obbedienza.",
+        "sharePhrase": "Ho accettato il dovere. Poi l'ho portato a termine."
       }
     }
   ]

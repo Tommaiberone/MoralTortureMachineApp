@@ -105,6 +105,12 @@ dev table, or `/dev` SSM hierarchy.
   with an instruction that the generated text will render as the
   description directly under the archetype's name on `ResultsScreen` - the
   archetype assignment itself stays entirely independent of Groq either way.
+- A profile stores the `archetypeId` and `archetypesVersion` matched when it
+  was created, but profile and Duel reads deliberately recompute the
+  archetype from its stored dimension averages using the *current* catalog.
+  Per `TASK-25.1` / ADR-072, a catalog version that changes centroids
+  intentionally reclassifies existing profiles on their next read; the
+  stored version is historical attribution, not a display-freeze key.
 - Because the Lambda deployment package (`.github/workflows/deploy.yml`) copies
   `backend/src/backend_fastapi.py`, `backend/src/archetype_engine.py`, and
   `backend/data/archetypes.json` as flat siblings (no subfolders), the import

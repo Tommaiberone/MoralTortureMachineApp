@@ -1421,6 +1421,29 @@ own cost note (Cognito Essentials includes TOTP at no extra charge) becomes
 relevant because a different login path is introduced. No Terraform change
 made.
 
+### ADR-072 — Archetype catalog v2 intentionally reclassifies existing profiles (TASK-25.1)
+
+The human review of `TASK-25` revised the bilingual archetype content and
+changed three centroids in `backend/data/archetypes.json`, requiring its
+version to move from v1 to v2. Moral profile records already retain the
+`archetypeId` and `archetypesVersion` calculated at creation, but public
+profile, Challenge teaser, and Duel comparison reads recompute an archetype
+from the stored six dimension averages against the one current catalog. A v2
+deploy would therefore alter the displayed archetype for some v1 profiles
+when they are next read, while leaving their scores, answers, and compatibility
+calculation unchanged.
+
+Options considered: preserve v1 output by retaining historical catalogs and
+selecting one from each record's stored version; or accept that the latest
+reviewed scoring model reclassifies prior profiles. The owner explicitly chose
+the latter on 2026-08-06. No historical catalog or data migration is added.
+
+Consequences: a previously shared profile or an open/completed Duel can show a
+v2 archetype on its next read. The stored v1 fields remain useful historical
+attribution, but do not freeze the current display. Every future centroid
+change must again bump the catalog version and receive an explicit product
+decision/ADR before deployment.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
