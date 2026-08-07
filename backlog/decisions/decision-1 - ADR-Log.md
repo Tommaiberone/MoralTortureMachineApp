@@ -1496,6 +1496,80 @@ be closed. The Android client changes require version `1.6.4`/`versionCode 19`;
 because a push with that bump triggers automatic production Play publishing,
 that push requires a separate explicit confirmation.
 
+### ADR-074 — Remove Pass-the-Phone mode; keep and repoint its SEO landing cluster (TASK-161/173)
+
+Context: TASK-161 (UX audit, TASK-111) flagged Pass-the-Phone as contributing
+nothing to the North Star metric (completed challenges/week) despite equal
+homepage weight with the recommended Evaluation flow - no archetype, no
+comparison, no share, no path back into the challenge loop. It was logged as
+an Open Point (bridge it into the challenge loop, or de-emphasize it).
+
+Options considered: (a) add a bridge CTA from Pass-the-Phone into
+Evaluation/Challenge after a round; (b) de-emphasize it on the homepage but
+keep the mode; (c) remove the mode entirely. The user chose (c) directly,
+2026-08-07, superseding the two options TASK-161 originally posed.
+
+A dependent question surfaced during scoping: doc-2's organic-search
+experiment names "a pass-the-phone moral-dilemma game" as one of three
+measured SEO content clusters, with two live bilingual landings
+(`/moral-dilemma-game`, `/it/gioco-dilemmi-morali`) and the bare
+`/pass-the-phone` URL itself indexed directly in `sitemap.xml`. Deleting the
+mode outright would have left indexed, ranked pages pointing at a dead route.
+Chosen: keep both landings and their content/keyword targeting largely as-is
+(the "pass the phone" search intent and instructions to take turns on one
+device remain accurate - Evaluation shows the same per-dilemma aggregate
+vote-split pie chart Pass-the-Phone did), but change their `mode` from
+`passThePhone` to `evaluation` and drop CTA/FAQ copy that named a dedicated
+mode. The bare `/pass-the-phone` route now client-side redirects to
+`/evaluation-dilemmas` instead of 404ing, and was dropped from `sitemap.xml`
+in favor of the two landings as the canonical indexed URLs for that intent.
+
+Consequences: `PassThePhoneScreen.jsx`/`.css` are deleted; its `en.json` keys
+are removed (`it.json` is left untouched per the TASK-101 drift exception -
+its now-dead `passThePhone`/`infinite_*` keys simply stay unused, consistent
+with letting `it.json` drift rather than spending effort on it). TASK-152 and
+TASK-154, both still open, had their descriptions corrected to drop the
+now-deleted file/CTA reference rather than silently going stale. This is a
+packaged-app behavior change (a homepage mode disappears), so it counts
+toward the next mandatory Android version bump before any new APK is built
+or distributed; it was not bumped as part of this change alone since no APK
+build/distribution is happening in this session.
+
+### ADR-075 — Per-dilemma "Spread the Guilt" share CTA, single-player only, no Duel (TASK-172)
+
+Context: the 2026-08-07 analytics read showed result-to-share at 4.1% against
+doc-2's 15% gate (funnel: test_completed/result_viewed 541 -> shared 22).
+TASK-149/156/166 only ever prompt for a share once, at the very end of the
+test (Results screen). This adds a second, repeated prompt during the test
+itself, on every dilemma reveal in EvaluationDilemmasScreen.
+
+Constraint that shaped scope: the full Duel/Challenge flow
+(`ResultsScreen.handleChallengeAFriend`, `POST /profiles` then
+`POST /challenges`) needs the complete answer set to score an archetype, so
+it cannot be reused mid-test. Chosen: a plain `navigator.share` call (text +
+app link, clipboard-copy fallback, same try/AbortError/fallback shape as
+`shareCard.js`'s `shareOrDownloadDataUrl`) rather than a new Duel-lite
+mechanism - no new backend endpoint, no profile creation.
+
+Flow scope: Evaluation only. Party Room was excluded because its audience is
+already present live in the room, which already has its own room-code/QR
+growth mechanism - a second outbound share here would duplicate it. Pass the
+Phone was excluded because it no longer exists (ADR-074, same session).
+
+Copy (finalized with the user, dark/sarcastic MTM voice, English only per
+TASK-101): button `[ SPREAD THE GUILT ]`, microcopy "Misery, as always,
+prefers company.", share text "I made a choice I'm not proud of. Now it's
+your turn to feel bad too."
+
+Consequences: a new `dilemma_audience_share_clicked` analytics event
+(dilemma_id, question_number, platform - the last via the existing
+`trackEvent` envelope) is now distinct from the existing `share_clicked` used
+on Results, so the two prompts' effectiveness can be measured separately. A
+version that deep-links straight into a specific dilemma, or only surfaces on
+closely-split (near 50/50) dilemmas using existing vote counts, was
+intentionally left out of this task's scope as a possible v2 once V1 data
+exists.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

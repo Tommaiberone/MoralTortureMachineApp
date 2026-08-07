@@ -1,6 +1,6 @@
 // App.jsx
 import React, { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
 // Import Error Boundary (critical, not lazy loaded)
 import ErrorBoundary from './components/ErrorBoundary';
@@ -11,7 +11,6 @@ import { AnalyticsConsent } from './components/AnalyticsConsent';
 import HomeScreen from './screens/HomeScreen';
 
 // All other screens are lazy loaded to reduce initial bundle size
-const PassThePhoneScreen = lazy(() => import('./screens/PassThePhoneScreen'));
 const EvaluationDilemmasScreen = lazy(() => import('./screens/EvaluationDilemmasScreen'));
 // const StoryModeScreen = lazy(() => import('./screens/StoryModeScreen')); // Hidden for now
 const ResultsScreen = lazy(() => import('./screens/ResultsScreen'));
@@ -56,7 +55,10 @@ const App = () => {
 
             {/* All other screens lazy loaded */}
             <Route path="/tutorial" element={<TutorialScreen />} />
-            <Route path="/pass-the-phone" element={<PassThePhoneScreen />} />
+            {/* TASK-173: Pass-the-Phone mode was removed; the route redirects
+                instead of 404ing because /pass-the-phone is indexed directly
+                in sitemap.xml as its own URL, separate from the SEO landings. */}
+            <Route path="/pass-the-phone" element={<Navigate to="/evaluation-dilemmas" replace />} />
             <Route path="/evaluation-dilemmas" element={<EvaluationDilemmasScreen />} />
             {/* <Route path="/story-mode" element={<StoryModeScreen />} /> */}
             <Route path="/results" element={<ResultsScreen />} />

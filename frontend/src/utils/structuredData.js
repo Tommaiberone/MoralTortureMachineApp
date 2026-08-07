@@ -26,7 +26,6 @@ export const getWebApplicationSchema = () => ({
     "Deterministic moral-dilemma game scoring",
     "Optional AI-written result commentary",
     "Interactive ethical dilemmas",
-    "Multiplayer pass-the-phone mode",
     "Detailed results visualization",
     "Moral Duel and Party Room comparison"
   ],
@@ -87,7 +86,7 @@ export const getFAQSchema = () => ({
       "name": "Can I play with friends?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. Pass-the-Phone, Moral Duel, and Party Room flows let people compare game results or discuss the same dilemmas. Shared links and room codes should only be sent to people you intend to invite."
+        "text": "Yes. Moral Duel and Party Room flows let people compare game results or discuss the same dilemmas. Shared links and room codes should only be sent to people you intend to invite."
       }
     },
     {
@@ -115,7 +114,7 @@ export const getHowToSchema = () => ({
     {
       "@type": "HowToStep",
       "name": "Choose a way to play",
-      "text": "Choose solo play, Pass-the-Phone, or a Party Room with people you know.",
+      "text": "Choose solo play or a Party Room with people you know.",
       "url": "https://moraltorturemachine.com/",
       "image": "https://moraltorturemachine.com/og-image.png"
     },
@@ -134,8 +133,8 @@ export const getHowToSchema = () => ({
     {
       "@type": "HowToStep",
       "name": "Share and compare if you choose",
-      "text": "Use an unlisted link, a Moral Duel, or Pass-the-Phone to discuss different perspectives with people you choose.",
-      "url": "https://moraltorturemachine.com/pass-the-phone"
+      "text": "Use an unlisted link or a Moral Duel to discuss different perspectives with people you choose.",
+      "url": "https://moraltorturemachine.com/"
     }
   ]
 });

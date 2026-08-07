@@ -63,6 +63,11 @@ pass-the-phone moral-dilemma game. It must earn visibility through useful,
 original pages and a clear first-play CTA; it must not create generic keyword
 variants or psychological claims.
 
+The pass-the-phone moral-dilemma game cluster's first-play CTA now starts the
+Evaluation flow rather than a dedicated Pass-the-Phone mode, which was removed
+(ADR-074, TASK-161/173, 2026-08-07); the landing pages and their search intent
+are unchanged.
+
 The weekly SEO report is the decision input. Review Search Console impressions,
 position and CTR by non-brand query/page alongside consented GA4 organic
 `result_viewed` conversions. After eight weeks of indexed traffic, decide which

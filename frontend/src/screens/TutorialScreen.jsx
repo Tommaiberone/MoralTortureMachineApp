@@ -56,24 +56,6 @@ const TutorialScreen = () => {
     },
   ];
 
-  const infiniteTutorialSteps = [
-    {
-      title: t('tutorial.infinite_step1_title'),
-      description: t('tutorial.infinite_step1_desc'),
-      icon: "[∞]",
-    },
-    {
-      title: t('tutorial.infinite_step2_title'),
-      description: t('tutorial.infinite_step2_desc'),
-      icon: "[+]",
-    },
-    {
-      title: t('tutorial.infinite_step3_title'),
-      description: t('tutorial.infinite_step3_desc'),
-      icon: "[?]",
-    },
-  ];
-
   const storyTutorialSteps = [
     {
       title: t('tutorial.story_step1_title'),
@@ -93,15 +75,13 @@ const TutorialScreen = () => {
   ];
 
   const getTutorialSteps = () => {
-    if (mode === 'evaluation') return evaluationTutorialSteps;
     if (mode === 'story') return storyTutorialSteps;
-    return infiniteTutorialSteps;
+    return evaluationTutorialSteps;
   };
 
   const getTargetRoute = () => {
-    if (mode === 'evaluation') return '/evaluation-dilemmas';
     if (mode === 'story') return '/story-mode';
-    return '/pass-the-phone';
+    return '/evaluation-dilemmas';
   };
 
   const tutorialSteps = getTutorialSteps();

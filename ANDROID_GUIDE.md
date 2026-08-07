@@ -375,7 +375,6 @@ keytool -printcert -jarfile android/app/build/outputs/apk/release/app-release.ap
   🎮 GAME MODES:
   • Evaluation Mode: Complete structured moral tests
   • Story Mode: Experience interactive ethical narratives
-  • Pass the Phone: Multiplayer local mode
 
   Are you ready to face your choices?
 

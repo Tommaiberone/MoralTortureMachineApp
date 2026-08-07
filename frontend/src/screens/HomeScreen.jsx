@@ -114,16 +114,6 @@ const HomeScreen = () => {
 
         <button
           className="home-button arcade-button"
-          onClick={() => handleNavigation('passThePhone', '/pass-the-phone')}
-        >
-          <div className="button-text">{t('home.infinite_button')}</div>
-          <div className="button-description">
-            {t('home.infinite_description')}
-          </div>
-        </button>
-
-        <button
-          className="home-button arcade-button"
           onClick={() => navigate('/party')}
         >
           <div className="button-text">{t('home.party_button')}</div>

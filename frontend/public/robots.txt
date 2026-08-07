@@ -3,7 +3,6 @@
 
 User-agent: *
 Allow: /
-Allow: /pass-the-phone
 Allow: /evaluation-dilemmas
 Allow: /about
 Allow: /story-mode

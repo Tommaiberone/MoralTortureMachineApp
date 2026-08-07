@@ -104,6 +104,18 @@
   filter: grayscale(0.5) contrast(1.2);
 }
 
+.evaluation-audience-button {
+  margin-top: 20px;
+}
+
+.evaluation-audience-microcopy {
+  margin-top: 8px;
+  font-size: 13px;
+  font-style: italic;
+  text-align: center;
+  color: var(--text-dim);
+}
+
 /* Tablet styles */
 @media (max-width: 768px) {
   .evaluation-scroll-container {

@@ -8,7 +8,6 @@ import './SeoLandingScreen.css';
 
 const destinationForMode = {
   evaluation: '/evaluation-dilemmas',
-  passThePhone: '/pass-the-phone',
 };
 
 export default function SeoLandingScreen({ landingId, locale }) {

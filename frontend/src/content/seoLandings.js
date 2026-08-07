@@ -106,7 +106,7 @@ export const SEO_LANDINGS = {
       faq: [
         ['Do ethical dilemmas have correct answers?', 'Some theories give different answers, but this game does not present one moral doctrine as the correct one. It asks you to make the trade-off explicit.'],
         ['Which ethical theories appear here?', 'The scenarios can surface tensions often discussed in consequentialist, duty-based, virtue, care, and justice-oriented reasoning without requiring prior philosophy study.'],
-        ['Can I discuss the dilemmas with friends?', 'Yes. Pass the Phone mode is designed for a group to answer and discuss the same kind of difficult choices.'],
+        ['Can I discuss the dilemmas with friends?', 'Yes. Take turns answering on one device - you will see how the group\'s choices split before moving to the next dilemma.'],
       ],
       related: ['moralDilemmaTest', 'moralDilemmaGame'],
     },
@@ -142,7 +142,7 @@ export const SEO_LANDINGS = {
       faq: [
         ['I dilemmi etici hanno risposte corrette?', 'Teorie diverse danno risposte diverse, ma il gioco non presenta una dottrina morale come quella corretta. Ti chiede di rendere esplicito il compromesso.'],
         ['Quali teorie etiche compaiono?', 'Gli scenari possono far emergere tensioni tipiche di ragionamenti consequenzialisti, basati sul dovere, sulle virtù, sulla cura e sulla giustizia, senza richiedere studi di filosofia.'],
-        ['Posso discuterne con gli amici?', 'Sì. La modalità Passa il Telefono è pensata perché un gruppo risponda e discuta lo stesso tipo di scelte difficili.'],
+        ['Posso discuterne con gli amici?', 'Sì. Rispondete a turno sullo stesso dispositivo: vedrete come si divide il gruppo prima di passare al dilemma successivo.'],
       ],
       related: ['moralDilemmaTest', 'moralDilemmaGame'],
     },
@@ -155,9 +155,9 @@ export const SEO_LANDINGS = {
       description: 'Play a free moral dilemma game with friends. Pass the phone, make difficult choices and start a better conversation about values.',
       eyebrow: 'Pass the phone. Defend the choice.',
       heading: 'A moral dilemma game that turns a quiet room into a real conversation.',
-      lead: 'Pass the Phone gives a group one difficult choice at a time. Each person answers, sees how the room splits, and gets a reason to explain what mattered more than the alternative.',
-      primaryCta: 'Start Pass the Phone',
-      mode: 'passThePhone',
+      lead: 'Give a group one difficult choice at a time. Each person answers, sees how the room splits, and gets a reason to explain what mattered more than the alternative.',
+      primaryCta: 'Start the dilemmas',
+      mode: 'evaluation',
       sections: [
         {
           title: 'The game is the argument after the tap',
@@ -178,7 +178,7 @@ export const SEO_LANDINGS = {
         ['Choice or protection?', 'Would you stop someone from making a decision you believe will hurt them?'],
       ],
       faq: [
-        ['How many people can play?', 'Pass the Phone works with two people or a small group sharing one device.'],
+        ['How many people can play?', 'Two people or a small group sharing one device both work well.'],
         ['Do we need accounts?', 'No. The group can begin anonymously.'],
         ['Is it only for parties?', 'No. It also works for a class, a date, a dinner conversation, or anyone who enjoys arguing about difficult choices with care.'],
       ],
@@ -191,9 +191,9 @@ export const SEO_LANDINGS = {
       description: 'Gioca gratis a un gioco di dilemmi morali con gli amici. Passa il telefono, fai scelte difficili e inizia una conversazione migliore sui valori.',
       eyebrow: 'Passa il telefono. Difendi la scelta.',
       heading: 'Un gioco di dilemmi morali che trasforma una stanza silenziosa in una conversazione vera.',
-      lead: 'Passa il Telefono propone a un gruppo una scelta difficile alla volta. Ognuno risponde, vede come si divide il gruppo e ha un motivo per spiegare cosa contava più dell’alternativa.',
-      primaryCta: 'Avvia Passa il Telefono',
-      mode: 'passThePhone',
+      lead: 'Proponete a un gruppo una scelta difficile alla volta. Ognuno risponde, vede come si divide il gruppo e ha un motivo per spiegare cosa contava più dell’alternativa.',
+      primaryCta: 'Avvia i dilemmi',
+      mode: 'evaluation',
       sections: [
         {
           title: 'Il gioco è la discussione dopo il tap',
@@ -214,7 +214,7 @@ export const SEO_LANDINGS = {
         ['Scelta o protezione?', 'Impediresti a qualcuno di prendere una decisione che pensi gli farà male?'],
       ],
       faq: [
-        ['In quanti si può giocare?', 'Passa il Telefono funziona in due o in un piccolo gruppo che condivide un dispositivo.'],
+        ['In quanti si può giocare?', 'Funziona bene in due o in un piccolo gruppo che condivide un dispositivo.'],
         ['Servono account?', 'No. Il gruppo può iniziare in modo anonimo.'],
         ['È solo per le feste?', 'No. Funziona anche in classe, a un appuntamento, a cena o con chiunque ami discutere con cura di scelte difficili.'],
       ],

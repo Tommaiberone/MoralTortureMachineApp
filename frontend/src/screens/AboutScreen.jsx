@@ -99,14 +99,6 @@ const AboutScreen = () => {
                 Perfect for self-reflection and understanding your <strong>ethical decision-making</strong> patterns.
               </p>
             </div>
-            <div className="mode-card">
-              <h3>Pass-the-Phone Mode</h3>
-              <p>
-                Play with friends and family! In this multiplayer mode, everyone takes turns answering the
-                same <strong>ethical dilemmas</strong> on one device, then sees how the group split on each
-                choice. Great for sparking deep philosophical discussions about ethics and morality.
-              </p>
-            </div>
           </div>
         </section>
 

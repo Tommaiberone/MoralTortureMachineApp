@@ -29,7 +29,7 @@ Each screen component now includes customized SEO:
 |-------|-----------|-------|-----------|
 | `/` | HomeScreen | "Moral Torture Machine - Explore Your Moral Framework" | Yes |
 | `/tutorial` | TutorialScreen | "Tutorial - Learn How to Navigate Ethical Dilemmas" | No (noindex) |
-| `/pass-the-phone` | PassThePhoneScreen | "Arcade Mode - Infinite Ethical Dilemmas" | Yes |
+| `/pass-the-phone` | - (redirects to `/evaluation-dilemmas`, TASK-173) | - | No (redirect) |
 | `/evaluation-dilemmas` | EvaluationDilemmasScreen | "Moral Evaluation - Discover Your Ethical Framework" | Yes |
 | `/results` | ResultsScreen | "Your Moral Profile - AI Analysis Results" | No (noindex) |
 

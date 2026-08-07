@@ -271,6 +271,34 @@ const EvaluationDilemmasScreen = () => {
     }
   };
 
+  const handleSpreadTheGuilt = async () => {
+    trackEvent('dilemma_audience_share_clicked', {
+      mode: 'evaluation',
+      dilemma_id: dilemma._id,
+      question_number: currentDilemmaCount,
+    });
+
+    const shareText = t('evaluation.audience_share_text');
+    try {
+      if (navigator.share) {
+        await navigator.share({ text: shareText, url: window.location.origin });
+        return;
+      }
+    } catch (error) {
+      // AbortError means the user dismissed the share sheet - not a failure,
+      // don't fall back to also copying in that case.
+      if (error?.name === 'AbortError') return;
+      console.warn('Native share failed, falling back to clipboard:', error);
+    }
+
+    try {
+      await navigator.clipboard.writeText(`${shareText} ${window.location.origin}`);
+      alert(t('evaluation.audience_share_copied'));
+    } catch (error) {
+      console.warn('Clipboard copy failed:', error);
+    }
+  };
+
   const pieChartData = [
     {
       name: dilemma ? dilemma.firstAnswer : "Option 1",
@@ -370,6 +398,16 @@ const EvaluationDilemmasScreen = () => {
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
+                <button
+                  type="button"
+                  className="btn-secondary evaluation-audience-button"
+                  onClick={handleSpreadTheGuilt}
+                >
+                  {t('evaluation.audience_cta_button')}
+                </button>
+                <p className="evaluation-audience-microcopy">
+                  {t('evaluation.audience_cta_microcopy')}
+                </p>
                 {evaluationComplete ? (
                   <button
                     onClick={() =>
