@@ -700,6 +700,19 @@ resource "aws_iam_role_policy" "lambda_permissions" {
         Effect   = "Allow"
         Action   = ["sns:Publish"]
         Resource = [aws_sns_topic.ops_alerts.arn]
+      },
+      {
+        # TASK-30/113/ADR-076: write-only, scoped to a single prefix on the
+        # existing frontend bucket (frontend/terraform) - the pre-rendered
+        # bot-only OG snapshot for a newly created profile, never anything
+        # else in that bucket. Cross-stack by naming convention (same
+        # environment/stack_name formula both Terraform roots use), not a
+        # remote-state reference.
+        Effect = "Allow"
+        Action = ["s3:PutObject"]
+        Resource = [
+          "arn:aws:s3:::${var.environment}-${var.stack_name}-frontend/og/profiles/*"
+        ]
       }
     ]
   })

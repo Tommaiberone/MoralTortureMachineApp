@@ -16,6 +16,7 @@ import hashlib
 import re
 import secrets
 import random
+import html
 from collections import Counter, defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from math import ceil
@@ -95,6 +96,9 @@ CHALLENGE_PARTICIPANTS_TABLE = os.getenv("CHALLENGE_PARTICIPANTS_TABLE", "moral-
 PARTY_ROOMS_TABLE = os.getenv("PARTY_ROOMS_TABLE", "moral-torture-machine-party-rooms")
 PARTY_PARTICIPANTS_TABLE = os.getenv("PARTY_PARTICIPANTS_TABLE", "moral-torture-machine-party-participants")
 OPS_ERROR_ALERTS_TABLE = os.getenv("OPS_ERROR_ALERTS_TABLE", "moral-torture-machine-ops-error-alerts")
+# TASK-30/113: same bucket the frontend deploy already syncs to (frontend/terraform),
+# just a dedicated prefix within it for bot-only pre-rendered profile previews.
+FRONTEND_BUCKET_NAME = os.getenv("FRONTEND_BUCKET_NAME", "prod-moral-torture-machine-frontend")
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
 GROQ_API_KEY_SSM_NAME = os.getenv("GROQ_API_KEY_SSM_NAME", "")
 ANALYTICS_FINGERPRINT_SECRET_SSM_NAME = os.getenv(
@@ -220,6 +224,7 @@ MODEL_FALLBACK_CHAIN = [
 ]
 
 # Initialize AWS clients
+s3_client = boto3.client('s3', region_name=AWS_REGION)
 dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
 table = dynamodb.Table(DYNAMODB_TABLE)
 analytics_table = dynamodb.Table(ANALYTICS_TABLE)
@@ -529,6 +534,74 @@ def generate_public_token(byte_length: int = 16) -> str:
     return secrets.token_urlsafe(byte_length)
 
 
+def _build_profile_og_html(public_id: str, archetype: Dict[str, Any], language: str) -> str:
+    """Static, bot-only HTML snapshot for /p/:publicId (TASK-30/113).
+
+    Mirrors the meta tags PublicProfileScreen/SEO.jsx render client-side, so
+    link-preview bots that never execute JS (WhatsApp/Facebook/Twitter/etc.)
+    see the same personalized title/description a real visitor eventually
+    would. CloudFront only routes known bot user agents here
+    (frontend/terraform/functions/og-bot-router.js); everyone else gets the
+    normal SPA and this file is never seen.
+    """
+    name = html.escape(archetype.get("name", "Moral Torture Machine"))
+    share_phrase = html.escape(archetype.get("sharePhrase", ""))
+    title = f"{name} - Moral Torture Machine"
+    full_title = html.escape(f"{title} | Moral Torture Machine")
+    profile_url = f"https://moraltorturemachine.com/p/{public_id}"
+    locale = "it_IT" if language == "it" else "en_US"
+    alt_locale = "en_US" if language == "it" else "it_IT"
+    lang_attr = "it" if language == "it" else "en"
+    og_image = "https://moraltorturemachine.com/og-image.png"
+
+    return f"""<!DOCTYPE html>
+<html lang="{lang_attr}">
+<head>
+<meta charset="UTF-8">
+<title>{full_title}</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="canonical" href="{profile_url}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{profile_url}">
+<meta property="og:title" content="{full_title}">
+<meta property="og:description" content="{share_phrase}">
+<meta property="og:image" content="{og_image}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="{html.escape(title)}">
+<meta property="og:site_name" content="Moral Torture Machine">
+<meta property="og:locale" content="{locale}">
+<meta property="og:locale:alternate" content="{alt_locale}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:url" content="{profile_url}">
+<meta name="twitter:title" content="{full_title}">
+<meta name="twitter:description" content="{share_phrase}">
+<meta name="twitter:image" content="{og_image}">
+<meta http-equiv="refresh" content="0; url={profile_url}">
+</head>
+<body>
+<p>{name}</p>
+<p>{share_phrase}</p>
+<p><a href="{profile_url}">{profile_url}</a></p>
+</body>
+</html>"""
+
+
+def _write_profile_og_html(public_id: str, archetype: Dict[str, Any], language: str) -> None:
+    """Best-effort: a failed write here must never break profile creation."""
+    try:
+        body = _build_profile_og_html(public_id, archetype, language)
+        s3_client.put_object(
+            Bucket=FRONTEND_BUCKET_NAME,
+            Key=f"og/profiles/{public_id}.html",
+            Body=body.encode("utf-8"),
+            ContentType="text/html; charset=utf-8",
+            CacheControl="public, max-age=300",
+        )
+    except Exception:
+        logger.exception("Unable to write bot-preview OG HTML for profile %s", public_id)
+
+
 def create_moral_profile(anonymous_user_id: str, answers: list, language: str) -> Dict[str, Any]:
     """Persist a shareable moral profile (TASK-28) from a completed test.
 
@@ -555,6 +628,7 @@ def create_moral_profile(anonymous_user_id: str, answers: list, language: str) -
         "lastAccessedAt": now,
         "expirationTime": expiration_time,
     })
+    _write_profile_og_html(public_id, archetype, language)
     return {
         "publicId": public_id,
         "averages": averages,

@@ -1,10 +1,10 @@
 ---
 id: TASK-113
 title: 'Decidere come servire Open Graph a crawler senza JavaScript per /p/:publicId'
-status: Open Points
+status: Done
 assignee: []
 created_date: '2026-08-01 14:41'
-updated_date: '2026-08-01 14:41'
+updated_date: '2026-08-07 12:52'
 labels: []
 dependencies:
   - TASK-30
@@ -19,6 +19,6 @@ TASK-30 AC2 ('Crawler senza JavaScript riceve un fallback utile') non e' soddisf
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 E' stata scelta esplicitamente una delle opzioni (o un'alternativa) con il relativo trade-off di costo/Free Tier documentato in un ADR
-- [ ] #2 Se scelta un'opzione con nuovo servizio AWS, e' stata seguita la procedura di eccezione Free Tier di CLAUDE.md prima di provisionare
+- [x] #1 E' stata scelta esplicitamente una delle opzioni (o un'alternativa) con il relativo trade-off di costo/Free Tier documentato in un ADR
+- [x] #2 Se scelta un'opzione con nuovo servizio AWS, e' stata seguita la procedura di eccezione Free Tier di CLAUDE.md prima di provisionare
 <!-- AC:END -->

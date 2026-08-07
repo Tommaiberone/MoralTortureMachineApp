@@ -92,6 +92,18 @@ resource "aws_cloudfront_origin_access_control" "frontend" {
   signing_protocol                  = "sigv4"
 }
 
+# TASK-30/113: routes only known link-preview bot user agents on /p/* to a
+# pre-rendered static snapshot (see ADR-076 for why a CloudFront Function and
+# not Lambda@Edge - this tier is always-free up to 2M invocations/month vs.
+# Lambda@Edge having none). Real visitors are untouched and still get the SPA.
+resource "aws_cloudfront_function" "og_bot_router" {
+  name    = "${var.environment}-${var.stack_name}-og-bot-router"
+  runtime = "cloudfront-js-2.0"
+  comment = "Route link-preview bots on /p/* to a pre-rendered OG snapshot"
+  publish = true
+  code    = file("${path.module}/functions/og-bot-router.js")
+}
+
 # ACM Certificate per il dominio personalizzato (DEVE essere in us-east-1 per CloudFront)
 resource "aws_acm_certificate" "frontend" {
   count                     = var.use_custom_domain ? 1 : 0
@@ -182,6 +194,36 @@ resource "aws_cloudfront_distribution" "frontend" {
     default_ttl            = 31536000 # 1 anno
     max_ttl                = 31536000
     compress               = true
+  }
+
+  # TASK-30/113: /p/:publicId - same S3 origin as everything else, but a bot
+  # request gets rewritten (by the CloudFront Function below) to a static
+  # og/profiles/{publicId}.html snapshot instead of index.html. Short TTL
+  # since a profile's snapshot is written once, shortly before any bot would
+  # plausibly request it.
+  ordered_cache_behavior {
+    path_pattern     = "/p/*"
+    allowed_methods  = ["GET", "HEAD", "OPTIONS"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "S3-${aws_s3_bucket.frontend.id}"
+
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
+      }
+    }
+
+    viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 0
+    default_ttl            = 300
+    max_ttl                = 3600
+    compress               = true
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.og_bot_router.arn
+    }
   }
 
   # Gestione degli errori - reindirizza a index.html per il routing SPA

@@ -1570,6 +1570,61 @@ closely-split (near 50/50) dilemmas using existing vote counts, was
 intentionally left out of this task's scope as a possible v2 once V1 data
 exists.
 
+### ADR-076 — CloudFront Function + pre-baked static HTML for bot-only Open Graph on /p/:publicId (TASK-113/30)
+
+Context: `/p/:publicId` is a Vite SPA with no SSR; `react-helmet-async` only
+updates `<meta>` tags client-side after JS runs. Link-preview bots
+(WhatsApp/Facebook/Twitter/iMessage/Discord/Telegram) typically do not
+execute JS, so a shared profile link renders only the generic site-wide
+preview, not the archetype/share-phrase preview - directly undermining the
+share-rate work already in progress this session (TASK-172/ADR-075).
+
+Options considered: (a) as originally scoped in TASK-113, Lambda@Edge
+generating HTML per bot request; (b) broader static prerendering (ADR-020
+precedent, but that precedent is build-time landing pages with a fixed,
+small URL set - it does not naturally extend to a large/unbounded set of
+dynamic per-profile URLs unless rendering is decoupled from request time,
+which collapses back into option (a)'s shape); (c) accept the generic
+preview for now. Verified current pricing before choosing: CloudFront
+Functions carry a real always-free tier (2M invocations/month, then
+$0.10/million - blog.cdnsun.com/cloudfront-pricing); Lambda@Edge has
+effectively none (billed from request 1, only the first 1,000/month
+covered by CloudFront's own free tier - cloudzero.com/blog/lambda-pricing).
+Option (a) as originally scoped would have run outside Free Tier from the
+first real traffic.
+
+Chosen: a hybrid, close to (b) but decoupling rendering from request time
+without needing a second compute service. A CloudFront Function (free,
+viewer-request, no external calls) matches known bot user agents on
+`/p/*` and rewrites the request to `/og/profiles/{publicId}.html` on the
+same origin. That HTML is not rendered per-request - it is written once,
+synchronously, by the existing backend Lambda inside `POST /profiles`
+(archetype/share-phrase data is already in hand there), via a new
+least-privilege `s3:PutObject` permission scoped to that one prefix on the
+*existing* frontend S3 bucket - no new bucket. `og:title`/`og:description`
+are personalized (archetype name + share phrase, the same public/teaser
+fields `PublicProfileScreen.jsx` already exposes client-side); `og:image`
+reuses the existing generic `og-image.png` for V1 rather than 14 new
+per-archetype renders - that image is what a preview card leads with, but
+the title/description text is what most crawlers show most prominently, so
+this ships the actual fix (a broken/generic preview becoming a correct,
+personalized one) without a new image-generation dependency. Per-archetype
+OG images are a reasonable v2 once this is live, not a blocker for it.
+
+Cost: no new AWS service needs the Free Tier exception process - CloudFront
+Functions and the existing S3 bucket both cover this with wide margin at
+current volume (23 `moral-profiles` rows total as of this session; S3
+Standard PUT/GET pricing is $0.005/$0.0004 per 1,000 requests even without
+a free-tier line item applying, effectively fractions of a cent/month here).
+No Lambda@Edge, no new bucket, no dynamic image-rendering compute.
+
+Consequences: implementation (TASK-30) needs a Terraform change (CloudFront
+Function resource + behavior, IAM permission) - `terraform apply` requires
+the user's separate explicit confirmation per CLAUDE.md regardless of this
+decision. Scope stays to `/p/:publicId`; Duel/Challenge share links
+(`/challenge/:token`) have the same underlying SPA-meta-tags problem but are
+out of scope here and would need their own follow-up task if revisited.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
