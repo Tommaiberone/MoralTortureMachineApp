@@ -6,6 +6,7 @@ title: >-
 status: Backlog
 assignee: []
 created_date: '2026-08-05 15:51'
+updated_date: '2026-08-07 13:15'
 labels:
   - growth
   - analytics
@@ -32,3 +33,9 @@ Sei un growth analyst scettico verso i miglioramenti percepiti: non ti fidi di u
 - [ ] #3 Se lo share rate raggiunge o supera il 15%, il risultato viene registrato come voce ADR in decision-1 e non viene fatta alcuna escalation
 - [ ] #4 Il volume totale di sfide create viene riportato accanto al tasso open-to-complete, etichettando il gate come dato insufficiente anziche' superato se il totale sfide e' sotto circa 30
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-08-07: nella stessa sessione in cui e' stato letto questo task e' stato deployato anche TASK-172 (CTA 'Spread the Guilt' per-dilemma, altra leva sul result-to-share) e TASK-173 (rimozione Pass-the-Phone, cambia il traffico homepage). Rispettato il vincolo del task: nessuna ri-misurazione fatta oggi, resta bloccato fino al 2026-08-19. Quando si riprende, isolare l'effetto di TASK-149 da quello di TASK-172 (entrambi toccano share rate nella stessa finestra) invece di assumere un confronto pulito solo pre/post-149; se necessario, guardare l'evento dilemma_audience_share_clicked (TASK-172) separatamente da share_clicked (TASK-149) nel breakdown.
+<!-- SECTION:NOTES:END -->

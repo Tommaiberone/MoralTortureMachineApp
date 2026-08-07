@@ -3,13 +3,26 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
 import { useTranslation } from 'react-i18next';
-import { getApiHeaders } from '../utils/session';
+import { getApiHeaders, getAnonymousUserId } from '../utils/session';
 import { getSeenDilemmas, markDilemmaAsSeen } from '../utils/seenDilemmas';
 import SEO from '../components/SEO';
 import { trackEvent } from '../utils/analytics';
 import "./EvaluationDilemmasScreen.css";
 
-const MAX_DILEMMAS = 7;
+// TASK-23: 3-way test-length experiment (doc-2 M2 activation). A simple
+// djb2 string hash of the existing anonymous_user_id gives a stable,
+// deterministic assignment - the same identity always lands on the same
+// variant across visits, with no new storage key or backend call.
+const TEST_LENGTH_VARIANTS = [3, 5, 7];
+
+const getTestLengthVariant = () => {
+  const id = getAnonymousUserId();
+  let hash = 5381;
+  for (let i = 0; i < id.length; i++) {
+    hash = ((hash << 5) + hash + id.charCodeAt(i)) | 0;
+  }
+  return TEST_LENGTH_VARIANTS[Math.abs(hash) % TEST_LENGTH_VARIANTS.length];
+};
 
 // TASK-124: Recharts' default pie label text has no explicit fill, which
 // reads poorly against this theme's dark background. Rendering the <text>
@@ -52,6 +65,10 @@ const EvaluationDilemmasScreen = () => {
   // Prefetched next dilemma. A ref (not state) is enough: nothing renders
   // from it directly, fetchDilemma only reads it synchronously on click.
   const nextDilemmaRef = useRef(null);
+  // TASK-23: assigned once per mount, stable for the rest of the session -
+  // doesn't need to trigger a re-render on its own.
+  const maxDilemmasRef = useRef(getTestLengthVariant());
+  const maxDilemmas = maxDilemmasRef.current;
 
   // TASK-22: no separate click is needed to get the first dilemma.
   useEffect(() => {
@@ -60,10 +77,10 @@ const EvaluationDilemmasScreen = () => {
   }, []);
 
   useEffect(() => {
-    if (currentDilemmaCount >= MAX_DILEMMAS) {
+    if (currentDilemmaCount >= maxDilemmas) {
       setEvaluationComplete(true);
     }
-  }, [currentDilemmaCount]);
+  }, [currentDilemmaCount, maxDilemmas]);
 
   useEffect(() => {
     // Block browser back button
@@ -126,7 +143,7 @@ const EvaluationDilemmasScreen = () => {
       testStarted.current = true;
       trackEvent('test_started', {
         mode: 'evaluation',
-        planned_dilemmas: MAX_DILEMMAS,
+        planned_dilemmas: maxDilemmas,
       });
     }
 
@@ -245,7 +262,7 @@ const EvaluationDilemmasScreen = () => {
       choice,
       question_number: nextDilemmaCount,
     });
-    if (nextDilemmaCount >= MAX_DILEMMAS) {
+    if (nextDilemmaCount >= maxDilemmas) {
       trackEvent('test_completed', {
         mode: 'evaluation',
         completed_dilemmas: nextDilemmaCount,
@@ -258,7 +275,7 @@ const EvaluationDilemmasScreen = () => {
 
     // TASK-22: prefetch the next dilemma in the background while the
     // reveal/tease for this one is on screen, so advancing feels instant.
-    if (nextDilemmaCount < MAX_DILEMMAS && !prefetchInFlight.current) {
+    if (nextDilemmaCount < maxDilemmas && !prefetchInFlight.current) {
       prefetchInFlight.current = true;
       fetchDilemmaData()
         .then((prefetched) => { nextDilemmaRef.current = prefetched; })
@@ -333,7 +350,7 @@ const EvaluationDilemmasScreen = () => {
           {t('evaluation.title')}
         </h1>
         <p className="screen-subtitle evaluation-subtitle">
-          {currentDilemmaCount} / {MAX_DILEMMAS}
+          {currentDilemmaCount} / {maxDilemmas}
         </p>
       </div>
 
