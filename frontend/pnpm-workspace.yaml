@@ -2,7 +2,11 @@ packages:
   - 'frontend'
 
 allowBuilds:
-  esbuild: set this to true or false
+  # esbuild's postinstall script only downloads the prebuilt native binary
+  # for the current platform (no arbitrary code beyond that) and Vite
+  # cannot build/dev without it - blocking it breaks the toolchain outright,
+  # unlike sharp below which this project doesn't depend on at build time.
+  esbuild: true
 
 ignoredBuiltDependencies:
   - sharp

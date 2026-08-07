@@ -3,9 +3,10 @@ id: TASK-168
 title: >-
   pnpm-workspace.yaml allowBuilds.esbuild e' un placeholder mai completato,
   blocca pnpm install/build
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-05 18:47'
+updated_date: '2026-08-07 13:27'
 labels:
   - technical-debt
   - tooling
@@ -23,6 +24,6 @@ frontend/pnpm-workspace.yaml riga 4-5 ha 'allowBuilds: esbuild: set this to true
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Il placeholder 'set this to true or false' e' sostituito con un valore booleano reale (true o false), con la scelta motivata
-- [ ] #2 pnpm install e pnpm build:prod/pnpm lint funzionano senza il workaround npx
+- [x] #1 Il placeholder 'set this to true or false' e' sostituito con un valore booleano reale (true o false), con la scelta motivata
+- [x] #2 pnpm install e pnpm build:prod/pnpm lint funzionano senza il workaround npx
 <!-- AC:END -->
