@@ -1,9 +1,10 @@
 ---
 id: TASK-177.1
 title: Allineare /account al tema horror dell'app e consolidare login/logout
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-08-10 09:33'
+updated_date: '2026-08-10 09:53'
 labels:
   - frontend
   - ux
@@ -22,7 +23,13 @@ Nessuna dipendenza dagli altri sotto-task: AccountDeleteScreen.jsx usa oggi .leg
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 La pagina /account usa i token colore/tipografia del tema horror (--creepy-*), non piu' .legal-screen
-- [ ] #2 Un utente autenticato vede un bottone di logout funzionante direttamente su /account
-- [ ] #3 Login, export dati, elimina account, link Privacy/Cookie continuano a funzionare invariati (TASK-15/120 AC4)
+- [x] #1 La pagina /account usa i token colore/tipografia del tema horror (--creepy-*), non piu' .legal-screen
+- [x] #2 Un utente autenticato vede un bottone di logout funzionante direttamente su /account
+- [x] #3 Login, export dati, elimina account, link Privacy/Cookie continuano a funzionare invariati (TASK-15/120 AC4)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Rebuilt AccountDeleteScreen.jsx/.css on the app's own --creepy-* horror theme tokens (was .legal-screen's borrowed beige/tan palette). Added a working logout button (auth.logout()) directly on /account, fixing TASK-155's gap - login/export/delete/Privacy/Cookie links all preserved and re-tested. pnpm lint + build:prod clean. NOT YET PUSHED - bundled in the same file/commit as TASK-177.5, which depends on TASK-177.4's not-yet-applied Terraform GSI (see TASK-177 notes).
+<!-- SECTION:NOTES:END -->

@@ -1744,6 +1744,148 @@ async def export_user_data(request: Request):
     }
 
 
+@app.get("/users/me/archetype")
+async def get_my_latest_archetype(request: Request, language: str = "en"):
+    """TASK-177.2: the caller's current moral archetype, for the /account
+    'My Profile' redesign (TASK-177). Reuses the OwnerIndex GSI already
+    queried by /users/export, resolved across every anonymous_user_id ever
+    claimed to this account (the claim-lock rows are the authoritative
+    mapping, TASK-13) - not just the current device's anonymous id, so the
+    result is correct even after a claim on a second device. Recomputes the
+    archetype from the stored dimension averages using the current catalog,
+    same non-frozen rule as every other profile read (ADR-072); never caches
+    an archetype name/id from a prior read."""
+    claims = require_authenticated_user(request)
+    anonymous_ids, _ = _claimed_anonymous_ids(claims["sub"])
+    if not anonymous_ids:
+        return {"archetype": None}
+
+    now_seconds = int(time.time())
+    valid_profiles = [
+        profile for profile in _profiles_for_anonymous_ids(anonymous_ids)
+        if profile.get("expirationTime") is None or int(profile["expirationTime"]) > now_seconds
+    ]
+    if not valid_profiles:
+        return {"archetype": None}
+
+    latest_profile = max(valid_profiles, key=lambda profile: int(profile.get("createdAt", 0)))
+    averages = json.loads(latest_profile["dimensionAverages"])
+    return {"archetype": assign_archetype(averages, language=language)}
+
+
+# TASK-177.4: bounded window over a claimed identity's most recent Duel
+# participations - large enough to make "Duels completed"/"avg compatibility"
+# accurate for any realistic player at current product scale, small enough
+# to keep the per-view DynamoDB read count predictable regardless of how the
+# table grows. Revisit if real usage ever approaches this per account.
+_DUEL_STATS_PARTICIPATION_LIMIT = 50
+_DUEL_STATS_RECENT_LIMIT = 5
+
+
+def _duel_participations_for_anonymous_ids(anonymous_ids: list[str]) -> list[Dict[str, Any]]:
+    """Most recent participations first, via the ParticipantIndex GSI (never
+    a table Scan) - submittedAt exists on every row (TASK-34/36) so it works
+    as a recency key even though it does not by itself mean the challenge
+    reached 'completed'; callers still check challenges_table.status."""
+    participations: list[Dict[str, Any]] = []
+    for anonymous_id in anonymous_ids:
+        response = challenge_participants_table.query(
+            IndexName="ParticipantIndex",
+            KeyConditionExpression="anonymousUserId = :owner",
+            ExpressionAttributeValues={":owner": anonymous_id},
+            ScanIndexForward=False,
+            Limit=_DUEL_STATS_PARTICIPATION_LIMIT,
+        )
+        participations.extend(response.get("Items", []))
+    participations.sort(key=lambda item: int(item.get("submittedAt", 0)), reverse=True)
+    return participations[:_DUEL_STATS_PARTICIPATION_LIMIT]
+
+
+def _compute_duel_stats_for_anonymous_ids(anonymous_ids: list[str], language: str) -> Dict[str, Any]:
+    completed_count = 0
+    agreement_sum = 0.0
+    distinct_archetype_ids: set[str] = set()
+    recent: list[Dict[str, Any]] = []
+    own_averages_by_profile_id: Dict[str, Dict[str, float]] = {}
+
+    for participation in _duel_participations_for_anonymous_ids(anonymous_ids):
+        token = participation["challengeToken"]
+        own_role = participation["role"]
+        own_profile_id = participation.get("profilePublicId")
+        if not own_profile_id:
+            continue  # A joined-but-never-submitted invitee row has no profile yet.
+
+        challenge = challenges_table.get_item(Key={"challengeToken": token}).get("Item")
+        if not challenge or challenge.get("status") != "completed":
+            continue
+
+        opponent_role = "invitee" if own_role == "creator" else "creator"
+        opponent_participant = get_participant(token, opponent_role)
+        if not opponent_participant or not opponent_participant.get("profilePublicId"):
+            continue
+
+        opponent_profile = moral_profiles_table.get_item(
+            Key={"publicId": opponent_participant["profilePublicId"]},
+        ).get("Item")
+        if not opponent_profile:
+            continue  # The opponent's profile has since expired/been deleted.
+
+        if own_profile_id not in own_averages_by_profile_id:
+            own_profile = moral_profiles_table.get_item(Key={"publicId": own_profile_id}).get("Item")
+            if not own_profile:
+                continue
+            own_averages_by_profile_id[own_profile_id] = json.loads(own_profile["dimensionAverages"])
+        own_averages = own_averages_by_profile_id[own_profile_id]
+        opponent_averages = json.loads(opponent_profile["dimensionAverages"])
+
+        compatibility = compute_compatibility(own_averages, opponent_averages)
+        opponent_archetype = assign_archetype(opponent_averages, language=language)
+        completed_at = (
+            opponent_participant["submittedAt"] if opponent_role == "invitee"
+            else participation["submittedAt"]
+        )
+
+        completed_count += 1
+        agreement_sum += compatibility["overallAgreementPct"]
+        distinct_archetype_ids.add(opponent_archetype["archetypeId"])
+        if len(recent) < _DUEL_STATS_RECENT_LIMIT:
+            recent.append({
+                "challengeToken": token,
+                "opponentArchetype": opponent_archetype,
+                "overallAgreementPct": compatibility["overallAgreementPct"],
+                "completedAt": completed_at,
+            })
+
+    return {
+        "completedDuelsCount": completed_count,
+        "averageCompatibilityPct": round(agreement_sum / completed_count, 1) if completed_count else None,
+        "distinctArchetypesMet": len(distinct_archetype_ids),
+        "recentDuels": recent,
+    }
+
+
+@app.get("/users/me/duel-stats")
+async def get_my_duel_stats(request: Request, language: str = "en"):
+    """TASK-177.4: Duel track-record summary for the /account 'My Profile'
+    redesign - completed count, average compatibility, distinct opponent
+    archetypes met, and the most recent completed Duels with enough detail
+    to link back to their comparison or start a rematch. Requires the
+    ParticipantIndex GSI on challenge_participants (added alongside this
+    endpoint); compatibility/opponent archetype are always recomputed from
+    stored dimension averages, never cached, for the same reason profile
+    reads never freeze an archetype (ADR-072)."""
+    claims = require_authenticated_user(request)
+    anonymous_ids, _ = _claimed_anonymous_ids(claims["sub"])
+    if not anonymous_ids:
+        return {
+            "completedDuelsCount": 0,
+            "averageCompatibilityPct": None,
+            "distinctArchetypesMet": 0,
+            "recentDuels": [],
+        }
+    return _compute_duel_stats_for_anonymous_ids(anonymous_ids, language)
+
+
 def _delete_records(dynamodb_table, keys: list[Dict[str, Any]]) -> int:
     deleted = 0
     seen = set()

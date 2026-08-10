@@ -299,6 +299,32 @@ resource "aws_dynamodb_table" "challenge_participants" {
     type = "S"
   }
 
+  attribute {
+    name = "anonymousUserId"
+    type = "S"
+  }
+
+  attribute {
+    name = "submittedAt"
+    type = "N"
+  }
+
+  # TASK-177.4: lets the /account "My Profile" redesign list a caller's own
+  # Duel history (as creator or invitee) without a table Scan on every page
+  # view - same OwnerIndex-style pattern already used by moral_profiles.
+  # submittedAt exists on every participant row (set at creation for the
+  # creator, at actual submission for the invitee), so it works as a recency
+  # key even though it does not by itself mean "challenge completed" - the
+  # reader still checks challenges_table.status.
+  global_secondary_index {
+    name            = "ParticipantIndex"
+    hash_key        = "anonymousUserId"
+    range_key       = "submittedAt"
+    projection_type = "ALL"
+    read_capacity   = 1
+    write_capacity  = 1
+  }
+
   ttl {
     attribute_name = "expirationTime"
     enabled        = true

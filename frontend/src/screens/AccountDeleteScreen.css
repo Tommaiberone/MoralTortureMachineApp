@@ -1,0 +1,272 @@
+/* TASK-177: /account rebuilt as "My Profile" on the app's own horror theme
+   tokens, replacing the borrowed .legal-screen palette (beige/tan, never
+   matched the rest of the app). */
+
+.account-screen {
+  display: flex;
+  justify-content: center;
+  padding: 3rem 1rem 5rem;
+  min-height: 100vh;
+}
+
+.account-page {
+  width: 100%;
+  max-width: 480px;
+}
+
+.account-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  margin-bottom: 1.4rem;
+}
+.account-back-link:hover,
+.account-back-link:focus-visible { color: var(--text-normal); }
+
+.account-page-title {
+  font-size: 1rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0 0 1.5rem;
+}
+
+.account-section { margin-bottom: 2.2rem; }
+.account-section:last-of-type { margin-bottom: 0; }
+
+.account-eyebrow {
+  font-size: 0.68rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0 0 0.6rem;
+}
+
+/* ---- Identity strip ---- */
+.account-identity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  background: var(--creepy-charcoal);
+  border: 1px solid var(--creepy-fog);
+}
+.account-identity-email {
+  font-size: 0.82rem;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-logout-button {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--creepy-fog);
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.5rem 0.7rem;
+  cursor: pointer;
+}
+.account-logout-button:hover,
+.account-logout-button:focus-visible {
+  color: var(--text-danger-readable);
+  border-color: var(--text-danger);
+}
+
+/* ---- Not-logged-in benefits/login ---- */
+.account-login-card {
+  background: var(--creepy-charcoal);
+  border: 1px solid var(--creepy-fog);
+  padding: 1.4rem 1.2rem;
+  text-align: center;
+}
+.account-login-card p { color: var(--text-normal); font-size: 0.9rem; line-height: 1.55; margin: 0 0 1rem; }
+
+/* ---- Archetype trophy card (mirrors ResultsScreen's .results-archetype) ---- */
+.account-archetype-card {
+  background-color: var(--creepy-charcoal);
+  border: 2px solid var(--archetype-color, var(--creepy-fog));
+  padding: 25px;
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.9), 0 0 15px rgba(139, 0, 0, 0.3);
+}
+.account-archetype-top {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.7rem;
+}
+.account-archetype-emoji { font-size: 24px; }
+.account-archetype-name {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-danger-readable);
+  text-shadow: 2px 2px 0 var(--creepy-void);
+  margin: 0;
+}
+.account-archetype-desc {
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text-normal);
+  margin: 0 0 1rem;
+}
+.account-archetype-trait { font-size: 0.85rem; line-height: 1.55; margin: 0 0 0.5rem; color: var(--text-normal); }
+.account-archetype-trait:last-child { margin-bottom: 0; }
+.account-archetype-trait b { color: var(--text-highlight); }
+
+.account-empty-card {
+  background: var(--creepy-charcoal);
+  border: 1px solid var(--creepy-fog);
+  padding: 1.6rem 1rem;
+  text-align: center;
+}
+.account-empty-card p { color: var(--text-dim); font-size: 0.85rem; margin: 0 0 1rem; }
+
+/* ---- Duel stat tiles ---- */
+.account-stat-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+  margin-bottom: 0.9rem;
+}
+.account-stat-tile {
+  background: var(--creepy-dark-gray);
+  border: 1px solid var(--creepy-mid-gray);
+  padding: 0.85rem 0.5rem;
+  text-align: center;
+}
+.account-stat-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-highlight);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.account-stat-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-top: 0.35rem;
+  line-height: 1.3;
+}
+
+/* ---- Recent duels ---- */
+.account-duel-list { display: flex; flex-direction: column; gap: 0.55rem; }
+.account-duel-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 0.8rem;
+  background: var(--creepy-charcoal);
+  border: 1px solid var(--creepy-mid-gray);
+  border-left: 3px solid var(--duel-color, var(--creepy-fog));
+}
+.account-duel-emoji { font-size: 1.1rem; flex-shrink: 0; }
+.account-duel-info { flex: 1; min-width: 0; }
+.account-duel-name {
+  font-size: 0.82rem;
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.account-duel-meta { font-size: 0.68rem; color: var(--text-dim); margin-top: 0.15rem; }
+.account-duel-pct {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-highlight);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  text-align: right;
+}
+.account-duel-actions { display: flex; flex-direction: column; gap: 0.25rem; flex-shrink: 0; margin-left: 0.4rem; }
+.account-duel-action {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.62rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+  font-family: inherit;
+}
+.account-duel-action:hover,
+.account-duel-action:focus-visible { color: var(--text-danger-readable); border-color: var(--text-danger); }
+.account-duel-action:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---- Growth CTAs ---- */
+.account-cta-secondary {
+  display: block;
+  width: 100%;
+  padding: 0.75rem;
+  margin-top: 0.7rem;
+  border: 1px solid var(--creepy-fog);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: center;
+  cursor: pointer;
+}
+.account-cta-secondary:hover,
+.account-cta-secondary:focus-visible { color: var(--text-normal); border-color: var(--text-dim); }
+
+.account-challenge-link {
+  margin-top: 0.7rem;
+  padding: 0.8rem;
+  background: var(--creepy-charcoal);
+  border: 1px solid var(--creepy-fog);
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-normal);
+}
+
+/* ---- Account settings (de-emphasized) ---- */
+.account-settings-block { border-top: 1px solid var(--creepy-mid-gray); padding-top: 1.1rem; }
+.account-settings-links { display: flex; flex-direction: column; gap: 0.55rem; }
+.account-settings-link {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+}
+.account-settings-link:hover,
+.account-settings-link:focus-visible { color: var(--text-normal); }
+.account-settings-link.danger:hover,
+.account-settings-link.danger:focus-visible { color: var(--text-danger-readable); }
+.account-legal-links { margin-top: 1rem; font-size: 0.68rem; color: var(--text-dim); }
+.account-legal-links a { color: var(--text-dim); }
+.account-legal-links a:hover,
+.account-legal-links a:focus-visible { color: var(--text-danger-readable); }
+
+.account-error { color: var(--text-danger-readable); font-size: 0.82rem; margin: 0 0 0.8rem; }
+
+.account-delete-confirm {
+  margin-top: 0.6rem;
+  padding: 0.9rem;
+  background: var(--creepy-charcoal);
+  border: 1px solid var(--text-danger);
+}
+.account-delete-confirm p { color: var(--text-normal); font-size: 0.82rem; margin: 0 0 0.7rem; }
+.account-delete-confirm-actions { display: flex; gap: 0.6rem; }
+
+@media (max-width: 380px) {
+  .account-screen { padding: 2rem 0.7rem 4rem; }
+  .account-stat-value { font-size: 1.15rem; }
+}

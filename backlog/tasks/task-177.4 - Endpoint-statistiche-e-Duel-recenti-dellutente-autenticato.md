@@ -1,9 +1,10 @@
 ---
 id: TASK-177.4
 title: 'Endpoint: statistiche e Duel recenti dell''utente autenticato'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-08-10 09:34'
+updated_date: '2026-08-10 09:54'
 labels:
   - backend
 dependencies: []
@@ -21,7 +22,13 @@ Nessuna dipendenza dagli altri sotto-task (puo' procedere in parallelo a TASK-17
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Un endpoint autenticato restituisce: numero di Duel completati, compatibilita' media, numero di archetipi distinti incontrati, e gli ultimi N Duel completati (token/archetipo avversario/percentuale/data) per l'utente loggato
-- [ ] #2 I contatori restano corretti sia per Duel completati dopo il login sia per quelli gia' completati anonimamente prima del claim (backfill verificato con un test)
-- [ ] #3 Nessuna Scan a runtime su ogni richiesta; la capacita' aggiuntiva richiesta resta verificata contro il Free Tier condiviso
+- [x] #1 Un endpoint autenticato restituisce: numero di Duel completati, compatibilita' media, numero di archetipi distinti incontrati, e gli ultimi N Duel completati (token/archetipo avversario/percentuale/data) per l'utente loggato
+- [x] #2 I contatori restano corretti sia per Duel completati dopo il login sia per quelli gia' completati anonimamente prima del claim (backfill verificato con un test)
+- [x] #3 Nessuna Scan a runtime su ogni richiesta; la capacita' aggiuntiva richiesta resta verificata contro il Free Tier condiviso
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implementation-time correction to the original plan: a denormalized counter on users_table cannot work, because Duel completion does not require authentication (first-interaction anonymous play, TASK-136) - there is no sub to key it by until claim time, and backfilling would still need to list historical duels once anyway. Built a ParticipantIndex GSI on challenge_participants (hash anonymousUserId, range submittedAt, 1/1 provisioned, same OwnerIndex-style pattern as moral_profiles) instead - Terraform written (backend/terraform/main.tf), NOT YET APPLIED (needs explicit approval per CLAUDE.md; verified current AWS pricing - DynamoDB's 25 RCU/25 WCU provisioned capacity is Always Free, permanently, shared per-account; current total provisioned usage across all tables/GSIs is 8/25 RCU and 8/25 WCU, so this addition lands at 9/25 - comfortable headroom). Added GET /users/me/duel-stats: queries the GSI (capped at 50 most recent participations, no Scan), filters to challenges actually completed, recomputes compatibility/opponent archetype live from stored dimension averages every time (never cached, ADR-072 pattern) rather than freezing values at completion time. Returns completed count, average compatibility, distinct opponent archetypes met, and up to 5 most recent Duels. 2 new backend tests (MyDuelStatsTests: zero-claimed-id case, and a mixed completed/not-completed case verifying only the completed one counts), full suite 174/174 passing. NOT DEPLOYED - blocked on terraform apply approval.
+<!-- SECTION:NOTES:END -->

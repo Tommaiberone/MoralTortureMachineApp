@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import time
 import unittest
@@ -18,6 +19,8 @@ from backend.src.backend_fastapi import (  # noqa: E402
     claim_anonymous_user_id,
     delete_user_account,
     export_user_data,
+    get_my_duel_stats,
+    get_my_latest_archetype,
     get_optional_user,
     require_active_cognito_user,
     require_authenticated_user,
@@ -25,6 +28,8 @@ from backend.src.backend_fastapi import (  # noqa: E402
     upsert_user_record,
 )
 from backend.src import backend_fastapi as backend_module  # noqa: E402
+from backend.src.archetype_engine import assign_archetype  # noqa: E402
+from backend.src.compatibility_engine import compute_compatibility  # noqa: E402
 
 
 def conditional_check_failed():
@@ -313,6 +318,158 @@ class ExportAndDeleteAccountTests(unittest.TestCase):
         tables["challenges_table"].delete_item.assert_called_once_with(Key={"challengeToken": "challenge-1"})
         self.assertEqual(tables["party_participants_table"].delete_item.call_count, 2)
         tables["party_rooms_table"].delete_item.assert_called_once_with(Key={"roomCode": "ROOM1"})
+
+
+SIX_DIMENSIONS = ["Empathy", "Integrity", "Responsibility", "Justice", "Altruism", "Honesty"]
+
+
+class MyLatestArchetypeTests(unittest.TestCase):
+    def test_returns_none_when_the_account_has_no_claimed_anonymous_id(self):
+        users_table = Mock()
+        users_table.scan.return_value = {"Items": []}
+        with (
+            patch.object(backend_module, "users_table", users_table),
+            patch.object(backend_module, "require_authenticated_user", return_value={"sub": "user-sub"}),
+        ):
+            result = asyncio.run(get_my_latest_archetype(request_with_headers({"Authorization": "Bearer token"})))
+        self.assertIsNone(result["archetype"])
+
+    def test_returns_none_when_every_claimed_profile_has_expired(self):
+        users_table = Mock()
+        users_table.scan.return_value = {"Items": [{"sub": "anon#anon-1", "ownerSub": "user-sub"}]}
+        profiles_table = Mock()
+        profiles_table.query.return_value = {"Items": [{
+            "publicId": "expired",
+            "dimensionAverages": json.dumps({d: 0.5 for d in SIX_DIMENSIONS}),
+            "createdAt": 1000,
+            "expirationTime": int(time.time()) - 10,
+        }]}
+        with (
+            patch.object(backend_module, "users_table", users_table),
+            patch.object(backend_module, "moral_profiles_table", profiles_table),
+            patch.object(backend_module, "require_authenticated_user", return_value={"sub": "user-sub"}),
+        ):
+            result = asyncio.run(get_my_latest_archetype(request_with_headers({"Authorization": "Bearer token"})))
+        self.assertIsNone(result["archetype"])
+
+    def test_returns_the_most_recently_created_valid_profiles_archetype(self):
+        users_table = Mock()
+        users_table.scan.return_value = {"Items": [{"sub": "anon#anon-1", "ownerSub": "user-sub"}]}
+        profiles_table = Mock()
+        profiles_table.query.return_value = {"Items": [
+            {
+                "publicId": "older",
+                "dimensionAverages": json.dumps({d: 0.2 for d in SIX_DIMENSIONS}),
+                "createdAt": 1000,
+            },
+            {
+                "publicId": "newer",
+                "dimensionAverages": json.dumps({d: 0.8 for d in SIX_DIMENSIONS}),
+                "createdAt": 5000,
+            },
+        ]}
+        with (
+            patch.object(backend_module, "users_table", users_table),
+            patch.object(backend_module, "moral_profiles_table", profiles_table),
+            patch.object(backend_module, "require_authenticated_user", return_value={"sub": "user-sub"}),
+        ):
+            result = asyncio.run(get_my_latest_archetype(
+                request_with_headers({"Authorization": "Bearer token"}), language="en",
+            ))
+        expected = assign_archetype({d: 0.8 for d in SIX_DIMENSIONS}, language="en")
+        self.assertEqual(result["archetype"]["archetypeId"], expected["archetypeId"])
+
+
+class MyDuelStatsTests(unittest.TestCase):
+    def _mine_and_opponent_averages(self):
+        return (
+            {d: 0.8 for d in SIX_DIMENSIONS},
+            {d: 0.2 for d in SIX_DIMENSIONS},
+        )
+
+    def test_returns_zeroed_stats_when_the_account_has_no_claimed_anonymous_id(self):
+        users_table = Mock()
+        users_table.scan.return_value = {"Items": []}
+        with (
+            patch.object(backend_module, "users_table", users_table),
+            patch.object(backend_module, "require_authenticated_user", return_value={"sub": "user-sub"}),
+        ):
+            result = asyncio.run(get_my_duel_stats(request_with_headers({"Authorization": "Bearer token"})))
+        self.assertEqual(result, {
+            "completedDuelsCount": 0,
+            "averageCompatibilityPct": None,
+            "distinctArchetypesMet": 0,
+            "recentDuels": [],
+        })
+
+    def test_counts_only_completed_challenges_and_computes_symmetric_stats(self):
+        mine_averages, opponent_averages = self._mine_and_opponent_averages()
+        users_table = Mock()
+        users_table.scan.return_value = {"Items": [{"sub": "anon#anon-1", "ownerSub": "user-sub"}]}
+
+        participants_table = Mock()
+        participants_table.query.return_value = {"Items": [
+            {
+                "challengeToken": "tok-completed",
+                "role": "creator",
+                "anonymousUserId": "anon-1",
+                "profilePublicId": "profile-mine",
+                "submittedAt": 6000,
+            },
+            {
+                "challengeToken": "tok-not-completed",
+                "role": "creator",
+                "anonymousUserId": "anon-1",
+                "profilePublicId": "profile-mine",
+                "submittedAt": 5000,
+            },
+        ]}
+
+        def get_participant_side_effect(Key):
+            if Key["challengeToken"] == "tok-completed" and Key["role"] == "invitee":
+                return {"Item": {
+                    "role": "invitee",
+                    "anonymousUserId": "other-anon",
+                    "profilePublicId": "profile-opponent",
+                    "submittedAt": 6500,
+                }}
+            return {}
+        participants_table.get_item.side_effect = get_participant_side_effect
+
+        challenges_table = Mock()
+
+        def challenge_get_item_side_effect(Key):
+            if Key["challengeToken"] == "tok-completed":
+                return {"Item": {"challengeToken": "tok-completed", "status": "completed"}}
+            return {"Item": {"challengeToken": "tok-not-completed", "status": "joined"}}
+        challenges_table.get_item.side_effect = challenge_get_item_side_effect
+
+        profiles_table = Mock()
+
+        def profile_get_item_side_effect(Key):
+            if Key["publicId"] == "profile-mine":
+                return {"Item": {"dimensionAverages": json.dumps(mine_averages)}}
+            if Key["publicId"] == "profile-opponent":
+                return {"Item": {"dimensionAverages": json.dumps(opponent_averages)}}
+            return {}
+        profiles_table.get_item.side_effect = profile_get_item_side_effect
+
+        with (
+            patch.object(backend_module, "users_table", users_table),
+            patch.object(backend_module, "challenge_participants_table", participants_table),
+            patch.object(backend_module, "challenges_table", challenges_table),
+            patch.object(backend_module, "moral_profiles_table", profiles_table),
+            patch.object(backend_module, "require_authenticated_user", return_value={"sub": "user-sub"}),
+        ):
+            result = asyncio.run(get_my_duel_stats(request_with_headers({"Authorization": "Bearer token"})))
+
+        expected_compatibility = compute_compatibility(mine_averages, opponent_averages)
+        self.assertEqual(result["completedDuelsCount"], 1)
+        self.assertEqual(result["averageCompatibilityPct"], expected_compatibility["overallAgreementPct"])
+        self.assertEqual(result["distinctArchetypesMet"], 1)
+        self.assertEqual(len(result["recentDuels"]), 1)
+        self.assertEqual(result["recentDuels"][0]["challengeToken"], "tok-completed")
+        self.assertEqual(result["recentDuels"][0]["completedAt"], 6500)
 
 
 class CognitoAccountStatusTests(unittest.TestCase):

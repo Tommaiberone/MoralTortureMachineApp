@@ -1,9 +1,10 @@
 ---
 id: TASK-177.2
 title: 'Endpoint: esporre l''archetipo piu'' recente dell''utente autenticato'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-08-10 09:33'
+updated_date: '2026-08-10 09:53'
 labels:
   - backend
 dependencies: []
@@ -21,7 +22,13 @@ Nessun endpoint oggi restituisce al frontend l'archetipo/profilo piu' recente de
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Un endpoint autenticato restituisce l'archetipo corrente (nome, emoji, colore, descrizione, strength, blindSpot) per l'utente loggato, risolvendo correttamente eventuali piu' anonymous_user_id collegati allo stesso account
-- [ ] #2 Se l'utente non ha mai completato un test, l'endpoint risponde in modo esplicito (es. archetipo null), non con un errore
-- [ ] #3 Test backend aggiunti/aggiornati; nessuna nuova tabella o GSI creata
+- [x] #1 Un endpoint autenticato restituisce l'archetipo corrente (nome, emoji, colore, descrizione, strength, blindSpot) per l'utente loggato, risolvendo correttamente eventuali piu' anonymous_user_id collegati allo stesso account
+- [x] #2 Se l'utente non ha mai completato un test, l'endpoint risponde in modo esplicito (es. archetipo null), non con un errore
+- [x] #3 Test backend aggiunti/aggiornati; nessuna nuova tabella o GSI creata
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Added GET /users/me/archetype (backend_fastapi.py): resolves every anonymous_user_id claimed to the account via the existing claim-lock rows (_claimed_anonymous_ids, same as /users/export), queries moral_profiles.OwnerIndex (no new infra), returns the most recently created still-valid profile's archetype recomputed live (never cached, per ADR-072). Returns {archetype: null} when the account has never completed a test. 3 new backend tests (MyLatestArchetypeTests), full suite 174/174 passing. Safe to deploy independently - no new infra.
+<!-- SECTION:NOTES:END -->

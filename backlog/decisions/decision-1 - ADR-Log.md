@@ -1742,6 +1742,65 @@ description explicitly says not to start implementation before the user
 confirms the mockup direction, since none of it has been built or reviewed
 yet.
 
+### ADR-079 — `TASK-177` implementation: a Duel-stats GSI replaces the planned denormalized counter, applying it is the one step withheld pending approval
+
+Context: the user confirmed the `ADR-078` mockup direction and asked to
+implement all five `TASK-177` subtasks in one session.
+
+`177.1`/`177.2`/`177.3` implemented exactly as planned: `AccountDeleteScreen`
+rebuilt on `--creepy-*` tokens with a working logout button (also closing
+`TASK-155`), and `GET /users/me/archetype` (resolves every claimed
+`anonymous_user_id` via the existing claim-lock rows, queries
+`moral_profiles.OwnerIndex` - no new infra) feeding the archetype card.
+
+`177.4` diverged from `ADR-078`'s plan. That ADR proposed a denormalized
+counter on `users_table`, updated at Duel completion plus a one-time claim
+backfill, specifically to avoid a new GSI. Building it surfaced a flaw the
+planning pass missed: Duel completion does not require authentication (a
+caller's *first* Duel interaction stays fully anonymous, `TASK-136`), so at
+the moment a challenge completes there is frequently no `sub` yet to key a
+`users_table` write by - the "backfill at claim time" idea does not remove
+the need to list a caller's historical duels at least once, it only makes it
+rarer, and there is still no index to do that listing with. A `ParticipantIndex`
+GSI on `challenge_participants` (hash `anonymousUserId`, range `submittedAt`)
+turned out simpler than the workaround it was meant to avoid, and matches
+the exact pattern already used twice (`moral_profiles.OwnerIndex`,
+`product_events.AnonymousUserIndex`). `GET /users/me/duel-stats` queries it
+capped at the 50 most recent participations (bounded cost regardless of
+table growth), filters to `challenges_table.status == "completed"`, and
+recomputes compatibility/opponent archetype from stored dimension averages
+on every read rather than caching them at completion time - deliberately
+matching `ADR-072`'s "never freeze a derived value" rule, so a future
+archetype-catalog or compatibility-formula change reclassifies Duel-stats
+output the same way it already reclassifies profile/compare reads.
+
+Verified current AWS pricing before writing the Terraform (CLAUDE.md cost
+mandate): DynamoDB's 25 RCU + 25 WCU provisioned-capacity Free Tier is
+Always Free (not a 12-month allowance), shared per account/region across
+every provisioned table and GSI. Current total from `backend/terraform/main.tf`
+(`users`, `moral_profiles` base+`OwnerIndex`, `challenges`,
+`challenge_participants`, `party_rooms`, `party_participants`,
+`ops_error_alerts`, each 1/1): 8 RCU / 8 WCU provisioned. The new GSI at 1/1
+brings this to 9/25 RCU and 9/25 WCU - comfortable headroom, well inside the
+Free Tier by the same math either way.
+
+The Terraform is written but **not applied**: per CLAUDE.md, `terraform
+apply` always needs the user's separate explicit approval regardless of
+Free Tier headroom, and pushing `177.4`/`177.5`'s code before the GSI exists
+in AWS would make `GET /users/me/duel-stats` fail on every authenticated
+`/account` visit (an self-inflicted regression the `ops-alerts-sweep` skill
+would then have to catch). All five subtasks and the parent stayed `In
+Progress`, not `Done`, and the branch is committed locally but not yet
+pushed, specifically to avoid shipping that broken window. Once apply is
+approved and run, the full `AccountDeleteScreen.jsx` rewrite (bundling
+`177.1`/`177.3`/`177.5` - they share one file, so they ship as one push
+regardless of per-subtask granularity) goes out together with `177.2` (its
+independently-safe backend half) in a single push.
+
+Backend: 5 new tests across `MyLatestArchetypeTests`/`MyDuelStatsTests`,
+full suite 174/174 passing. Frontend: `pnpm lint` and `pnpm build:prod` both
+clean.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
