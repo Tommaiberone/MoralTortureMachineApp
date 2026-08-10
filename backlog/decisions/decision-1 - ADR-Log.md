@@ -1814,6 +1814,29 @@ Backend: 5 new tests across `MyLatestArchetypeTests`/`MyDuelStatsTests`,
 full suite 174/174 passing. Frontend: `pnpm lint` and `pnpm build:prod` both
 clean.
 
+### ADR-080 — [regression] `GET /users/me/duel-stats` deployed without IAM access to its own GSI
+
+The user asked for a full app walkthrough immediately after `ADR-079`'s
+deploy. A backend research pass (not yet aware the deploy had already
+finished) flagged that `aws_iam_role_policy.lambda_permissions`
+(`backend/terraform/main.tf`) granted `dynamodb:Query` on
+`challenge_participants`' base table ARN but never added the
+`"${arn}/index/*"` wildcard the new `ParticipantIndex` GSI needs - every
+other GSI-backed table already in that same policy (`user_analytics`,
+`product_events`, `moral_profiles`) had it; this one didn't. Missed during
+`ADR-079` because local tests mock DynamoDB directly and never exercise real
+IAM, and I never manually re-read the full policy block after adding one
+resource line to it. By the time this was caught, the endpoint had already
+been live in production for roughly 14 minutes, returning
+`AccessDeniedException` to any authenticated caller. Fixed immediately
+(single-line addition, `db03990`) and redeployed; total confirmed exposure
+window was one deploy cycle, and the failure mode was a clean 500/403, not
+silent wrong data. No test currently guards against this class of drift
+(an IAM policy missing a resource ARN a real deployed Lambda actually
+calls) - worth a real integration/smoke check against deployed
+infrastructure if this pattern recurs, but not filed as its own task for a
+single-line fix already shipped.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
