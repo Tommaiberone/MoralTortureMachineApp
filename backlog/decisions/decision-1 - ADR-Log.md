@@ -2042,6 +2042,30 @@ verification and both deploy jobs. TASK-196 tracks the regression separately
 from the Daily so a future change cannot silently re-close it as unrelated
 feature work.
 
+### ADR-087 — Keep Daily analytics aggregate-only and key-addressed (TASK-197)
+
+Context: the Daily launch adds four generic privacy-safe events (view, vote,
+reveal, Ask the Audience share), but the existing Analytics Center had no
+dedicated way to see whether its retention ritual converted. The dashboard
+also needs the current two-option split without exposing a participant choice,
+identifier, dilemma text, or a misleading platform-specific vote result.
+
+Choice: add one admin-only Daily tab to the existing `/admin/analytics/overview`
+response. Its funnel derives unique identities from the already-filtered
+generic events, so the selected period and platform apply exactly there. Its
+current result uses one projected DynamoDB `GetItem` for the server-owned
+current `(dayKey, "aggregate")` key, returning only first/second counts and
+percentages. The aggregate is labeled global across platforms because that
+row deliberately has no platform field. A read failure leaves the rest of the
+dashboard available and explicitly marks this one result unavailable; it is
+never rendered as a false zero.
+
+Consequences: this creates no public API, schema, index, service, or recurring
+write. The existing admin authorization and 60-second overview cache apply.
+The current 1.7.0/code 20 frontend release is still unpushed, so this shared
+frontend addition needs no second version bump unless that build is distributed
+first.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

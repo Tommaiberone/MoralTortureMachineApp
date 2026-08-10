@@ -287,6 +287,14 @@ dev table, or `/dev` SSM hierarchy.
   (`role="tablist"`/`tabpanel`, one section mounted at a time) driven by
   sidebar clicks, not the former continuous scroll-spy: only the KPI band
   (including `registeredUsers`) stays always visible above the active tab.
+- The admin-only Daily Moral Crime tab (`TASK-197`) combines generic
+  privacy-safe `daily_moral_crime_*` events with the current global aggregate
+  vote row. Event-funnel identities respect the existing period/platform
+  filters; the distribution is explicitly labeled all-platform because the
+  participant table intentionally does not carry platform on its aggregate.
+  The overview reads that one known `(dayKey, "aggregate")` primary key with
+  a projected `GetItem`, never scans or returns participant rows, and marks
+  the aggregate unavailable rather than substituting zero on a DynamoDB error.
 - Abuse monitoring groups events using a server-generated, HMAC-peppered network
   pseudonym where available, falling back to anonymous or session identity. The
   dashboard returns only a short derived mask, behavioral counts, thresholds,

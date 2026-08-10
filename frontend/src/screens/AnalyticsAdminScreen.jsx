@@ -154,6 +154,10 @@ const AnalyticsAdminScreen = () => {
   const timeZoneCounts = data.timeZoneCounts || { unknown: data.summary.totalEvents };
   const dailyData = Array.isArray(data.daily) ? data.daily : [];
   const platformData = Array.isArray(data.platformBreakdown) ? data.platformBreakdown : [];
+  const dailyMoralCrime = data.dailyMoralCrime || {};
+  const dailyFunnel = Array.isArray(dailyMoralCrime.eventFunnel) ? dailyMoralCrime.eventFunnel : [];
+  const dailyAggregate = dailyMoralCrime.currentAggregate || {};
+  const dailyFunnelMaximum = Math.max(...dailyFunnel.map((stage) => stage.identities), 1);
 
   return (
     <main className="analytics-admin">
@@ -168,6 +172,7 @@ const AnalyticsAdminScreen = () => {
         <nav className="analytics-sidebar-nav" role="tablist" aria-label={t('analyticsAdmin.title')} aria-orientation="vertical">
           {[
             ['abuse', '⌁', t('analyticsAdmin.abuseTitle')],
+            ['daily', '◉', t('analyticsAdmin.dailyTitle')],
             ['trends', '↝', t('analyticsAdmin.trend')],
             ['funnel', '↳', t('analyticsAdmin.funnel')],
             ['breakdowns', '▦', t('analyticsAdmin.breakdowns')],
@@ -332,6 +337,74 @@ const AnalyticsAdminScreen = () => {
             </tbody>
           </table>
         </div>
+      </section>
+      )}
+
+      {activeSection === 'daily' && (
+      <section className="analytics-grid analytics-grid--daily" id="panel-daily" role="tabpanel" aria-labelledby="tab-daily">
+        <article className="analytics-card">
+          <div className="analytics-section-heading">
+            <div>
+              <h2>{t('analyticsAdmin.dailyTitle')}</h2>
+              <p>{t('analyticsAdmin.dailyDescription')}</p>
+            </div>
+          </div>
+          <p className="analytics-card-copy analytics-daily-scope">{t('analyticsAdmin.dailyEventScope')}</p>
+          {dailyFunnel.length ? (
+            <div className="analytics-daily-funnel">
+              {dailyFunnel.map((stage, index) => (
+                <div className="analytics-funnel-row" key={stage.stage}>
+                  <div>
+                    <span>{index + 1}. {t(`analyticsAdmin.dailyStage_${stage.stage}`)}</span>
+                    <strong>{formatNumber(stage.identities)}</strong>
+                  </div>
+                  <div className="analytics-funnel-track">
+                    <i style={{ width: `${Math.max((stage.identities / dailyFunnelMaximum) * 100, stage.identities ? 3 : 0)}%` }} />
+                  </div>
+                  <small>
+                    {stage.fromPreviousPct === null
+                      ? t('analyticsAdmin.baseline')
+                      : `${stage.fromPreviousPct}% ${t('analyticsAdmin.fromPrevious')}`}
+                  </small>
+                </div>
+              ))}
+            </div>
+          ) : <p className="analytics-chart-empty">{t('analyticsAdmin.noData')}</p>}
+        </article>
+
+        <article className="analytics-card analytics-daily-aggregate">
+          <div className="analytics-section-heading">
+            <div>
+              <h2>{t('analyticsAdmin.dailyVoteDistribution')}</h2>
+              <p>{t('analyticsAdmin.dailyAggregateScope')}</p>
+            </div>
+          </div>
+          {dailyAggregate.available ? (
+            <>
+              <div className="analytics-daily-total">
+                <span>{t('analyticsAdmin.dailyResponses')}</span>
+                <strong>{formatNumber(dailyAggregate.totalVotes || 0)}</strong>
+                <small>{dailyAggregate.dayKey}</small>
+              </div>
+              <div className="analytics-daily-options">
+                {[
+                  ['first', dailyAggregate.firstVotes, dailyAggregate.firstPct],
+                  ['second', dailyAggregate.secondVotes, dailyAggregate.secondPct],
+                ].map(([option, votes, percentage]) => (
+                  <div className="analytics-daily-option" key={option}>
+                    <div>
+                      <span>{t(`analyticsAdmin.dailyOption_${option}`)}</span>
+                      <strong>{formatNumber(votes || 0)} · {percentage || 0}%</strong>
+                    </div>
+                    <div className={`analytics-daily-option-bar analytics-daily-option-bar--${option}`} aria-hidden="true">
+                      <i style={{ width: `${percentage || 0}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : <p className="analytics-chart-empty">{t('analyticsAdmin.dailyAggregateUnavailable')}</p>}
+        </article>
       </section>
       )}
 

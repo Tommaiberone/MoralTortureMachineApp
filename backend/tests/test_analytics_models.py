@@ -3,6 +3,7 @@ import os
 import time
 import unittest
 import uuid
+from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 
 from fastapi import HTTPException
@@ -195,6 +196,108 @@ class AnalyticsOverviewTests(unittest.TestCase):
         self.assertNotEqual(overview["recentEvents"][0]["identity"], "anonymous-user")
         self.assertEqual(overview["topDilemmas"][0]["dilemmaId"], "dilemma-1")
         self.assertEqual(overview["abuseMonitoring"]["summary"]["suspicious"], 0)
+
+    def test_daily_panel_combines_filtered_funnel_with_global_aggregate_only(self):
+        now_ms = int(datetime(2026, 8, 10, 10, tzinfo=timezone.utc).timestamp() * 1000)
+        anonymous_id = "daily-anonymous-user"
+        product_rows = [
+            {
+                "eventId": str(uuid.uuid4()),
+                "anonymousUserId": anonymous_id,
+                "sessionId": "daily-session",
+                "occurredAt": now_ms - 4000,
+                "actionType": "daily_moral_crime_viewed",
+                "platform": "web",
+                "properties": "{}",
+            },
+            {
+                "eventId": str(uuid.uuid4()),
+                "anonymousUserId": anonymous_id,
+                "sessionId": "daily-session",
+                "occurredAt": now_ms - 3000,
+                "actionType": "daily_moral_crime_vote_cast",
+                "platform": "web",
+                "properties": "{}",
+            },
+            {
+                "eventId": str(uuid.uuid4()),
+                "anonymousUserId": anonymous_id,
+                "sessionId": "daily-session",
+                "occurredAt": now_ms - 2000,
+                "actionType": "daily_moral_crime_revealed",
+                "platform": "web",
+                "properties": "{}",
+            },
+            {
+                "eventId": str(uuid.uuid4()),
+                "anonymousUserId": anonymous_id,
+                "sessionId": "daily-session",
+                "occurredAt": now_ms - 1000,
+                "actionType": "daily_moral_crime_audience_shared",
+                "platform": "web",
+                "properties": "{}",
+            },
+        ]
+
+        overview = build_analytics_overview(
+            legacy_rows=[],
+            product_rows=product_rows,
+            days=7,
+            now_ms=now_ms,
+            platform="web",
+            daily_moral_crime_aggregates=[{
+                "dayKey": "2026-08-10",
+                "entryKey": "aggregate",
+                "firstVotes": 7,
+                "secondVotes": 3,
+                "dilemmaBaseId": "must-not-leave-the-server",
+            }],
+        )
+
+        daily = overview["dailyMoralCrime"]
+        self.assertEqual(
+            daily["eventFunnel"],
+            [
+                {"stage": "viewed", "identities": 1, "fromPreviousPct": None},
+                {"stage": "voted", "identities": 1, "fromPreviousPct": 100.0},
+                {"stage": "revealed", "identities": 1, "fromPreviousPct": 100.0},
+                {"stage": "shared", "identities": 1, "fromPreviousPct": 100.0},
+            ],
+        )
+        self.assertEqual(daily["currentAggregate"], {
+            "available": True,
+            "dayKey": "2026-08-10",
+            "scope": "all_platforms",
+            "firstVotes": 7,
+            "secondVotes": 3,
+            "totalVotes": 10,
+            "firstPct": 70,
+            "secondPct": 30,
+        })
+        self.assertNotIn(anonymous_id, str(daily))
+        self.assertNotIn("must-not-leave-the-server", str(daily))
+
+    def test_daily_aggregate_lookup_reads_only_the_current_aggregate_key(self):
+        daily_votes_table = Mock()
+        daily_votes_table.get_item.return_value = {"Item": {
+            "dayKey": "2026-08-10",
+            "entryKey": "aggregate",
+            "firstVotes": 2,
+            "secondVotes": 1,
+        }}
+
+        with (
+            patch.object(backend_module, "daily_moral_crime_votes_table", daily_votes_table),
+            patch.object(backend_module, "_daily_moral_crime_window", return_value={"dayKey": "2026-08-10"}),
+        ):
+            aggregates = backend_module._get_daily_moral_crime_current_aggregate()
+
+        self.assertEqual(aggregates, [daily_votes_table.get_item.return_value["Item"]])
+        daily_votes_table.get_item.assert_called_once_with(
+            Key={"dayKey": "2026-08-10", "entryKey": "aggregate"},
+            ProjectionExpression="dayKey, entryKey, firstVotes, secondVotes",
+        )
+        daily_votes_table.scan.assert_not_called()
 
     def test_flags_rapid_replay_without_exposing_source_identity(self):
         now_ms = 1785369600000

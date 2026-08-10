@@ -191,6 +191,12 @@ DAILY_MORAL_CRIME_RETENTION_SECONDS = 90 * 24 * 60 * 60
 DAILY_MORAL_CRIME_RELEASE_HOUR_UTC = 9
 DAILY_MORAL_CRIME_AGGREGATE_KEY = "aggregate"
 DAILY_MORAL_CRIME_PARTICIPANT_PREFIX = "participant#"
+DAILY_MORAL_CRIME_ANALYTICS_STAGES = (
+    ("viewed", "daily_moral_crime_viewed"),
+    ("voted", "daily_moral_crime_vote_cast"),
+    ("revealed", "daily_moral_crime_revealed"),
+    ("shared", "daily_moral_crime_audience_shared"),
+)
 
 # TASK-64: accounts and shareable profiles expire after twelve months without
 # activity. Shorter domain-specific limits (analytics, challenges, Party Room,
@@ -3599,6 +3605,21 @@ def _scan_all_rows(dynamodb_table) -> list[Dict[str, Any]]:
         scan_kwargs["ExclusiveStartKey"] = last_key
     return rows
 
+
+def _get_daily_moral_crime_current_aggregate() -> list[Dict[str, Any]]:
+    """Read only today's non-linkable aggregate row for the admin dashboard.
+
+    The primary key is known from the server-owned global Daily window, so a
+    single projected `GetItem` avoids scanning any participant rows and keeps
+    the extra admin read negligible within the existing 60-second cache.
+    """
+    day_key = _daily_moral_crime_window()["dayKey"]
+    item = daily_moral_crime_votes_table.get_item(
+        Key={"dayKey": day_key, "entryKey": DAILY_MORAL_CRIME_AGGREGATE_KEY},
+        ProjectionExpression="dayKey, entryKey, firstVotes, secondVotes",
+    ).get("Item")
+    return [item] if item else []
+
 def _masked_identity(identity: str) -> str:
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:10]
 
@@ -3722,6 +3743,67 @@ def build_abuse_monitoring(events: list[Dict[str, Any]]) -> Dict[str, Any]:
         "assessment": "Signals require human review and are not proof of automation.",
     }
 
+
+def build_daily_moral_crime_analytics(
+    events: list[Dict[str, Any]],
+    aggregate_rows: Optional[list[Dict[str, Any]]],
+    now_ms: int,
+) -> Dict[str, Any]:
+    """Build the Daily panel from generic events plus one public aggregate.
+
+    Event metrics can respect the selected platform filter. Vote distribution
+    cannot be split by platform because the participation table intentionally
+    stores no platform on its anonymous aggregate; explicitly label it global
+    rather than implying a precision the data does not have.
+    """
+    stage_identities = {stage: set() for stage, _ in DAILY_MORAL_CRIME_ANALYTICS_STAGES}
+    for event in events:
+        for stage, event_name in DAILY_MORAL_CRIME_ANALYTICS_STAGES:
+            if event["eventName"] == event_name:
+                stage_identities[stage].add(event["identity"])
+
+    funnel = []
+    previous_count = None
+    for stage, _ in DAILY_MORAL_CRIME_ANALYTICS_STAGES:
+        identities = len(stage_identities[stage])
+        funnel.append({
+            "stage": stage,
+            "identities": identities,
+            "fromPreviousPct": (
+                round((identities / previous_count) * 100, 1) if previous_count else None
+            ),
+        })
+        previous_count = identities
+
+    current_day_key = _daily_moral_crime_window(
+        datetime.fromtimestamp(now_ms / 1000, tz=timezone.utc)
+    )["dayKey"]
+    current_aggregate = next(
+        (
+            row for row in (aggregate_rows or [])
+            if row.get("dayKey") == current_day_key
+            and row.get("entryKey") == DAILY_MORAL_CRIME_AGGREGATE_KEY
+        ),
+        {},
+    )
+    first_votes = int(current_aggregate.get("firstVotes", 0))
+    second_votes = int(current_aggregate.get("secondVotes", 0))
+    total_votes = first_votes + second_votes
+
+    return {
+        "eventFunnel": funnel,
+        "currentAggregate": {
+            "available": aggregate_rows is not None,
+            "dayKey": current_day_key,
+            "scope": "all_platforms",
+            "firstVotes": first_votes,
+            "secondVotes": second_votes,
+            "totalVotes": total_votes,
+            "firstPct": round((first_votes / total_votes) * 100) if total_votes else 0,
+            "secondPct": round((second_votes / total_votes) * 100) if total_votes else 0,
+        },
+    }
+
 def build_analytics_overview(
     legacy_rows: list[Dict[str, Any]],
     product_rows: list[Dict[str, Any]],
@@ -3729,6 +3811,7 @@ def build_analytics_overview(
     now_ms: Optional[int] = None,
     platform: str = "all",
     registered_users: Optional[int] = None,
+    daily_moral_crime_aggregates: Optional[list[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Build privacy-safe aggregates used by both the web and Android dashboard."""
     now_ms = now_ms or int(time.time() * 1000)
@@ -3844,6 +3927,11 @@ def build_analytics_overview(
             "properties": event["properties"],
         })
     abuse_monitoring = build_abuse_monitoring(events)
+    daily_moral_crime = build_daily_moral_crime_analytics(
+        events,
+        daily_moral_crime_aggregates,
+        now_ms,
+    )
 
     return {
         "generatedAt": now_ms,
@@ -3876,6 +3964,7 @@ def build_analytics_overview(
         ],
         "recentEvents": recent_events,
         "abuseMonitoring": abuse_monitoring,
+        "dailyMoralCrime": daily_moral_crime,
         "dataQuality": {
             "exactPlatformCoveragePct": round((exact_events / total_events) * 100, 1) if total_events else 0,
             "anonymousIdentityCoveragePct": round((anonymous_events / total_events) * 100, 1) if total_events else 0,
@@ -3915,8 +4004,22 @@ async def analytics_overview(
             logger.warning("Unable to count registered users: %s", str(error))
             registered_users = None
 
+        try:
+            daily_moral_crime_aggregates = _get_daily_moral_crime_current_aggregate()
+        except ClientError as error:
+            # A transient Daily-table issue must not hide the entire admin
+            # dashboard. The dedicated panel marks its aggregate unavailable
+            # instead of substituting a misleading zero.
+            logger.warning("Unable to read Daily Moral Crime aggregates: %s", str(error))
+            daily_moral_crime_aggregates = None
+
         overview = build_analytics_overview(
-            legacy_rows, product_rows, days, platform=platform, registered_users=registered_users,
+            legacy_rows,
+            product_rows,
+            days,
+            platform=platform,
+            registered_users=registered_users,
+            daily_moral_crime_aggregates=daily_moral_crime_aggregates,
         )
         _analytics_overview_cache[cache_key] = {"createdAt": time.time(), "value": overview}
         return overview
