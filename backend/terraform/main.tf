@@ -679,6 +679,7 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           "${aws_dynamodb_table.moral_profiles.arn}/index/*",
           aws_dynamodb_table.challenges.arn,
           aws_dynamodb_table.challenge_participants.arn,
+          "${aws_dynamodb_table.challenge_participants.arn}/index/*",
           aws_dynamodb_table.party_rooms.arn,
           aws_dynamodb_table.party_participants.arn,
           aws_dynamodb_table.ops_error_alerts.arn
