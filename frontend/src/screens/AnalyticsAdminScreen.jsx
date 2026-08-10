@@ -26,8 +26,6 @@ const PLATFORM_COLORS = {
   ios: '#6940a5',
   unknown: '#8a8980',
 };
-const SECTION_IDS = ['abuse', 'trends', 'funnel', 'breakdowns', 'events'];
-
 const AnalyticsAdminScreen = () => {
   const { t, i18n } = useTranslation();
   const auth = useAuth();
@@ -36,7 +34,7 @@ const AnalyticsAdminScreen = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [activeSection, setActiveSection] = useState(SECTION_IDS[0]);
+  const [activeSection, setActiveSection] = useState('trends');
   const attemptedToken = useRef('');
 
   useEffect(() => {
@@ -154,6 +152,8 @@ const AnalyticsAdminScreen = () => {
     ['abuseMaxPeak', abuse.summary.maxPeakEventsPerMinute],
   ];
   const timeZoneCounts = data.timeZoneCounts || { unknown: data.summary.totalEvents };
+  const dailyData = Array.isArray(data.daily) ? data.daily : [];
+  const platformData = Array.isArray(data.platformBreakdown) ? data.platformBreakdown : [];
 
   return (
     <main className="analytics-admin">
@@ -181,6 +181,7 @@ const AnalyticsAdminScreen = () => {
               className={`analytics-nav-item${activeSection === id ? ' is-active' : ''}`}
               aria-selected={activeSection === id}
               aria-controls={`panel-${id}`}
+              aria-current={activeSection === id ? 'page' : undefined}
               onClick={() => setActiveSection(id)}
             >
               <span aria-hidden="true">{icon}</span>{label}
@@ -224,6 +225,7 @@ const AnalyticsAdminScreen = () => {
               className={period === days ? 'is-active' : ''}
               onClick={() => changePeriod(period)}
               disabled={loading}
+              aria-pressed={period === days}
             >
               {period} {t('analyticsAdmin.days')}
             </button>
@@ -237,6 +239,7 @@ const AnalyticsAdminScreen = () => {
               className={platformOption === platform ? 'is-active' : ''}
               onClick={() => changePlatform(platformOption)}
               disabled={loading}
+              aria-pressed={platformOption === platform}
             >
               {platformOption === 'all' ? t('analyticsAdmin.allPlatforms') : platformOption}
             </button>
@@ -342,17 +345,19 @@ const AnalyticsAdminScreen = () => {
             </div>
           </div>
           <div className="analytics-chart">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data.daily} margin={{ top: 8, right: 12, left: -22, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e3e3e0" />
-                <XAxis dataKey="date" tickFormatter={(value) => value.slice(5)} stroke="#c9c9c5" tick={{ fill: '#5d5c58', fontSize: 12 }} />
-                <YAxis allowDecimals={false} stroke="#c9c9c5" tick={{ fill: '#5d5c58', fontSize: 12 }} />
-                <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e3e3e0', borderRadius: '6px', color: '#2b2924' }} />
-                <Legend wrapperStyle={{ fontSize: '0.82rem' }} />
-                <Line type="monotone" dataKey="events" name={t('analyticsAdmin.events')} stroke="#1a6fc4" strokeWidth={2.25} dot={false} />
-                <Line type="monotone" dataKey="users" name={t('analyticsAdmin.activeIdentities')} stroke="#2b2924" strokeWidth={2.25} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
+            {dailyData.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={dailyData} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e3e3e0" vertical={false} />
+                  <XAxis dataKey="date" tickFormatter={(value) => value.slice(5)} minTickGap={28} stroke="#c9c9c5" tick={{ fill: '#5d5c58', fontSize: 12 }} />
+                  <YAxis allowDecimals={false} width={42} stroke="#c9c9c5" tick={{ fill: '#5d5c58', fontSize: 12 }} />
+                  <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e3e3e0', borderRadius: '6px', color: '#2b2924' }} />
+                  <Legend wrapperStyle={{ fontSize: '0.82rem' }} />
+                  <Line type="monotone" dataKey="events" name={t('analyticsAdmin.events')} stroke="#1a6fc4" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="users" name={t('analyticsAdmin.activeIdentities')} stroke="#2b2924" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : <p className="analytics-chart-empty">{t('analyticsAdmin.noData')}</p>}
           </div>
         </article>
 
@@ -364,21 +369,23 @@ const AnalyticsAdminScreen = () => {
             </div>
           </div>
           <div className="analytics-chart analytics-chart--platform">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.platformBreakdown} margin={{ top: 8, right: 8, left: -22, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e3e3e0" />
-                <XAxis dataKey="platform" stroke="#c9c9c5" tick={{ fill: '#5d5c58', fontSize: 12 }} />
-                <YAxis allowDecimals={false} stroke="#c9c9c5" tick={{ fill: '#5d5c58', fontSize: 12 }} />
-                <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e3e3e0', borderRadius: '6px', color: '#2b2924' }} />
-                <Legend wrapperStyle={{ fontSize: '0.82rem' }} />
-                <Bar dataKey="exact" name={t('analyticsAdmin.exact')} stackId="quality" fill="#0f7b6c" />
-                <Bar dataKey="inferred" name={t('analyticsAdmin.inferred')} stackId="quality" fill="#d9730d" />
-                <Bar dataKey="unknown" name={t('analyticsAdmin.unknown')} stackId="quality" fill="#8a8980" />
-              </BarChart>
-            </ResponsiveContainer>
+            {platformData.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={platformData} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e3e3e0" vertical={false} />
+                  <XAxis dataKey="platform" stroke="#c9c9c5" tick={{ fill: '#5d5c58', fontSize: 12 }} />
+                  <YAxis allowDecimals={false} width={42} stroke="#c9c9c5" tick={{ fill: '#5d5c58', fontSize: 12 }} />
+                  <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e3e3e0', borderRadius: '6px', color: '#2b2924' }} />
+                  <Legend wrapperStyle={{ fontSize: '0.82rem' }} />
+                  <Bar dataKey="exact" name={t('analyticsAdmin.exact')} stackId="quality" fill="#0f7b6c" />
+                  <Bar dataKey="inferred" name={t('analyticsAdmin.inferred')} stackId="quality" fill="#d9730d" />
+                  <Bar dataKey="unknown" name={t('analyticsAdmin.unknown')} stackId="quality" fill="#8a8980" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : <p className="analytics-chart-empty">{t('analyticsAdmin.noData')}</p>}
           </div>
           <div className="analytics-platform-totals">
-            {data.platformBreakdown.map((platform) => (
+            {platformData.map((platform) => (
               <div key={platform.platform}>
                 <i style={{ backgroundColor: PLATFORM_COLORS[platform.platform] }} />
                 <span>{platform.platform}</span>
