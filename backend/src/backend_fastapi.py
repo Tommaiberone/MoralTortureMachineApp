@@ -87,7 +87,6 @@ app.add_middleware(
 # Environment variables
 DYNAMODB_TABLE = os.getenv("DYNAMODB_TABLE", "moral-torture-machine-dilemmas")
 ANALYTICS_TABLE = os.getenv("ANALYTICS_TABLE", "moral-torture-machine-user-analytics")
-STORY_FLOWS_TABLE = os.getenv("STORY_FLOWS_TABLE", "moral-torture-machine-story-flows")
 PRODUCT_EVENTS_TABLE = os.getenv("PRODUCT_EVENTS_TABLE", "prod-moral-torture-machine-product-events")
 USERS_TABLE = os.getenv("USERS_TABLE", "moral-torture-machine-users")
 MORAL_PROFILES_TABLE = os.getenv("MORAL_PROFILES_TABLE", "moral-torture-machine-moral-profiles")
@@ -174,6 +173,10 @@ OPS_ERROR_ALERT_TTL_SECONDS = 30 * 24 * 60 * 60
 # TASK-34: abandoned challenges (never joined/completed) expire via TTL.
 CHALLENGE_TTL_SECONDS = 30 * 24 * 60 * 60
 
+# Raw first-party analytics (legacy per-session table and product events)
+# retain for 90 days, per doc-1's retention policy.
+ANALYTICS_RAW_RETENTION_SECONDS = 90 * 24 * 60 * 60
+
 # TASK-64: accounts and shareable profiles expire after twelve months without
 # activity. Shorter domain-specific limits (analytics, challenges, Party Room,
 # and operational alerts) remain defined separately below/above.
@@ -228,7 +231,6 @@ s3_client = boto3.client('s3', region_name=AWS_REGION)
 dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
 table = dynamodb.Table(DYNAMODB_TABLE)
 analytics_table = dynamodb.Table(ANALYTICS_TABLE)
-story_flows_table = dynamodb.Table(STORY_FLOWS_TABLE)
 product_events_table = dynamodb.Table(PRODUCT_EVENTS_TABLE)
 users_table = dynamodb.Table(USERS_TABLE)
 moral_profiles_table = dynamodb.Table(MORAL_PROFILES_TABLE)
@@ -858,8 +860,7 @@ def track_analytics_event(
     try:
         timestamp = int(time.time() * 1000)  # Milliseconds since epoch
 
-        # TTL: 90 days from now (in seconds)
-        expiration_time = int(time.time()) + (90 * 24 * 60 * 60)
+        expiration_time = int(time.time()) + ANALYTICS_RAW_RETENTION_SECONDS
 
         network_fingerprint = _network_fingerprint(ip_address)
 
@@ -914,21 +915,13 @@ def track_analytics_event(
 
 def extract_session_id(request: Request) -> str:
     """
-    Extract or generate session ID from request headers
+    Extract the session ID from the X-Session-Id header, or generate a
+    fresh one as a fallback for a client that didn't send it - this
+    fallback value won't track across requests.
     """
     import uuid
 
-    # Try to get session ID from custom header
-    session_id = request.headers.get("X-Session-Id")
-
-    if not session_id:
-        # Generate a new session ID based on user characteristics
-        # This is a fallback and won't track across requests
-        user_agent = request.headers.get("User-Agent", "")
-        client_ip = request.client.host if request.client else ""
-        session_id = str(uuid.uuid4())
-
-    return session_id
+    return request.headers.get("X-Session-Id") or str(uuid.uuid4())
 
 def extract_client_analytics_context(request: Request) -> Dict[str, Optional[str]]:
     """Shared web/native metadata for legacy server-side events."""
@@ -1021,11 +1014,6 @@ class JoinPartyRoomRequest(BaseModel):
 class SubmitPartyVoteRequest(BaseModel):
     choice: str = Field(..., pattern=r'^(first|second)$')
     chosenValues: Dict[str, float] = Field(..., max_length=12)
-
-class StoryNodeVoteRequest(BaseModel):
-    flowId: str = Field(..., description="Story flow ID", min_length=1, max_length=100)
-    nodeId: str = Field(..., description="Current node ID", min_length=1, max_length=20)
-    vote: str = Field(..., description="Vote: 'first' or 'second'", pattern=r'^(first|second)$')
 
 # TASK-65: value-level PII guard for analytics properties, independent of
 # the property key name (see validate_properties below).
@@ -2399,7 +2387,7 @@ def _generate_duel_pair_insight(
                 f'Do not invent facts about them, do not name specific answers. Return only the sentence, no quotes, no JSON.'
             )
         payload = {
-            "model": "llama-3.1-8b-instant",
+            # "model" is set by call_groq_api_with_fallback from MODEL_FALLBACK_CHAIN.
             "messages": [{"role": "user", "content": prompt_content}],
         }
         result = call_groq_api_with_fallback(payload=payload, api_key=api_key, operation="Duel pair insight")
@@ -2939,7 +2927,7 @@ def _generate_party_group_verdict(archetype_names: list, language: str) -> str:
                 f'Do not name anyone individually, do not invent names. Return only the sentence, no quotes, no JSON.'
             )
         payload = {
-            "model": "llama-3.1-8b-instant",
+            # "model" is set by call_groq_api_with_fallback from MODEL_FALLBACK_CHAIN.
             "messages": [{"role": "user", "content": prompt_content}],
         }
         result = call_groq_api_with_fallback(payload=payload, api_key=api_key, operation="Party group verdict")
@@ -3113,7 +3101,7 @@ async def health_check():
     # Set appropriate HTTP status code
     status_code = 200 if health_status["status"] == "healthy" else 503
 
-    return health_status
+    return JSONResponse(content=health_status, status_code=status_code)
 
 @app.post("/analytics/events", status_code=202)
 async def ingest_analytics_events(batch: AnalyticsBatchRequest, request: Request):
@@ -3125,7 +3113,7 @@ async def ingest_analytics_events(batch: AnalyticsBatchRequest, request: Request
     ):
         raise HTTPException(status_code=400, detail="Anonymous identity mismatch")
 
-    expiration_time = int(time.time()) + (90 * 24 * 60 * 60)
+    expiration_time = int(time.time()) + ANALYTICS_RAW_RETENTION_SECONDS
     user_agent = request.headers.get("User-Agent", "")[:200]
     network_fingerprint = _network_fingerprint(request.client.host if request.client else None)
 
@@ -3669,9 +3657,11 @@ async def vote(vote_request: VoteRequest, request: Request):
             "updated": decimal_to_native(response.get('Attributes', {}))
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in /vote: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+        raise HTTPException(status_code=500, detail="Vote recording is unavailable")
 
 @app.get("/get-dilemma", response_model=DilemmaResponse, response_model_by_alias=True)
 async def get_dilemma(request: Request, language: str = "en", exclude: str = ""):
@@ -3756,7 +3746,7 @@ async def get_dilemma(request: Request, language: str = "en", exclude: str = "")
         raise
     except Exception as e:
         logger.error(f"Error in /get-dilemma: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+        raise HTTPException(status_code=500, detail="Unable to fetch a dilemma")
 
 @app.post("/generate-dilemma")
 async def generate_dilemma(request: Request, language: str = "en"):
@@ -3838,7 +3828,7 @@ async def generate_dilemma(request: Request, language: str = "en"):
             )
 
         payload = {
-            "model": "llama-3.1-8b-instant",  # Will be overridden by fallback function
+            # "model" is set by call_groq_api_with_fallback from MODEL_FALLBACK_CHAIN.
             "messages": [
                 {
                     "role": "user",
@@ -3883,7 +3873,7 @@ async def generate_dilemma(request: Request, language: str = "en"):
         raise
     except Exception as e:
         logger.error(f"Error in /generate-dilemma: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+        raise HTTPException(status_code=500, detail="Unable to generate a dilemma")
 
 @app.post("/analyze-results")
 async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Request, language: str = "en"):
@@ -3974,7 +3964,7 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
             )
 
         payload = {
-            "model": "llama-3.1-8b-instant",  # Will be overridden by fallback function
+            # "model" is set by call_groq_api_with_fallback from MODEL_FALLBACK_CHAIN.
             "messages": [
                 {
                     "role": "user",
@@ -4061,175 +4051,7 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
         raise
     except Exception as e:
         logger.error(f"Error in /analyze-results: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-
-@app.get("/get-story-flow")
-async def get_story_flow(request: Request, language: str = "en", flowId: Optional[str] = None):
-    """
-    Get a story flow by ID or return a random one for the specified language
-
-    Args:
-        language: Language code (default: "en")
-        flowId: Optional specific flow ID (without language suffix)
-
-    Returns:
-        Complete story flow with all nodes
-    """
-    try:
-        session_id = extract_session_id(request)
-
-        if flowId:
-            # Get specific flow
-            flow_id_with_lang = f"{flowId}-{language}"
-            response = story_flows_table.get_item(Key={"_id": flow_id_with_lang})
-
-            if "Item" not in response:
-                logger.warning(f"Story flow not found: {flow_id_with_lang}")
-                raise HTTPException(status_code=404, detail="Story flow not found")
-
-            flow = response["Item"]
-        else:
-            # Get random flow for language
-            response = story_flows_table.scan(
-                FilterExpression="#lang = :lang",
-                ExpressionAttributeNames={"#lang": "language"},
-                ExpressionAttributeValues={":lang": language}
-            )
-
-            flows = response.get("Items", [])
-
-            if not flows:
-                logger.warning(f"No story flows found for language: {language}")
-                raise HTTPException(status_code=404, detail="No story flows available")
-
-            # Select random flow
-            import random
-            flow = random.choice(flows)
-
-        # Track analytics
-        track_analytics_event(
-            session_id=session_id,
-            action_type="story_flow_fetched",
-            action_data={
-                "flow_id": flow["_id"],
-                "flow_title": flow.get("title", ""),
-                "language": language
-            },
-            language=language,
-            user_agent=request.headers.get("User-Agent"),
-            ip_address=request.client.host if request.client else None,
-            **extract_client_analytics_context(request),
-        )
-
-        # Convert Decimal to float for JSON serialization
-        def decimal_to_float(obj):
-            if isinstance(obj, list):
-                return [decimal_to_float(i) for i in obj]
-            elif isinstance(obj, dict):
-                return {k: decimal_to_float(v) for k, v in obj.items()}
-            elif isinstance(obj, Decimal):
-                return float(obj)
-            else:
-                return obj
-
-        flow = decimal_to_float(flow)
-
-        logger.info(f"Returning story flow: {flow['_id']}")
-        return flow
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in /get-story-flow: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-
-@app.post("/story-node-vote")
-async def story_node_vote(vote_request: StoryNodeVoteRequest, request: Request):
-    """
-    Process a vote on a story node and return the next node
-
-    Args:
-        vote_request: Contains flowId, nodeId, and vote (first/second)
-
-    Returns:
-        Next node data or completion indicator
-    """
-    try:
-        session_id = extract_session_id(request)
-
-        # Get the flow
-        response = story_flows_table.get_item(Key={"_id": vote_request.flowId})
-
-        if "Item" not in response:
-            logger.warning(f"Story flow not found: {vote_request.flowId}")
-            raise HTTPException(status_code=404, detail="Story flow not found")
-
-        flow = response["Item"]
-        nodes = flow.get("nodes", {})
-
-        # Get current node
-        current_node = nodes.get(vote_request.nodeId)
-        if not current_node:
-            logger.warning(f"Node not found: {vote_request.nodeId} in flow {vote_request.flowId}")
-            raise HTTPException(status_code=404, detail="Node not found")
-
-        # Determine next node based on vote
-        next_node_id = None
-        if vote_request.vote == "first":
-            next_node_id = current_node.get("nextNodeOnFirst")
-        else:  # second
-            next_node_id = current_node.get("nextNodeOnSecond")
-
-        # Check if current node is a leaf (end of story)
-        is_leaf = current_node.get("isLeaf", False)
-
-        # Get next node data if exists
-        next_node = None
-        if next_node_id and next_node_id in nodes:
-            next_node = nodes[next_node_id]
-
-        # Track analytics
-        track_analytics_event(
-            session_id=session_id,
-            action_type="story_node_vote",
-            action_data={
-                "flow_id": vote_request.flowId,
-                "node_id": vote_request.nodeId,
-                "vote": vote_request.vote,
-                "next_node_id": next_node_id,
-                "is_leaf": is_leaf
-            },
-            user_agent=request.headers.get("User-Agent"),
-            ip_address=request.client.host if request.client else None,
-            **extract_client_analytics_context(request),
-        )
-
-        # Convert Decimal to float for JSON serialization
-        def decimal_to_float(obj):
-            if isinstance(obj, list):
-                return [decimal_to_float(i) for i in obj]
-            elif isinstance(obj, dict):
-                return {k: decimal_to_float(v) for k, v in obj.items()}
-            elif isinstance(obj, Decimal):
-                return float(obj)
-            else:
-                return obj
-
-        result = {
-            "currentNode": decimal_to_float(current_node),
-            "nextNodeId": next_node_id,
-            "nextNode": decimal_to_float(next_node) if next_node else None,
-            "isComplete": is_leaf or next_node is None
-        }
-
-        logger.info(f"Processed vote for node {vote_request.nodeId}, next: {next_node_id}")
-        return result
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in /story-node-vote: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+        raise HTTPException(status_code=500, detail="Unable to analyze your results")
 
 # Lambda handler
 handler = Mangum(app, lifespan="off")
