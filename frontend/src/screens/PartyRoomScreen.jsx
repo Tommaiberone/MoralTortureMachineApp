@@ -70,6 +70,11 @@ const PartyRoomScreen = () => {
   const [revealStage, setRevealStage] = useState(0);
   const [pollFailureCount, setPollFailureCount] = useState(0);
   const pollTracked = useRef(false);
+  // A 404/410 is terminal (the room is gone and will never come back) - the
+  // polling effect below checks this to stop, same as it already does for
+  // 'completed'. A ref, not state, because it must be readable synchronously
+  // inside the same tick that sets it, before any re-render.
+  const fatalRef = useRef(false);
 
   const fetchRoom = useCallback(async () => {
     try {
@@ -78,6 +83,7 @@ const PartyRoomScreen = () => {
         { headers: getApiHeaders() },
       );
       if (response.status === 404 || response.status === 410) {
+        fatalRef.current = true;
         setFatalError(response.status === 410 ? t('party.roomExpired') : t('party.roomNotFound'));
         return null;
       }
@@ -93,8 +99,9 @@ const PartyRoomScreen = () => {
     }
   }, [roomCode, i18n.language, t]);
 
-  // Poll the room state. Stops once the room is completed - nothing further
-  // changes after that, so there is no reason to keep hitting the API.
+  // Poll the room state. Stops once the room is completed or a fatal
+  // 404/410 was hit - nothing further changes after either, so there is no
+  // reason to keep hitting the API.
   useEffect(() => {
     let cancelled = false;
     let intervalId;
@@ -102,7 +109,7 @@ const PartyRoomScreen = () => {
     const tick = async () => {
       const data = await fetchRoom();
       if (cancelled) return;
-      if (data?.status === 'completed' && intervalId) {
+      if ((data?.status === 'completed' || fatalRef.current) && intervalId) {
         clearInterval(intervalId);
       }
     };

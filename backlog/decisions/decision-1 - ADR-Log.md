@@ -1625,6 +1625,63 @@ decision. Scope stays to `/p/:publicId`; Duel/Challenge share links
 (`/challenge/:token`) have the same underlying SPA-meta-tags problem but are
 out of scope here and would need their own follow-up task if revisited.
 
+### ADR-077 — Fix three real bugs found during the ops-alerts-sweep triage of TASK-174/175/176
+
+Context: the `ops-alerts-sweep` skill (TASK-130) triaged `ops_error_alerts`
+and, per ADR-045/068's stance that `409`/`404`/`403` need route-specific
+knowledge rather than blanket suppression, found three genuine client-side
+bugs behind three still-open alert groups instead of pure noise, filed as
+`TASK-174/175/176`, then implemented in the same session at the user's
+request.
+
+1. **`TASK-174` (422 `/analytics/events`, 14 rows)** — `flushAnalytics`
+   (`frontend/src/utils/analytics.js`) re-queued *any* failed batch at the
+   front of the queue and retried it every `FLUSH_INTERVAL_MS`, with no
+   distinction between a transient failure (network/5xx, worth retrying) and
+   a permanent one (4xx schema rejection, which will never succeed and would
+   silently block every later event in the session behind it). Fixed by only
+   retrying on `429`/`5xx`/network error; any other 4xx is now dropped.
+   `429` stays retryable because `/analytics/events` is one of
+   `_rate_limit_rules_for_request`'s rate-limited paths
+   (`analytics_ingest`), unlike a genuine validation rejection. The exact
+   field that originally failed validation could not be confirmed - the
+   request body is intentionally never logged (privacy policy) - but the
+   indiscriminate-retry behavior was independently confirmed as a bug from
+   the code alone, regardless of which field triggered the first failure.
+2. **`TASK-175` (404 `/party-rooms/{room_code}`, 9 rows)** — `PartyRoomScreen`'s
+   polling `useEffect` only stopped on `status === 'completed'`; a 404/410
+   set `fatalError` but left the `setInterval` running, so a room that
+   stopped existing kept getting polled every 1.5s indefinitely. Distinct
+   from `TASK-148` (Done), which covers only the network-error catch branch.
+   Fixed with a `fatalRef` set alongside `setFatalError`, checked by the
+   polling tick to clear the interval the same way `'completed'` already
+   does. The root cause of the underlying 404 itself (why the room stopped
+   existing while multiple participants were still polling it) stays
+   unconfirmed - TTL is 6h, unlikely for an active room - but the
+   poll-forever behavior was a fixable bug on its own regardless of that
+   cause.
+3. **`TASK-176` (403 `/challenges/{token}/rematch`, 2 rows)** — `GET
+   /challenges/{token}/compare` is intentionally public (no participant
+   check, unlike `rematch`/`join`), so a non-participant who received a
+   shared comparison link could see and click the Rematch button and always
+   get a 403. Fixed by having `compare_challenge` optionally read
+   `X-Anonymous-User-Id` (never required, so anonymous public viewing is
+   unchanged) and return a new `isParticipant` boolean; the frontend now
+   only renders the Rematch action (button, login CTA, and share-link state)
+   when `isParticipant` is true. Considered and rejected: keeping the button
+   visible but disabled with an explanatory message (more UI/translation
+   surface for a low-volume edge case; a spectator has no legitimate reason
+   to rematch someone else's Duel, so hiding it entirely is simpler and
+   loses nothing).
+
+All three are additive/backward-compatible (new response field, client-only
+retry/polling logic) - no breaking API contract, so no Android rebuild
+warning applies; the fixes reach the native app whenever it next builds
+`dist/` into the APK; not requested in this session. Backend: `compare`'s
+two new unit tests plus the full suite, 169/169 passing. Frontend: `pnpm
+lint` and `pnpm build:prod` both clean; no frontend test runner exists yet
+(`TASK-170`).
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

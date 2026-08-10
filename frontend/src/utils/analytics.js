@@ -99,7 +99,14 @@ export const flushAnalytics = async () => {
       keepalive: true,
     });
 
-    if (!response.ok) throw new Error(`Analytics request failed: ${response.status}`);
+    // A 4xx other than 429 is a rejection (e.g. schema validation) that will
+    // never succeed on retry - requeueing it would block every later event
+    // in this session behind a batch that can never be flushed. Only retry
+    // what retrying can plausibly fix: rate limiting and transient/server
+    // failures (thrown below, caught alongside network errors).
+    if (!response.ok && (response.status === 429 || response.status >= 500)) {
+      throw new Error(`Analytics request failed: ${response.status}`);
+    }
   } catch {
     queue = [...events, ...queue].slice(0, MAX_QUEUE_SIZE);
     persistQueue();

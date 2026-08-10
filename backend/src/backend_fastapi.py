@@ -2288,6 +2288,18 @@ async def compare_challenge(token: str, request: Request, language: str = "en"):
     invitee_archetype = assign_archetype(invitee_averages, language=language)
     compatibility = compute_compatibility(creator_averages, invitee_averages)
 
+    # TASK-176: this page is intentionally viewable by anyone with the token
+    # (no require_anonymous_user_id gate, unlike rematch/join), so the caller
+    # may be a spectator rather than a participant. The header is read
+    # optionally, never required, to keep that public-viewing behavior
+    # unchanged; the frontend uses this flag to only show the Rematch action
+    # to someone rematch would actually work for.
+    caller_anonymous_user_id = request.headers.get("X-Anonymous-User-Id")
+    is_participant = bool(caller_anonymous_user_id) and caller_anonymous_user_id in {
+        creator_participant.get("anonymousUserId"),
+        invitee_participant.get("anonymousUserId"),
+    }
+
     _track_duel_event(request, "challenge_compared", {"overall_agreement_pct": compatibility["overallAgreementPct"]})
     response = {
         "challengeToken": token,
@@ -2295,6 +2307,7 @@ async def compare_challenge(token: str, request: Request, language: str = "en"):
         "invitee": {"archetype": invitee_archetype},
         "compatibility": compatibility,
         "pairInsightUnlocked": False,
+        "isParticipant": is_participant,
     }
 
     # TASK-135/TASK-14: the pair insight is the login incentive - unlocked

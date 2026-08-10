@@ -180,6 +180,7 @@ const ChallengeCompareScreen = () => {
         </button>
       </div>
 
+      {comparison.isParticipant && (
       <div className="compare-actions">
         {rematchLoginRequired ? (
           <div className="compare-login-cta">
@@ -215,6 +216,7 @@ const ChallengeCompareScreen = () => {
           </div>
         )}
       </div>
+      )}
 
       <a className="compare-home-link" href="/">← {t('common.backToHome')}</a>
     </main>

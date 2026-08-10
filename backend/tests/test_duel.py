@@ -547,6 +547,61 @@ class CompareChallengeTests(unittest.TestCase):
         self.assertIn("archetype", result["invitee"])
         self.assertFalse(result["pairInsightUnlocked"])
         self.assertNotIn("pairInsight", result)
+        self.assertFalse(result["isParticipant"])
+
+    def test_is_participant_true_for_creator_and_invitee(self):
+        """TASK-176: the caller's own anonymousUserId, sent via the header
+        every screen already includes, marks them as a participant so the
+        frontend knows to show the Rematch action."""
+        challenges_table = Mock()
+        challenges_table.get_item.return_value = {"Item": {"challengeToken": "tok", "status": "completed"}}
+        profiles_table = Mock()
+        profiles_table.get_item.side_effect = [
+            {"Item": {"dimensionAverages": json.dumps({d: 0.8 for d in SIX_DIMENSIONS})}},
+            {"Item": {"dimensionAverages": json.dumps({d: 0.8 for d in SIX_DIMENSIONS})}},
+        ]
+        for role in ("creator", "invitee"):
+            participants_table = Mock()
+            participants_table.get_item.side_effect = [
+                {"Item": {"role": "creator", "profilePublicId": "profile-creator", "anonymousUserId": "creator-id"}},
+                {"Item": {"role": "invitee", "profilePublicId": "profile-invitee", "anonymousUserId": "invitee-id"}},
+            ]
+            profiles_table.get_item.side_effect = [
+                {"Item": {"dimensionAverages": json.dumps({d: 0.8 for d in SIX_DIMENSIONS})}},
+                {"Item": {"dimensionAverages": json.dumps({d: 0.8 for d in SIX_DIMENSIONS})}},
+            ]
+            with (
+                patch.object(backend_module, "challenges_table", challenges_table),
+                patch.object(backend_module, "challenge_participants_table", participants_table),
+                patch.object(backend_module, "moral_profiles_table", profiles_table),
+            ):
+                caller_id = "creator-id" if role == "creator" else "invitee-id"
+                result = asyncio.run(compare_challenge(
+                    "tok", request_with_headers({"X-Anonymous-User-Id": caller_id}), language="en",
+                ))
+            self.assertTrue(result["isParticipant"], f"expected isParticipant for {role}")
+
+    def test_is_participant_false_for_non_participant_or_missing_header(self):
+        challenges_table = Mock()
+        challenges_table.get_item.return_value = {"Item": {"challengeToken": "tok", "status": "completed"}}
+        profiles_table = Mock()
+        for headers in ({"X-Anonymous-User-Id": "spectator-id"}, {}):
+            participants_table = Mock()
+            participants_table.get_item.side_effect = [
+                {"Item": {"role": "creator", "profilePublicId": "profile-creator", "anonymousUserId": "creator-id"}},
+                {"Item": {"role": "invitee", "profilePublicId": "profile-invitee", "anonymousUserId": "invitee-id"}},
+            ]
+            profiles_table.get_item.side_effect = [
+                {"Item": {"dimensionAverages": json.dumps({d: 0.8 for d in SIX_DIMENSIONS})}},
+                {"Item": {"dimensionAverages": json.dumps({d: 0.8 for d in SIX_DIMENSIONS})}},
+            ]
+            with (
+                patch.object(backend_module, "challenges_table", challenges_table),
+                patch.object(backend_module, "challenge_participants_table", participants_table),
+                patch.object(backend_module, "moral_profiles_table", profiles_table),
+            ):
+                result = asyncio.run(compare_challenge("tok", request_with_headers(headers), language="en"))
+            self.assertFalse(result["isParticipant"], f"expected not participant for headers={headers}")
 
     def test_pair_insight_unlocked_and_cached_when_authenticated(self):
         """TASK-135: the pair insight is the login incentive - generated
