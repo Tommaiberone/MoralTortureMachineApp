@@ -1682,6 +1682,66 @@ two new unit tests plus the full suite, 169/169 passing. Frontend: `pnpm
 lint` and `pnpm build:prod` both clean; no frontend test runner exists yet
 (`TASK-170`).
 
+### ADR-078 — `/account` redesign scoped to latest-archetype + Duel stats, authenticated-only, planned as a 5-task epic (TASK-177)
+
+Context: the user asked to completely rethink `/account` ("la pagina del mio
+profilo e' tutta sbagliata"), explicitly wearing a UI/UX-designer,
+growth-hacker, and game-designer hat, and asked to be asked every useful
+question first. Investigation found `AccountDeleteScreen.jsx` was never
+designed as a profile page - it is `TASK-120`'s bare settings panel (login,
+export, delete), styled with `.legal-screen`'s beige/tan palette borrowed
+from the legal pages, visually inconsistent with the rest of the app's dark
+`--creepy-*` horror theme. It also has no logout button (`TASK-155`,
+pre-existing).
+
+Four scoping questions were asked and answered before any design work:
+1. **Data scope**: "riassunto risultati" = latest archetype + Duel stats
+   (completed count, avg. compatibility, distinct archetypes met, recent
+   Duels), explicitly *not* a full multi-retake test-history/collection
+   view. This matters technically: latest-archetype reuses the existing
+   `moral_profiles` `OwnerIndex` GSI (no new infra); Duel stats have no
+   existing index at all (`challenges`/`challenge_participants` have none) -
+   scoped as a denormalized counter+recent-list on `users_table`, updated
+   incrementally at Duel completion plus a one-time backfill inside
+   `POST /users/claim-anonymous-data` (reusing the same
+   infrequent-Scan-is-acceptable reasoning already used for `GET
+   /users/export`'s duel/party lookups, `backend_fastapi.py:1603-1607`),
+   rather than a new always-on GSI queried on every page view.
+2. **Page role**: trophy/dashboard and growth-launchpad in equal weight, not
+   one or the other.
+3. **Audience**: the results recap is authenticated-only, not shown to
+   anonymous visitors - an intentional activation lever alongside the
+   existing pair-insight login incentive (`TASK-135`), not a duplication of
+   it.
+4. **Size**: a planned multi-task epic across sessions, not one task.
+
+A design mockup was produced and published as an Artifact
+(https://claude.ai/code/artifact/32590b56-c0ab-482e-9632-7b4afd21ea82),
+built strictly from the app's own existing design tokens (`horrorTheme.css`,
+`.results-archetype`, `.btn-primary`) rather than a new visual language -
+real archetype content from `backend/data/archetypes.json` was used instead
+of placeholder copy. The mockup is proposed, not yet confirmed by the user.
+
+A concrete gap surfaced during design, independent of the "profile" framing:
+the "challenge a friend" CTA exists *only* on `ResultsScreen`, immediately
+after finishing a test - once a user leaves that screen there is no way to
+start a new Duel without retaking the entire test. Given `doc-2`'s North
+Star metric is completed multi-participant challenges per week, this is a
+real, previously-unflagged hole in the growth loop; a persistent CTA on
+`/account` (`TASK-177.5`) closes it independent of the rest of the redesign.
+
+Filed as `TASK-177` (parent) with five subtasks using this project's
+existing parent/subtask epic convention (`TASK-97.x`/`TASK-63.x` precedent,
+no milestone feature in use): `177.1` (theme + logout fix, no dependency,
+independently shippable), `177.2`→`177.3` (latest-archetype endpoint then
+its card) and `177.4`→`177.5` (Duel-stats endpoint then its UI), the two
+pairs linked via `--depends-on` since the frontend halves have no data
+without their backend half. All five are `To Do`, not `In Progress` -
+planning and the mockup were the deliverable this session; `TASK-177`'s
+description explicitly says not to start implementation before the user
+confirms the mockup direction, since none of it has been built or reviewed
+yet.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
