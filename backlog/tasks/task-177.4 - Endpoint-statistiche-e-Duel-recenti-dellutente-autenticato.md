@@ -1,10 +1,10 @@
 ---
 id: TASK-177.4
 title: 'Endpoint: statistiche e Duel recenti dell''utente autenticato'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-10 09:34'
-updated_date: '2026-08-10 09:54'
+updated_date: '2026-08-10 10:02'
 labels:
   - backend
 dependencies: []

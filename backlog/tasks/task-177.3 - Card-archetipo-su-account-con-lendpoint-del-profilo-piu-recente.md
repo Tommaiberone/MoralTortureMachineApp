@@ -1,10 +1,10 @@
 ---
 id: TASK-177.3
 title: Card archetipo su /account con l'endpoint del profilo piu' recente
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-10 09:33'
-updated_date: '2026-08-10 09:54'
+updated_date: '2026-08-10 10:02'
 labels:
   - frontend
   - growth

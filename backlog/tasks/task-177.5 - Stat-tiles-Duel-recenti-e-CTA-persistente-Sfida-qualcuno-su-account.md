@@ -1,10 +1,10 @@
 ---
 id: TASK-177.5
 title: 'Stat tiles, Duel recenti e CTA persistente ''Sfida qualcuno'' su /account'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-10 09:34'
-updated_date: '2026-08-10 09:54'
+updated_date: '2026-08-10 10:03'
 labels:
   - frontend
   - growth

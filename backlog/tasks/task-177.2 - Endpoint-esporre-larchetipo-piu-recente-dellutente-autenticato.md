@@ -1,10 +1,10 @@
 ---
 id: TASK-177.2
 title: 'Endpoint: esporre l''archetipo piu'' recente dell''utente autenticato'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-10 09:33'
-updated_date: '2026-08-10 09:53'
+updated_date: '2026-08-10 10:02'
 labels:
   - backend
 dependencies: []

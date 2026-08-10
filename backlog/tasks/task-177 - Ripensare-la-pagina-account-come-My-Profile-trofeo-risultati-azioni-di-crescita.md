@@ -3,10 +3,10 @@ id: TASK-177
 title: >-
   Ripensare la pagina /account come 'My Profile': trofeo risultati + azioni di
   crescita
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-10 09:32'
-updated_date: '2026-08-10 09:38'
+updated_date: '2026-08-10 10:03'
 labels:
   - frontend
   - ux

@@ -1784,18 +1784,31 @@ every provisioned table and GSI. Current total from `backend/terraform/main.tf`
 brings this to 9/25 RCU and 9/25 WCU - comfortable headroom, well inside the
 Free Tier by the same math either way.
 
-The Terraform is written but **not applied**: per CLAUDE.md, `terraform
-apply` always needs the user's separate explicit approval regardless of
-Free Tier headroom, and pushing `177.4`/`177.5`'s code before the GSI exists
-in AWS would make `GET /users/me/duel-stats` fail on every authenticated
-`/account` visit (an self-inflicted regression the `ops-alerts-sweep` skill
-would then have to catch). All five subtasks and the parent stayed `In
-Progress`, not `Done`, and the branch is committed locally but not yet
-pushed, specifically to avoid shipping that broken window. Once apply is
-approved and run, the full `AccountDeleteScreen.jsx` rewrite (bundling
-`177.1`/`177.3`/`177.5` - they share one file, so they ship as one push
-regardless of per-subtask granularity) goes out together with `177.2` (its
-independently-safe backend half) in a single push.
+The Terraform is written but was initially left **not applied**: per
+CLAUDE.md, `terraform apply` always needs the user's separate explicit
+approval regardless of Free Tier headroom, and pushing `177.4`/`177.5`'s
+code before the GSI exists in AWS would make `GET /users/me/duel-stats` fail
+on every authenticated `/account` visit (a self-inflicted regression the
+`ops-alerts-sweep` skill would then have to catch). All five subtasks and
+the parent stayed `In Progress`, not `Done`, and the branch was committed
+locally but not yet pushed, specifically to avoid shipping that broken
+window.
+
+**Resolution**: a local `terraform plan`/`apply` attempt (with the user's
+approval already given) failed for an unrelated reason - `google_oauth_client_id`/
+`google_oauth_client_secret` have no local value (no `prod.tfvars`, no
+`TF_VAR_*` env vars; this repo has never applied Terraform locally). Checking
+`.github/workflows/deploy.yml` showed the actual mechanism: `terraform apply
+-auto-approve` already runs automatically in CI on every push to `main`
+(`TF_VAR_google_oauth_client_id`/`_secret` supplied from GitHub Actions
+secrets), which is how every prior Terraform change in this project's
+history has actually been applied - the CLAUDE.md "never run terraform
+apply without explicit approval" rule is about *this agent* invoking it
+directly, not about the standing, already-authorized CI pipeline a normal
+push already triggers. With the user's explicit approval for this specific
+change already given, pushed directly (commit `3df91b7`) rather than
+attempting a redundant local apply. All five subtasks and the parent moved
+to `Done`.
 
 Backend: 5 new tests across `MyLatestArchetypeTests`/`MyDuelStatsTests`,
 full suite 174/174 passing. Frontend: `pnpm lint` and `pnpm build:prod` both

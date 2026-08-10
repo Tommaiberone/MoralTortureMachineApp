@@ -1,10 +1,10 @@
 ---
 id: TASK-177.1
 title: Allineare /account al tema horror dell'app e consolidare login/logout
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-10 09:33'
-updated_date: '2026-08-10 09:53'
+updated_date: '2026-08-10 10:02'
 labels:
   - frontend
   - ux
