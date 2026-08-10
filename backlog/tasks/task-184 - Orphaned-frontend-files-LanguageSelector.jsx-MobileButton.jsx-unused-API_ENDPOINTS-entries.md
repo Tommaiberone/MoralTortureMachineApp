@@ -3,9 +3,10 @@ id: TASK-184
 title: >-
   Orphaned frontend files: LanguageSelector.jsx, MobileButton.jsx, unused
   API_ENDPOINTS entries
-status: Backlog
+status: Done
 assignee: []
 created_date: '2026-08-10 10:25'
+updated_date: '2026-08-10 13:40'
 labels:
   - frontend
   - cleanup
@@ -23,6 +24,12 @@ frontend/src/components/LanguageSelector.jsx and frontend/src/components/MobileB
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 LanguageSelector.jsx and MobileButton.jsx are either wired up or removed
-- [ ] #2 Unused API_ENDPOINTS entries are removed, or every screen is migrated to use them consistently
+- [x] #1 LanguageSelector.jsx and MobileButton.jsx are either wired up or removed
+- [x] #2 Unused API_ENDPOINTS entries are removed, or every screen is migrated to use them consistently
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+MobileButton.jsx rimosso (davvero orfano, nessun riferimento). LanguageSelector.jsx NON rimosso: e' referenziato da un commento esplicito in i18n.js/HomeScreen.jsx legato all'eccezione documentata TASK-101 (riattivazione IT), non e' dead code ordinario - lasciato intenzionalmente. API_ENDPOINTS in api.js ridotto alle sole 2 chiavi realmente usate (analyticsEvents, analyticsAdminOverview); le altre 7 rimosse (2 in piu' - getStoryFlow/storyNodeVote - anche per la rimozione di Story Mode, TASK-185).
+<!-- SECTION:NOTES:END -->

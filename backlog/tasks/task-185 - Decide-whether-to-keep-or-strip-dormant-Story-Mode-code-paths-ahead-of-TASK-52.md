@@ -1,9 +1,10 @@
 ---
 id: TASK-185
 title: Decide whether to keep or strip dormant Story Mode code paths ahead of TASK-52
-status: Open Points
+status: Done
 assignee: []
 created_date: '2026-08-10 10:26'
+updated_date: '2026-08-10 13:40'
 labels:
   - frontend
   - decision
@@ -21,5 +22,11 @@ Story Mode is hidden but not removed: HomeScreen.jsx:104-113 has a commented-out
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A decision is recorded: keep the dormant Story Mode code as-is for TASK-52, or strip it now
+- [x] #1 A decision is recorded: keep the dormant Story Mode code as-is for TASK-52, or strip it now
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Decisione utente: rimuovere tutto ora (non aspettare TASK-52). Rimosso: StoryModeScreen.jsx/.css, il ramo 'story' in TutorialScreen.jsx, l'import/route commentati in App.jsx, il bottone commentato in HomeScreen.jsx, le chiavi tutorial.story_*/storyMode.* e home.story_* in en.json (it.json intenzionalmente non toccato, drift exception CLAUDE.md), 'Allow: /story-mode' in robots.txt, gli endpoint backend GET /get-story-flow e POST /story-node-vote + StoryNodeVoteRequest + le variabili story_flows_table/STORY_FLOWS_TABLE ormai morte. Deliberatamente NON toccata la tabella DynamoDB story_flows ne' la risorsa Terraform corrispondente (solo 2 item, ma cancellare dati e' un'azione distinta e piu' pesante della pulizia di codice morto - lasciata per una decisione esplicita separata se/quando serve davvero liberare quella tabella).
+<!-- SECTION:NOTES:END -->

@@ -3,9 +3,10 @@ id: TASK-179
 title: >-
   AboutScreen only describes Solo Evaluation, never mentions Party Room or Moral
   Duel
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-10 10:24'
+updated_date: '2026-08-10 13:38'
 labels:
   - frontend
   - content
@@ -23,5 +24,11 @@ AboutScreen.jsx's Game Modes section (around line 91-103) only describes solo Ev
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 AboutScreen's Game Modes section describes Party Room and Moral Duel alongside Evaluation, accurately reflecting what a visitor can actually do
+- [x] #1 AboutScreen's Game Modes section describes Party Room and Moral Duel alongside Evaluation, accurately reflecting what a visitor can actually do
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Aggiunte due .mode-card in AboutScreen.jsx per Moral Duel e Party Room, stesso stile della card Solo Evaluation esistente. Copy hardcoded coerente col resto del file (TASK-160, i18n dell'intera pagina, resta separato).
+<!-- SECTION:NOTES:END -->

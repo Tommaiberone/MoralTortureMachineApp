@@ -1,9 +1,10 @@
 ---
 id: TASK-181
 title: AnalyticsConsent banner copy bypasses i18next entirely
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-10 10:25'
+updated_date: '2026-08-10 13:39'
 labels:
   - frontend
   - i18n
@@ -22,5 +23,11 @@ AnalyticsConsent.jsx's entire consent-banner copy object (title, body, accept, r
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The consent banner's copy is sourced from i18next translation keys like every other screen, not a hardcoded object
+- [x] #1 The consent banner's copy is sourced from i18next translation keys like every other screen, not a hardcoded object
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+AnalyticsConsent.jsx e PrivacyFooter riscritte per usare useTranslation()/t('consent.*') invece dell'oggetto copy hardcoded. Nuova sezione consent in en.json.
+<!-- SECTION:NOTES:END -->

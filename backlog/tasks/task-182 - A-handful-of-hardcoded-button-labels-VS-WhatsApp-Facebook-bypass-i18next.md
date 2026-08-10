@@ -1,9 +1,10 @@
 ---
 id: TASK-182
 title: 'A handful of hardcoded button labels (VS, WhatsApp, Facebook) bypass i18next'
-status: Backlog
+status: Done
 assignee: []
 created_date: '2026-08-10 10:25'
+updated_date: '2026-08-10 13:39'
 labels:
   - frontend
   - i18n
@@ -21,5 +22,11 @@ A few small, isolated strings bypass t(): ChallengeCompareScreen.jsx:125 hardcod
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 VS/WhatsApp/Facebook button labels are sourced from i18next translation keys like the rest of the app's copy
+- [x] #1 VS/WhatsApp/Facebook button labels are sourced from i18next translation keys like the rest of the app's copy
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+VS (ChallengeCompareScreen), WhatsApp (ChallengeLandingScreen + 2x ResultsScreen), Facebook (ResultsScreen) ora passano da t(): challengeCompare.vs, challenge.whatsapp, results.whatsapp, results.facebook.
+<!-- SECTION:NOTES:END -->

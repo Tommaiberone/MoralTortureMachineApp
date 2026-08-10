@@ -1,9 +1,10 @@
 ---
 id: TASK-178
 title: No catch-all/404 route - an unmatched path renders a blank page
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-10 10:24'
+updated_date: '2026-08-10 13:38'
 labels:
   - frontend
   - ux
@@ -21,5 +22,11 @@ frontend/src/App.jsx has no catch-all Route in its <Routes> block. Any unmatched
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Navigating to any unmapped path shows a not-found screen with a way back to the home screen, instead of a blank page
+- [x] #1 Navigating to any unmapped path shows a not-found screen with a way back to the home screen, instead of a blank page
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Aggiunta NotFoundScreen.jsx (lazy) + Route path='*' in fondo a App.jsx. Copy in tono con l'app, chiavi notFound.* in en.json.
+<!-- SECTION:NOTES:END -->

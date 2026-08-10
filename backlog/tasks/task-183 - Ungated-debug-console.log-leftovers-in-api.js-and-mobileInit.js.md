@@ -1,9 +1,10 @@
 ---
 id: TASK-183
 title: Ungated debug console.log leftovers in api.js and mobileInit.js
-status: Backlog
+status: Done
 assignee: []
 created_date: '2026-08-10 10:25'
+updated_date: '2026-08-10 13:39'
 labels:
   - frontend
   - cleanup
@@ -21,5 +22,11 @@ frontend/src/config/api.js:9-10 (module load), :35-36,77,86 (apiFetch, used by A
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 These debug logs are removed or gated behind import.meta.env.DEV so they no longer run unconditionally in production
+- [x] #1 These debug logs are removed or gated behind import.meta.env.DEV so they no longer run unconditionally in production
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Tutti i console.log di debug in api.js e mobileInit.js ora gated da import.meta.env.DEV (o rimossi se ridondanti); console.error lasciati invariati (convenzione esistente per errori reali).
+<!-- SECTION:NOTES:END -->

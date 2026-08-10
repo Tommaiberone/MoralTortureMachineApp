@@ -3,9 +3,10 @@ id: TASK-180
 title: >-
   EvaluationDilemmasScreen SEO description hardcodes '7 dilemmas', stale since
   the 3/5/7 variant experiment
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-10 10:24'
+updated_date: '2026-08-10 13:39'
 labels:
   - frontend
   - seo
@@ -24,5 +25,11 @@ EvaluationDilemmasScreen.jsx's SEO description (around line 336) says 'Take a co
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The SEO description no longer commits to a fixed dilemma count that contradicts the 3/5/7 variant experiment
+- [x] #1 The SEO description no longer commits to a fixed dilemma count that contradicts the 3/5/7 variant experiment
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+SEO description di EvaluationDilemmasScreen non menziona piu' un numero fisso di dilemmi, coerente con la variante 3/5/7 di TASK-23.
+<!-- SECTION:NOTES:END -->

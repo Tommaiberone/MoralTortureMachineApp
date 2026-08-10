@@ -1837,6 +1837,66 @@ calls) - worth a real integration/smoke check against deployed
 infrastructure if this pattern recurs, but not filed as its own task for a
 single-line fix already shipped.
 
+### ADR-081 — Resolved all 11 tasks from the post-TASK-177 app walkthrough (TASK-178..188)
+
+Context: the user asked to resolve every task filed by the walkthrough
+(`TASK-178`-`188`) and turn the walkthrough process itself into a reusable
+skill. One of the eleven, `TASK-185` (dormant Story Mode code), was
+explicitly scoped as a decision for the user rather than something to
+resolve unilaterally; asked, and the answer was to remove it now rather
+than wait for `TASK-52` - `TASK-52` is `Backlog`/`Low` and depends on two
+other unstarted tasks (`TASK-50`/`53`), so by the time it is picked up,
+rebuilding fresh for its actual episodic-premium requirements is likely
+cheaper than adapting months-old scaffolding.
+
+Removing Story Mode turned out to simplify two other tasks in the same
+batch: `TASK-187`'s duplicate `decimal_to_float` closures and part of
+`TASK-186`'s scope both lived inside `get_story_flow`/`story_node_vote`,
+which no longer exist. Deliberately did **not** touch the `story_flows`
+DynamoDB table or its Terraform resource, even though it now has zero
+readers - dropping a table (2 rows, but real data) is a materially
+different, harder-to-reverse action than deleting dead application code,
+and the user's answer was scoped to "the code", not "and delete the
+table too". Also left `it.json`'s now-orphaned `storyMode` section alone,
+per the existing it.json drift exception (touching it beyond that
+exception is explicitly out of scope).
+
+`TASK-184` split on inspection: `MobileButton.jsx` was genuinely orphaned
+and removed, but `LanguageSelector.jsx` is not ordinary dead code - it is
+referenced by an explicit comment (`i18n.js`, `HomeScreen.jsx`) tied to the
+documented `TASK-101` Italian-reactivation exception in `CLAUDE.md`. Removed
+only `MobileButton.jsx` and the genuinely-unused `API_ENDPOINTS` entries,
+left `LanguageSelector.jsx` in place.
+
+The other nine (`178`, `179`, `180`, `181`, `182`, `183`, `186`, `187`,
+`188`) were straightforward: a 404 route, AboutScreen content, one stale
+SEO line, i18n migration for the consent banner and a handful of button
+labels, gated debug logs, and three backend correctness fixes (`/vote`'s
+miscategorized 500, four endpoints' leaked exception text, `/health`'s
+dead status code). Backend: full suite 174/174 passing. Frontend: `pnpm
+lint` and `pnpm build:prod` both clean.
+
+### ADR-082 — New `/app-walkthrough` skill, codifying this session's read-only rough-edge sweep (TASK-190)
+
+The user asked to turn the process just used (parallel frontend/backend
+research, dedup against Backlog.md, route findings per CLAUDE.md's table)
+into a reusable skill, same request pattern as `TASK-130`
+(`ops-alerts-sweep`) - so it followed the same convention:
+`.claude/commands/app-walkthrough.md`, frontmatter `description` naming its
+tracking task, a numbered protocol, never modifies code (read-only sweep
+that only files/enriches Backlog tasks, mirroring `ops-alerts-sweep`'s own
+scope boundary). One thing this session's own run got wrong is now written
+directly into the skill's dedup step: `TASK-184` initially grouped
+`LanguageSelector.jsx` with genuinely-orphaned `MobileButton.jsx`, but
+`LanguageSelector.jsx` turned out to be intentionally-dormant scaffolding
+for the documented `TASK-101` Italian-reactivation exception, not ordinary
+dead code - the skill's step 3 now explicitly calls out checking for a
+comment explaining *why* something looks unused before treating it as
+debt, and routing it to Open Points instead of Backlog when scaffolding
+status is unclear (as `TASK-185`/Story Mode already correctly was). Not
+tested against a second, independent invocation yet - first real
+validation will be whenever `/app-walkthrough` next runs.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

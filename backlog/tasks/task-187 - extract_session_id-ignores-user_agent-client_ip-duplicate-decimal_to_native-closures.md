@@ -3,9 +3,10 @@ id: TASK-187
 title: >-
   extract_session_id ignores user_agent/client_ip; duplicate decimal_to_native
   closures
-status: Backlog
+status: Done
 assignee: []
 created_date: '2026-08-10 10:26'
+updated_date: '2026-08-10 13:41'
 labels:
   - backend
   - cleanup
@@ -23,6 +24,12 @@ backend_fastapi.py:915-931 extract_session_id reads user_agent (927) and client_
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 extract_session_id either uses user_agent/client_ip for a real purpose or the dead reads are removed
-- [ ] #2 get_story_flow and story_node_vote reuse decimal_to_native instead of a local duplicate
+- [x] #1 extract_session_id either uses user_agent/client_ip for a real purpose or the dead reads are removed
+- [x] #2 get_story_flow and story_node_vote reuse decimal_to_native instead of a local duplicate
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+extract_session_id semplificata: rimossa la lettura morta di user_agent/client_ip, resta solo header X-Session-Id con fallback a un UUID random. I duplicati di decimal_to_float erano solo in get_story_flow/story_node_vote, gia' rimossi con TASK-185 - nessun'altra duplicazione trovata nel file.
+<!-- SECTION:NOTES:END -->

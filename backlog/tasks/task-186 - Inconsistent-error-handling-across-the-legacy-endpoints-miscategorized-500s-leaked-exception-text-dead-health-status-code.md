@@ -3,9 +3,10 @@ id: TASK-186
 title: >-
   Inconsistent error handling across the legacy endpoints (miscategorized 500s,
   leaked exception text, dead health status code)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-10 10:26'
+updated_date: '2026-08-10 13:40'
 labels:
   - backend
 dependencies: []
@@ -22,7 +23,13 @@ Three related error-handling gaps found in backend_fastapi.py: (1) POST /vote (~
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 POST /vote returns 400 for an invalid vote type, not a 500
-- [ ] #2 The six legacy endpoints no longer return raw exception text in the response body
-- [ ] #3 GET /health returns 503 (not 200) when its own health computation says unhealthy
+- [x] #1 POST /vote returns 400 for an invalid vote type, not a 500
+- [x] #2 The six legacy endpoints no longer return raw exception text in the response body
+- [x] #3 GET /health returns 503 (not 200) when its own health computation says unhealthy
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+POST /vote: aggiunto 'except HTTPException: raise' mancante, cosi' il suo stesso 400 non viene piu' re-incapsulato in 500. I 4 endpoint legacy rimasti (vote, get-dilemma, generate-dilemma, analyze-results) non espongono piu' str(e) grezzo nel detail, messaggio generico per ciascuno (get-story-flow/story-node-vote rimossi con TASK-185). GET /health ora applica davvero lo status_code calcolato via JSONResponse invece di ignorarlo (tornava sempre 200).
+<!-- SECTION:NOTES:END -->

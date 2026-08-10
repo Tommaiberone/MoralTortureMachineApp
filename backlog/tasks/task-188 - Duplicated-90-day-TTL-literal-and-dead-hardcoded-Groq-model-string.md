@@ -1,9 +1,10 @@
 ---
 id: TASK-188
 title: Duplicated 90-day TTL literal and dead hardcoded Groq model string
-status: Backlog
+status: Done
 assignee: []
 created_date: '2026-08-10 10:27'
+updated_date: '2026-08-10 13:41'
 labels:
   - backend
   - cleanup
@@ -21,6 +22,12 @@ backend_fastapi.py:862 and :3128 both inline the analytics 90-day TTL as the lit
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The 90-day analytics TTL is a single named constant, referenced from both call sites
-- [ ] #2 The dead 'llama-3.1-8b-instant' literal is either removed from all 4 call sites or consistently commented as overridden
+- [x] #1 The 90-day analytics TTL is a single named constant, referenced from both call sites
+- [x] #2 The dead 'llama-3.1-8b-instant' literal is either removed from all 4 call sites or consistently commented as overridden
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Aggiunta ANALYTICS_RAW_RETENTION_SECONDS come costante nominata (90 giorni), riusata nei 2 punti che prima duplicavano il literal 90*24*60*60. Rimosso il literal morto 'llama-3.1-8b-instant' da tutti e 4 i call site (era sempre sovrascritto da call_groq_api_with_fallback), sostituito con un commento uniforme che spiega dove il model viene davvero impostato.
+<!-- SECTION:NOTES:END -->
