@@ -1978,6 +1978,70 @@ for the skill: this environment's Bash tool has no working `python`/`python3`
 independent invocation yet - first real validation will be whenever
 `/seo-analytics-status` next runs.
 
+### ADR-085 — Launch the Daily Moral Crime as a measured, global one-question ritual (TASK-42/43/44)
+
+Context: ADR-070 had deferred deciding whether to promote the Daily until the
+2026-08-19 growth check because the 2026-08-05 D7 measure (1.4%, 6/429) was
+well below doc-2's 12–15% gate. On 2026-08-10 the user explicitly chose to
+start now as a retention experiment, then specified the product rules rather
+than leaving them inferred: one question, everyone sees the same question,
+two options only, no archetype effect, post-vote aggregate reveal plus an
+editorial reflection, no streak/gamification, only Ask the Audience sharing,
+no FCM, reuse the existing dilemma set, EN-only, and measure the return/share
+loop.
+
+Choice: the release uses `daily_moral_crime_v1.json`, a fixed 29-id deck from
+the existing EN catalog. The server, not the device timezone, defines the
+Daily window at 09:00 UTC; the UI shows the next reset in local time. This
+preserves one shared social moment globally and avoids a device-clock or
+timezone split. A private anonymous participant row and a public aggregate
+row live in one `daily_moral_crime_votes` table. A conditional DynamoDB
+transaction writes both, so the first choice is immutable and a retry cannot
+double-count. `GET /daily-moral-crime` withholds the aggregate until that
+identity has voted; only percentages/counts, never another person's answer
+or identifier, are returned after reveal. Participant data has a 90-day TTL,
+is exportable/deletable after anonymous-data claim, and its non-linkable
+aggregate is intentionally retained on account deletion. Client analytics
+records only generic daily view/vote/reveal/share events, without a choice,
+dilemma text, identifier, or share URL.
+
+Cost: AWS's current official DynamoDB pricing documents an always-free 25
+provisioned RCU and 25 WCU plus 25 GB for Standard-table usage. The existing
+provisioned domains use 15/15; the 5/5 Daily table and 1/1 deletion GSI bring
+the shared planned floor to 21/21, with no new paid service, schedule, AI,
+notification provider, backup, or commitment. At the current 500–800 monthly
+session baseline this is a deliberately small experiment; measure throttling
+and reassess capacity/sharding before material acquisition growth. The
+user-facing shared frontend requires an Android version bump 1.6.4/code 19 →
+1.7.0/code 20; its auto-publishing consequence remains an explicit push-time
+confirmation, not an automatic expansion of release authority.
+
+Consequences: TASK-42–44 are promoted and delivered in sequence; TASK-45
+remains Backlog. The historic bilingual/streak/friends/challenge acceptance
+criteria were replaced by the user's explicit EN-only/no-gamification/Ask the
+Audience scope. This is a measured retention experiment, not evidence that
+the failed D7 gate has been cleared or permission for paid acquisition or
+subscription work.
+
+### ADR-086 — Let frontend CI read the committed esbuild build-script policy (TASK-196)
+
+Context: the Daily verification exposed a recurrence of the tooling failure
+previously closed as TASK-168. `frontend/pnpm-workspace.yaml` correctly sets
+`allowBuilds.esbuild: true`, but both frontend jobs in `deploy.yml` invoked
+`pnpm install --ignore-workspace`. That flag made pnpm discard the committed
+policy, report `ERR_PNPM_IGNORED_BUILDS`, and leave Vite without its required
+esbuild binary. The regression blocked the very CI build that protects any
+frontend feature.
+
+Choice: remove `--ignore-workspace` from both the web and Android install
+steps. The existing allowlist remains narrowly scoped to esbuild's required
+platform-binary postinstall; no arbitrary dependency scripts are enabled.
+
+Consequences: the same lockfile and workspace policy now govern local CI-mode
+verification and both deploy jobs. TASK-196 tracks the regression separately
+from the Daily so a future change cannot silently re-close it as unrelated
+feature work.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

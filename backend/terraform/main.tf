@@ -409,6 +409,63 @@ resource "aws_dynamodb_table" "party_participants" {
   }
 }
 
+# TASK-42/43: one private, anonymous-first vote plus one public aggregate per
+# global Daily Moral Crime window. A conditional transaction writes the two
+# rows together, so repeat requests cannot inflate the aggregate. The GSI is
+# solely for export/account-deletion across a caller's claimed installations;
+# it never contains the aggregate row and its values are never public.
+#
+# Current provisioned capacity is 15 RCU / 15 WCU across the existing
+# Free-Tier tables. This table plus its GSI adds 6 / 6, leaving the shared
+# always-free 25 / 25 pool below its limit. At the present measured traffic
+# (~500-800 monthly sessions), 5 / 5 gives a small burst cushion for the
+# two-item transactional write. Reassess before material acquisition growth.
+resource "aws_dynamodb_table" "daily_moral_crime_votes" {
+  name           = "${var.environment}-${var.stack_name}-daily-moral-crime-votes"
+  billing_mode   = "PROVISIONED"
+  read_capacity  = 5
+  write_capacity = 5
+  hash_key       = "dayKey"
+  range_key      = "entryKey"
+
+  attribute {
+    name = "dayKey"
+    type = "S"
+  }
+
+  attribute {
+    name = "entryKey"
+    type = "S"
+  }
+
+  attribute {
+    name = "anonymousUserId"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "AnonymousUserIndex"
+    hash_key        = "anonymousUserId"
+    range_key       = "dayKey"
+    projection_type    = "INCLUDE"
+    non_key_attributes = ["choice", "dilemmaBaseId", "createdAt"]
+    read_capacity   = 1
+    write_capacity  = 1
+  }
+
+  ttl {
+    attribute_name = "expirationTime"
+    enabled        = true
+  }
+
+  tags = {
+    Name        = "Moral Torture Machine Daily Moral Crime Votes"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+    Purpose     = "Anonymous Daily participation and aggregate reveal, retained for 90 days"
+  }
+}
+
 # TASK-104/129: persisted twin of the ops_alerts email (ADR-045/observability.tf) -
 # one item per notification actually sent, so past alerts can be found and
 # triaged in bulk (see the ops-alerts-sweep skill) instead of only ever
@@ -674,6 +731,7 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           "dynamodb:UpdateItem",
           "dynamodb:DeleteItem",
           "dynamodb:BatchWriteItem",
+          "dynamodb:TransactWriteItems",
           "dynamodb:Scan",
           "dynamodb:Query"
         ]
@@ -692,6 +750,8 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           "${aws_dynamodb_table.challenge_participants.arn}/index/*",
           aws_dynamodb_table.party_rooms.arn,
           aws_dynamodb_table.party_participants.arn,
+          aws_dynamodb_table.daily_moral_crime_votes.arn,
+          "${aws_dynamodb_table.daily_moral_crime_votes.arn}/index/*",
           aws_dynamodb_table.ops_error_alerts.arn
         ]
       },
@@ -709,6 +769,7 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           aws_dynamodb_table.challenge_participants.arn,
           aws_dynamodb_table.party_rooms.arn,
           aws_dynamodb_table.party_participants.arn,
+          aws_dynamodb_table.daily_moral_crime_votes.arn,
           aws_dynamodb_table.ops_error_alerts.arn
         ]
       },
@@ -805,6 +866,8 @@ resource "aws_iam_role_policy" "retention_sweep_permissions" {
           aws_dynamodb_table.challenge_participants.arn,
           aws_dynamodb_table.party_rooms.arn,
           aws_dynamodb_table.party_participants.arn,
+          aws_dynamodb_table.daily_moral_crime_votes.arn,
+          "${aws_dynamodb_table.daily_moral_crime_votes.arn}/index/*",
         ]
       },
       {
@@ -866,6 +929,7 @@ resource "aws_lambda_function" "api" {
       CHALLENGE_PARTICIPANTS_TABLE              = aws_dynamodb_table.challenge_participants.name
       PARTY_ROOMS_TABLE                         = aws_dynamodb_table.party_rooms.name
       PARTY_PARTICIPANTS_TABLE                  = aws_dynamodb_table.party_participants.name
+      DAILY_MORAL_CRIME_VOTES_TABLE             = aws_dynamodb_table.daily_moral_crime_votes.name
       OPS_ERROR_ALERTS_TABLE                    = aws_dynamodb_table.ops_error_alerts.name
       GROQ_API_KEY_SSM_NAME                     = aws_ssm_parameter.groq_api_key.name
       ANALYTICS_FINGERPRINT_SECRET_SSM_NAME     = aws_ssm_parameter.analytics_fingerprint_pepper.name
@@ -934,6 +998,7 @@ resource "aws_lambda_function" "retention_sweep" {
       CHALLENGE_PARTICIPANTS_TABLE            = aws_dynamodb_table.challenge_participants.name
       PARTY_ROOMS_TABLE                       = aws_dynamodb_table.party_rooms.name
       PARTY_PARTICIPANTS_TABLE                = aws_dynamodb_table.party_participants.name
+      DAILY_MORAL_CRIME_VOTES_TABLE           = aws_dynamodb_table.daily_moral_crime_votes.name
       OPS_ERROR_ALERTS_TABLE                  = aws_dynamodb_table.ops_error_alerts.name
       GROQ_API_KEY_SSM_NAME                   = aws_ssm_parameter.groq_api_key.name
       ANALYTICS_FINGERPRINT_SECRET_SSM_NAME   = aws_ssm_parameter.analytics_fingerprint_pepper.name

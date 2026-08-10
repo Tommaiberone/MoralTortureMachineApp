@@ -29,7 +29,7 @@ take priority over a generic social graph.
 | Android | Capacitor 8 wrapper around the shared frontend | `frontend/android/` |
 | Backend | FastAPI on AWS Lambda through Mangum | `backend/src/` |
 | API | API Gateway HTTP API | `backend/terraform/` |
-| Data | DynamoDB on-demand in `eu-west-1` | `backend/terraform/` |
+| Data | DynamoDB in `eu-west-1` (legacy on-demand; new domains provisioned within the shared Free Tier) | `backend/terraform/` |
 | Hosting | S3 and CloudFront | `frontend/terraform/` |
 | AI | Groq free tier, called only by the backend | backend integrations |
 | Infrastructure | Terraform | `backend/terraform/`, `frontend/terraform/` |
@@ -78,14 +78,17 @@ dev table, or `/dev` SSM hierarchy.
   authenticated account via a single-table claim-lock item
   (`sub = "anon#<id>"`, conditional `PutItem` on `ownerSub`): idempotent for
   the same account, rejected with 409 for a different one.
-- `GET /users/export` has schema v2 and uses the account's authoritative
+- `GET /users/export` has schema v3 and uses the account's authoritative
   `anon#<anonymous_user_id>` claim-lock rows to include only that user's
-  account, profiles, social participations, and raw analytics. It never
+  account, profiles, social participations (including a caller's Daily
+  participations), and raw analytics. It never
   exports a counterparty's profile, choices, display name, or derived data.
   `DELETE /users/me` is an idempotent cascade: it removes Cognito, the app
-  account, claim locks, profiles, raw analytics, and any Duel/Party object
-  that contains the deleted participant's derived data. The whole shared
-  object is removed rather than retaining an incoherent comparison. The
+  account, claim locks, profiles, private Daily rows, raw analytics, and any
+  Duel/Party object that contains the deleted participant's derived data.
+  Daily aggregates remain because they are no longer linkable to a person;
+  the whole shared Duel/Party object is removed rather than retaining an
+  incoherent comparison. The
   public `/delete-account` route reuses the existing Cognito web/Android auth
   flow, and the current client clears local IDs, queued events, challenge
   progress, and cached game state after a successful deletion.
@@ -127,8 +130,9 @@ dev table, or `/dev` SSM hierarchy.
   intentionally reclassifies existing profiles on their next read; the
   stored version is historical attribution, not a display-freeze key.
 - Because the Lambda deployment package (`.github/workflows/deploy.yml`) copies
-  `backend/src/backend_fastapi.py`, `backend/src/archetype_engine.py`, and
-  `backend/data/archetypes.json` as flat siblings (no subfolders), the import
+  `backend/src/backend_fastapi.py`, `backend/src/archetype_engine.py`,
+  `backend/data/archetypes.json`, and the versioned Daily deck
+  `backend/data/daily_moral_crime_v1.json` as flat siblings (no subfolders), the import
   in `backend_fastapi.py` and the data-path lookup in `archetype_engine.py`
   both try the flat Lambda layout first and fall back to the repository's
   `backend/src/` + `backend/data/` layout, so the same code runs unmodified
@@ -201,6 +205,22 @@ dev table, or `/dev` SSM hierarchy.
   `TASK-88` evaluates a safe migration; new tables must first use DynamoDB
   Standard provisioned capacity within the shared Free Tier when the measured
   workload makes that configuration technically adequate.
+- **Daily Moral Crime** (`TASK-42`/`43`/`44`, ADR-085) is one existing,
+  versioned EN-catalog dilemma shared globally at a documented 09:00 UTC
+  rollover. `GET /daily-moral-crime` returns the two choices but never the
+  aggregate until the caller's existing `X-Anonymous-User-Id` has voted;
+  `POST /daily-moral-crime/vote` receives the displayed `dayKey` so a tab
+  crossing the rollover cannot vote for the wrong dilemma. A DynamoDB
+  transaction conditionally creates the private participant row and increments
+  the aggregate row together; an idempotent retry returns the original choice
+  without incrementing again. `daily_moral_crime_votes` is provisioned 5/5
+  RCU/WCU with a 1/1 `AnonymousUserIndex`, keeping the measured shared pool at
+  21/25 RCU/WCU under the current DynamoDB Free Tier. Both rows expire after
+  90 days; only the participant rows carry an anonymous id, are queried for
+  export/deletion, and are never exposed by the public API. The first release
+  has no archetype impact, streak, push, friend graph, or direct Daily Duel;
+  its post-vote `Ask the Audience` link is the public `/daily` route with
+  non-identifying UTM attribution and does not disclose the sender's answer.
 - **Party Room** (`TASK-46`/`47`, ADR-050/051) is the same-room live variant:
   `party_rooms` (PK `roomCode`, a short 6-character human-shareable code, not
   a long opaque token like Duel's, since it is read aloud/typed/QR-scanned by

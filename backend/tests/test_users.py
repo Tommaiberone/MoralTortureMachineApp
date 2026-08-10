@@ -236,6 +236,15 @@ class ExportAndDeleteAccountTests(unittest.TestCase):
         challenges_table = Mock()
         challenges_table.scan.return_value = {"Items": []}
         party_rooms_table = Mock()
+        daily_votes_table = Mock()
+        daily_votes_table.query.return_value = {"Items": [{
+            "dayKey": "2026-08-10",
+            "entryKey": "participant#anon-1",
+            "anonymousUserId": "anon-1",
+            "choice": "first",
+            "dilemmaBaseId": "dilemma-1",
+            "createdAt": 7000,
+        }]}
         return {
             "users_table": users_table,
             "moral_profiles_table": profiles_table,
@@ -245,6 +254,7 @@ class ExportAndDeleteAccountTests(unittest.TestCase):
             "challenges_table": challenges_table,
             "party_participants_table": party_participants_table,
             "party_rooms_table": party_rooms_table,
+            "daily_moral_crime_votes_table": daily_votes_table,
         }
 
     def _patch_linked_tables(self, tables):
@@ -261,7 +271,7 @@ class ExportAndDeleteAccountTests(unittest.TestCase):
         ):
             result = asyncio.run(export_user_data(request_with_headers({"Authorization": "Bearer token"})))
 
-        self.assertEqual(result["schemaVersion"], 2)
+        self.assertEqual(result["schemaVersion"], 3)
         self.assertEqual(result["account"]["sub"], "user-sub")
         self.assertEqual(result["account"]["email"], "user@example.com")
         self.assertEqual(result["claimedAnonymousUserIds"], ["anon-1"])
@@ -273,6 +283,12 @@ class ExportAndDeleteAccountTests(unittest.TestCase):
             "submittedAt": 5000,
         }])
         self.assertEqual(result["partyParticipations"][0]["displayName"], "Me")
+        self.assertEqual(result["dailyParticipations"], [{
+            "dayKey": "2026-08-10",
+            "choice": "first",
+            "dilemmaBaseId": "dilemma-1",
+            "createdAt": 7000,
+        }])
         self.assertNotIn("Other", str(result))
         self.assertEqual(result["analytics"]["productEvents"][0]["eventId"], "event-1")
         self.assertEqual(result["analytics"]["legacyEvents"][0]["timestamp"], 4000)
@@ -296,6 +312,7 @@ class ExportAndDeleteAccountTests(unittest.TestCase):
             "moralProfiles": 1,
             "challenges": 1,
             "partyRooms": 1,
+            "dailyVotes": 1,
             "productEvents": 1,
             "legacyEvents": 1,
         }})
@@ -318,6 +335,10 @@ class ExportAndDeleteAccountTests(unittest.TestCase):
         tables["challenges_table"].delete_item.assert_called_once_with(Key={"challengeToken": "challenge-1"})
         self.assertEqual(tables["party_participants_table"].delete_item.call_count, 2)
         tables["party_rooms_table"].delete_item.assert_called_once_with(Key={"roomCode": "ROOM1"})
+        tables["daily_moral_crime_votes_table"].delete_item.assert_called_once_with(Key={
+            "dayKey": "2026-08-10",
+            "entryKey": "participant#anon-1",
+        })
 
 
 SIX_DIMENSIONS = ["Empathy", "Integrity", "Responsibility", "Justice", "Altruism", "Honesty"]

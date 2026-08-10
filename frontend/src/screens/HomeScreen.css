@@ -112,6 +112,16 @@
   background-color: var(--creepy-dark-gray);
 }
 
+.daily-button {
+  border-color: var(--creepy-rust);
+  background-color: var(--creepy-charcoal);
+}
+
+.daily-button:hover {
+  border-color: var(--text-danger);
+  background-color: var(--creepy-dark-gray);
+}
+
 .badge-container {
   position: absolute;
   top: -10px;

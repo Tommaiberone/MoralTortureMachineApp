@@ -103,6 +103,19 @@ const HomeScreen = () => {
         </button>
 
         <button
+          className="home-button daily-button"
+          onClick={() => {
+            trackEvent('daily_moral_crime_entry_clicked', { surface: 'home' });
+            navigate('/daily');
+          }}
+        >
+          <div className="button-text">{t('home.daily_button')}</div>
+          <div className="button-description">
+            {t('home.daily_description')}
+          </div>
+        </button>
+
+        <button
           className="home-button arcade-button"
           onClick={() => navigate('/party')}
         >

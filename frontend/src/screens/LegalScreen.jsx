@@ -1,7 +1,7 @@
 const pages = {
   privacy: {
     title: 'Privacy notice',
-    updated: 'Last updated: 6 August 2026',
+    updated: 'Last updated: 10 August 2026',
     intro: 'This notice explains how Moral Torture Machine handles data when you use the website or Android app. It is written for the current English-only product experience.',
     sections: [
       {
@@ -19,7 +19,7 @@ const pages = {
           <ul>
             <li><strong>Service and device data:</strong> a persistent anonymous user ID, installation ID, session ID, platform, app version, device language, time zone, referrer origin, filtered campaign parameters, technical request information, and privacy-safe first-party product events. The server never stores a raw IP address in product analytics; it can derive a short HMAC network pseudonym for abuse monitoring.</li>
             <li><strong>Account data:</strong> your Cognito subject, Cognito username, email address, and authentication status when you choose to sign in with Google. The Android app stores its sign-in session and PKCE material with Android Keystore encryption.</li>
-            <li><strong>Game, profile, and social data:</strong> dilemma choices needed to run the game, derived value scores and archetype, profile metadata, Moral Duel participation, Party Room participation, and a Party display name if you provide one. Profiles, Duel links, and Party rooms are unlisted rather than publicly indexed: anyone who receives the relevant link or room code can see the information exposed by that shared flow.</li>
+            <li><strong>Game, profile, and social data:</strong> dilemma choices needed to run the game, derived value scores and archetype, profile metadata, Moral Duel participation, Party Room participation, and a Party display name if you provide one. A Daily Moral Crime vote is held against your anonymous ID for 90 days; after you vote, the app shows only non-linkable aggregate counts and percentages. Profiles, Duel links, and Party rooms are unlisted rather than publicly indexed: anyone who receives the relevant link or room code can see the information exposed by that shared flow.</li>
             <li><strong>AI request data:</strong> when you request a result analysis, the app sends the relevant scores, dilemma text, options, and your selected choices to Groq to generate explanatory copy. The deterministic scoring and archetype do not depend on Groq. We do not intentionally place dilemma text, answer text, or AI analysis in first-party product analytics. Groq&apos;s published inference retention can be up to 30 days for reliability and abuse monitoring unless its Zero Data Retention control is enabled.</li>
             <li><strong>Operational data:</strong> privacy-redacted route signatures, error type/status, and limited technical diagnostics used to keep the service secure and reliable.</li>
           </ul>
@@ -38,6 +38,7 @@ const pages = {
         content: (
           <ul>
             <li>First-party raw product analytics: <strong>90 days</strong>.</li>
+            <li>Daily Moral Crime participation rows and aggregate counts: <strong>90 days</strong>.</li>
             <li>Google Analytics web event and user data: <strong>2 months</strong>; the consent choice cookie is retained for <strong>180 days</strong>.</li>
             <li>Accounts and Moral Profiles: deleted after <strong>12 months of inactivity</strong> through a daily lifecycle job. An expired profile is not served while background deletion is pending.</li>
             <li>Moral Duel records and participants: <strong>30 days</strong>.</li>
@@ -52,7 +53,7 @@ const pages = {
         heading: 'Your choices and rights',
         content: (
           <p>
-            From <a href="/account">Your account</a>, a signed-in user can export the account data and data linked to anonymous IDs they have claimed. Deletion removes the Cognito identity, account record, claim locks, linked profiles, linked raw analytics, and shared Duel/Party objects containing that person&apos;s derived data; the updated web/Android client also clears its local identifiers and queued analytics after a successful deletion. Truly aggregated, non-linkable statistics may remain. Short-lived operational records are retained only for the periods above and are designed not to contain account data, answer text, or link tokens. Data that a recipient independently copied or an external provider holds under its own terms cannot be erased by this in-app request.
+            From <a href="/account">Your account</a>, a signed-in user can export the account data and data linked to anonymous IDs they have claimed. Deletion removes the Cognito identity, account record, claim locks, linked profiles, linked Daily participation rows, linked raw analytics, and shared Duel/Party objects containing that person&apos;s derived data; the updated web/Android client also clears its local identifiers and queued analytics after a successful deletion. Truly aggregated, non-linkable statistics may remain. Short-lived operational records are retained only for the periods above and are designed not to contain account data, answer text, or link tokens. Data that a recipient independently copied or an external provider holds under its own terms cannot be erased by this in-app request.
           </p>
         ),
       },

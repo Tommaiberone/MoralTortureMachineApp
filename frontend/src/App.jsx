@@ -25,6 +25,7 @@ const ChallengeLandingScreen = lazy(() => import('./screens/ChallengeLandingScre
 const ChallengeCompareScreen = lazy(() => import('./screens/ChallengeCompareScreen'));
 const PartyRoomHomeScreen = lazy(() => import('./screens/PartyRoomHomeScreen'));
 const PartyRoomScreen = lazy(() => import('./screens/PartyRoomScreen'));
+const DailyMoralCrimeScreen = lazy(() => import('./screens/DailyMoralCrimeScreen'));
 const NotFoundScreen = lazy(() => import('./screens/NotFoundScreen'));
 
 import './styles/shared.css';
@@ -81,6 +82,7 @@ const App = () => {
             <Route path="/challenge/:token/compare" element={<ChallengeCompareScreen />} />
             <Route path="/party" element={<PartyRoomHomeScreen />} />
             <Route path="/party/:roomCode" element={<PartyRoomScreen />} />
+            <Route path="/daily" element={<DailyMoralCrimeScreen />} />
             <Route path="*" element={<NotFoundScreen />} />
           </Routes>
           <AnalyticsConsent />

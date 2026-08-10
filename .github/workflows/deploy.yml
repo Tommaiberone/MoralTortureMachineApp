@@ -179,6 +179,7 @@ jobs:
           cp src/compatibility_engine.py lambda_deployment/
           cp src/party_awards.py lambda_deployment/
           cp data/archetypes.json lambda_deployment/
+          cp data/daily_moral_crime_v1.json lambda_deployment/
 
           uv pip install \
             --target lambda_deployment \
@@ -345,7 +346,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: pnpm install --no-frozen-lockfile --ignore-workspace
+        run: pnpm install --no-frozen-lockfile
 
       - name: Read app version
         id: app_version
@@ -420,7 +421,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: pnpm install --no-frozen-lockfile --ignore-workspace
+        run: pnpm install --no-frozen-lockfile
 
       - name: Read app version
         id: app_version

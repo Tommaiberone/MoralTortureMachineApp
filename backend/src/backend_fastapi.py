@@ -25,6 +25,8 @@ from typing import Optional, Dict, Any
 from decimal import Decimal
 import json
 from urllib.parse import urlparse
+from pathlib import Path
+from boto3.dynamodb.types import TypeSerializer
 
 # archetype_engine.py is deployed as a flat sibling of this file (see
 # .github/workflows/deploy.yml), so the same import must resolve whether this
@@ -94,6 +96,10 @@ CHALLENGES_TABLE = os.getenv("CHALLENGES_TABLE", "moral-torture-machine-challeng
 CHALLENGE_PARTICIPANTS_TABLE = os.getenv("CHALLENGE_PARTICIPANTS_TABLE", "moral-torture-machine-challenge-participants")
 PARTY_ROOMS_TABLE = os.getenv("PARTY_ROOMS_TABLE", "moral-torture-machine-party-rooms")
 PARTY_PARTICIPANTS_TABLE = os.getenv("PARTY_PARTICIPANTS_TABLE", "moral-torture-machine-party-participants")
+DAILY_MORAL_CRIME_VOTES_TABLE = os.getenv(
+    "DAILY_MORAL_CRIME_VOTES_TABLE",
+    "moral-torture-machine-daily-moral-crime-votes",
+)
 OPS_ERROR_ALERTS_TABLE = os.getenv("OPS_ERROR_ALERTS_TABLE", "moral-torture-machine-ops-error-alerts")
 # TASK-30/113: same bucket the frontend deploy already syncs to (frontend/terraform),
 # just a dedicated prefix within it for bot-only pre-rendered profile previews.
@@ -177,6 +183,15 @@ CHALLENGE_TTL_SECONDS = 30 * 24 * 60 * 60
 # retain for 90 days, per doc-1's retention policy.
 ANALYTICS_RAW_RETENTION_SECONDS = 90 * 24 * 60 * 60
 
+# Daily Moral Crime stores a private, anonymous-first participation row and a
+# separate aggregate row for each global day. Both expire with the same
+# 90-day window as first-party analytics, while already-derived public
+# aggregates are never linked to an account identity.
+DAILY_MORAL_CRIME_RETENTION_SECONDS = 90 * 24 * 60 * 60
+DAILY_MORAL_CRIME_RELEASE_HOUR_UTC = 9
+DAILY_MORAL_CRIME_AGGREGATE_KEY = "aggregate"
+DAILY_MORAL_CRIME_PARTICIPANT_PREFIX = "participant#"
+
 # TASK-64: accounts and shareable profiles expire after twelve months without
 # activity. Shorter domain-specific limits (analytics, challenges, Party Room,
 # and operational alerts) remain defined separately below/above.
@@ -238,6 +253,7 @@ challenges_table = dynamodb.Table(CHALLENGES_TABLE)
 challenge_participants_table = dynamodb.Table(CHALLENGE_PARTICIPANTS_TABLE)
 party_rooms_table = dynamodb.Table(PARTY_ROOMS_TABLE)
 party_participants_table = dynamodb.Table(PARTY_PARTICIPANTS_TABLE)
+daily_moral_crime_votes_table = dynamodb.Table(DAILY_MORAL_CRIME_VOTES_TABLE)
 ops_error_alerts_table = dynamodb.Table(OPS_ERROR_ALERTS_TABLE)
 ssm_client = boto3.client('ssm', region_name=AWS_REGION)
 sns_client = boto3.client('sns', region_name=AWS_REGION)
@@ -253,6 +269,8 @@ _burst_lock = Lock()
 _burst_request_count = 0
 _ops_notification_last_sent: Dict[str, float] = {}
 _ops_notification_lock = Lock()
+_daily_moral_crime_catalog_cache: Optional[Dict[str, Any]] = None
+_dynamodb_type_serializer = TypeSerializer()
 
 def get_groq_api_key() -> str:
     """Retrieve Groq API key from AWS SSM Parameter Store with caching"""
@@ -1015,6 +1033,13 @@ class SubmitPartyVoteRequest(BaseModel):
     choice: str = Field(..., pattern=r'^(first|second)$')
     chosenValues: Dict[str, float] = Field(..., max_length=12)
 
+
+class DailyMoralCrimeVoteRequest(BaseModel):
+    """The Daily deliberately has exactly two choices and never receives
+    scoring values: participation must not affect the moral archetype."""
+    dayKey: str = Field(..., min_length=10, max_length=10, pattern=r'^\d{4}-\d{2}-\d{2}$')
+    choice: str = Field(..., pattern=r'^(first|second)$')
+
 # TASK-65: value-level PII guard for analytics properties, independent of
 # the property key name (see validate_properties below).
 _EMAIL_LIKE_PATTERN = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
@@ -1299,6 +1324,14 @@ def _rate_limit_rules_for_request(method: str, path: str) -> list[tuple[str, int
         path.startswith(("/profiles/", "/challenges/")) or path == "/dilemmas/by-ids"
     ):
         rules.append(("public_read", ABUSE_PUBLIC_READ_REQUESTS_PER_MINUTE))
+    elif path == "/daily-moral-crime" or path == "/daily-moral-crime/vote":
+        # One Day has a single shared aggregate counter. Reuse the existing
+        # write bucket for vote attempts rather than adding a new persistent
+        # service or relaxing the global anonymous-abuse protection.
+        rules.append((
+            "duel_write" if method.upper() == "POST" else "public_read",
+            ABUSE_DUEL_WRITE_REQUESTS_PER_MINUTE if method.upper() == "POST" else ABUSE_PUBLIC_READ_REQUESTS_PER_MINUTE,
+        ))
     elif path == "/party-rooms" or path.startswith("/party-rooms/"):
         if method.upper() == "GET":
             rules.append(("party_room_poll", ABUSE_PARTY_ROOM_POLL_REQUESTS_PER_MINUTE))
@@ -1629,6 +1662,21 @@ def _product_events_for_anonymous_ids(anonymous_ids: list[str]) -> list[Dict[str
     return events
 
 
+def _daily_votes_for_anonymous_ids(anonymous_ids: list[str]) -> list[Dict[str, Any]]:
+    """Daily participation is private account data for export/deletion. The
+    aggregate row has no anonymousUserId and is deliberately not queried or
+    removed here, so deletion cannot alter an already anonymous statistic."""
+    votes = []
+    for anonymous_id in anonymous_ids:
+        votes.extend(_query_all(
+            daily_moral_crime_votes_table,
+            IndexName="AnonymousUserIndex",
+            KeyConditionExpression="anonymousUserId = :owner",
+            ExpressionAttributeValues={":owner": anonymous_id},
+        ))
+    return votes
+
+
 def _collect_account_data(account_sub: str) -> Dict[str, Any]:
     """Build one complete, repeatable data plan for export or deletion."""
     account = users_table.get_item(Key={"sub": account_sub}).get("Item", {})
@@ -1649,6 +1697,7 @@ def _collect_account_data(account_sub: str) -> Dict[str, Any]:
             anonymous_ids,
         ),
         "productEvents": _product_events_for_anonymous_ids(anonymous_ids),
+        "dailyVotes": _daily_votes_for_anonymous_ids(anonymous_ids),
         "legacyEvents": _scan_for_anonymous_ids(
             analytics_table,
             "anonymousUserId",
@@ -1699,6 +1748,14 @@ def _portable_party_participation(participation: Dict[str, Any]) -> Dict[str, An
     })
 
 
+def _portable_daily_vote(vote: Dict[str, Any]) -> Dict[str, Any]:
+    return _portable_value({
+        key: vote[key]
+        for key in ("dayKey", "choice", "dilemmaBaseId", "createdAt")
+        if key in vote
+    })
+
+
 @app.get("/users/export")
 async def export_user_data(request: Request):
     """Return every current data domain linked to the caller's account."""
@@ -1706,7 +1763,7 @@ async def export_user_data(request: Request):
     data = _collect_account_data(claims["sub"])
     account = data["account"]
     return {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "exportedAt": datetime.now(timezone.utc).isoformat(),
         "account": _portable_value({
             "sub": claims["sub"],
@@ -1724,6 +1781,10 @@ async def export_user_data(request: Request):
         "partyParticipations": [
             _portable_party_participation(participation)
             for participation in data["partyParticipations"]
+        ],
+        "dailyParticipations": [
+            _portable_daily_vote(vote)
+            for vote in data["dailyVotes"]
         ],
         "analytics": {
             "productEvents": _portable_value(data["productEvents"]),
@@ -1961,6 +2022,13 @@ def _delete_linked_account_data(data: Dict[str, Any]) -> Dict[str, int]:
         ),
         "challenges": _delete_duel_data(data["duelParticipations"]),
         "partyRooms": _delete_party_data(data["partyParticipations"]),
+        "dailyVotes": _delete_records(
+            daily_moral_crime_votes_table,
+            [
+                {"dayKey": vote["dayKey"], "entryKey": vote["entryKey"]}
+                for vote in data["dailyVotes"]
+            ],
+        ),
         "productEvents": _delete_records(
             product_events_table,
             [{"eventId": item["eventId"]} for item in data["productEvents"]],
@@ -2189,6 +2257,239 @@ async def get_dilemmas_by_ids(ids: str, request: Request, language: str = "en"):
         if f"{base_id}-{language}" in items_by_key
     ]
     return {"dilemmas": ordered}
+
+
+def _load_daily_moral_crime_catalog() -> Dict[str, Any]:
+    """Load the immutable v1 Daily deck from the repository/deployment
+    package. The deck is a versioned selection of the existing EN catalog,
+    not a second source of dilemma copy and not AI-generated content."""
+    global _daily_moral_crime_catalog_cache
+    if _daily_moral_crime_catalog_cache is not None:
+        return _daily_moral_crime_catalog_cache
+
+    candidates = (
+        Path(__file__).with_name("daily_moral_crime_v1.json"),
+        Path(__file__).resolve().parent.parent / "data" / "daily_moral_crime_v1.json",
+    )
+    catalog_path = next((path for path in candidates if path.exists()), None)
+    if catalog_path is None:
+        raise RuntimeError("Daily Moral Crime catalog is unavailable")
+
+    with catalog_path.open(encoding="utf-8") as catalog_file:
+        raw_catalog = json.load(catalog_file)
+
+    base_ids = raw_catalog.get("baseIds")
+    if (
+        not isinstance(base_ids, list)
+        or not base_ids
+        or len(base_ids) != len(set(base_ids))
+        or any(not isinstance(base_id, str) or not base_id for base_id in base_ids)
+    ):
+        raise RuntimeError("Daily Moral Crime catalog has invalid baseIds")
+    if raw_catalog.get("releaseHourUtc") != DAILY_MORAL_CRIME_RELEASE_HOUR_UTC:
+        raise RuntimeError("Daily Moral Crime catalog has an unsupported release hour")
+
+    try:
+        start_date = datetime.strptime(raw_catalog["startDate"], "%Y-%m-%d").date()
+    except (KeyError, TypeError, ValueError) as error:
+        raise RuntimeError("Daily Moral Crime catalog has an invalid start date") from error
+
+    _daily_moral_crime_catalog_cache = {
+        "version": str(raw_catalog.get("version") or "daily-moral-crime-v1"),
+        "startDate": start_date,
+        "baseIds": tuple(base_ids),
+    }
+    return _daily_moral_crime_catalog_cache
+
+
+def _daily_moral_crime_window(now: Optional[datetime] = None) -> Dict[str, Any]:
+    """Return the authoritative global Daily window.
+
+    Every player shares a single UTC-based Daily. It rolls at 09:00 UTC,
+    instead of at the device's local midnight, so the same share link always
+    opens the same question across time zones. The frontend only formats the
+    returned next release timestamp in the device's local time.
+    """
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    else:
+        now = now.astimezone(timezone.utc)
+    release_at = now.replace(
+        hour=DAILY_MORAL_CRIME_RELEASE_HOUR_UTC,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    if now < release_at:
+        release_at -= timedelta(days=1)
+    return {
+        "dayKey": release_at.date().isoformat(),
+        "releaseAt": release_at,
+        "nextReleaseAt": release_at + timedelta(days=1),
+    }
+
+
+def _daily_moral_crime_base_id(day_key: str) -> tuple[str, str]:
+    catalog = _load_daily_moral_crime_catalog()
+    try:
+        day = datetime.strptime(day_key, "%Y-%m-%d").date()
+    except ValueError as error:
+        raise RuntimeError("Daily Moral Crime day key is invalid") from error
+    index = (day - catalog["startDate"]).days % len(catalog["baseIds"])
+    return catalog["baseIds"][index], catalog["version"]
+
+
+def _daily_moral_crime_dilemma(day_key: str) -> tuple[Dict[str, Any], str]:
+    base_id, catalog_version = _daily_moral_crime_base_id(day_key)
+    dilemma = decimal_to_native(table.get_item(Key={"_id": f"{base_id}-en"}).get("Item") or {})
+    if not dilemma:
+        logger.error("Daily Moral Crime configured dilemma is missing: %s", base_id)
+        raise HTTPException(status_code=503, detail="Today's dilemma is temporarily unavailable")
+    return dilemma, catalog_version
+
+
+def _daily_moral_crime_participant_key(anonymous_user_id: str) -> str:
+    return f"{DAILY_MORAL_CRIME_PARTICIPANT_PREFIX}{anonymous_user_id}"
+
+
+def _daily_moral_crime_vote(day_key: str, anonymous_user_id: str) -> Optional[Dict[str, Any]]:
+    return daily_moral_crime_votes_table.get_item(Key={
+        "dayKey": day_key,
+        "entryKey": _daily_moral_crime_participant_key(anonymous_user_id),
+    }).get("Item")
+
+
+def _daily_moral_crime_results(day_key: str) -> Dict[str, int]:
+    aggregate = daily_moral_crime_votes_table.get_item(Key={
+        "dayKey": day_key,
+        "entryKey": DAILY_MORAL_CRIME_AGGREGATE_KEY,
+    }).get("Item") or {}
+    first_votes = int(aggregate.get("firstVotes", 0))
+    second_votes = int(aggregate.get("secondVotes", 0))
+    total_votes = first_votes + second_votes
+    return {
+        "firstVotes": first_votes,
+        "secondVotes": second_votes,
+        "totalVotes": total_votes,
+        "firstPct": round((first_votes / total_votes) * 100) if total_votes else 0,
+        "secondPct": round((second_votes / total_votes) * 100) if total_votes else 0,
+    }
+
+
+def _daily_moral_crime_response(
+    window: Dict[str, Any],
+    anonymous_user_id: str,
+) -> Dict[str, Any]:
+    dilemma, catalog_version = _daily_moral_crime_dilemma(window["dayKey"])
+    vote = _daily_moral_crime_vote(window["dayKey"], anonymous_user_id)
+    response = {
+        "dayKey": window["dayKey"],
+        "catalogVersion": catalog_version,
+        "releaseAt": window["releaseAt"].isoformat(),
+        "nextReleaseAt": window["nextReleaseAt"].isoformat(),
+        "dilemma": {
+            "baseId": dilemma.get("baseId") or dilemma.get("_id", "").removesuffix("-en"),
+            "dilemma": dilemma.get("dilemma"),
+            "firstAnswer": dilemma.get("firstAnswer"),
+            "secondAnswer": dilemma.get("secondAnswer"),
+        },
+        "hasVoted": vote is not None,
+    }
+    # Aggregates and the tailored reflection stay behind the vote. The raw
+    # anonymous identity and every other participant's individual answer are
+    # never included in this response.
+    if vote:
+        choice = str(vote["choice"])
+        response["choice"] = choice
+        response["reflection"] = dilemma.get(
+            "teaseOption1" if choice == "first" else "teaseOption2",
+            "",
+        )
+        response["results"] = _daily_moral_crime_results(window["dayKey"])
+    return response
+
+
+def _dynamodb_item(values: Dict[str, Any]) -> Dict[str, Any]:
+    return {key: _dynamodb_type_serializer.serialize(value) for key, value in values.items()}
+
+
+@app.get("/daily-moral-crime")
+async def get_daily_moral_crime(request: Request):
+    """Serve today's global Daily without leaking aggregate results before
+    the caller has cast their one anonymous vote."""
+    anonymous_user_id = require_anonymous_user_id(request)
+    return _daily_moral_crime_response(_daily_moral_crime_window(), anonymous_user_id)
+
+
+@app.post("/daily-moral-crime/vote")
+async def vote_daily_moral_crime(vote_request: DailyMoralCrimeVoteRequest, request: Request):
+    """Atomically store one immutable Daily vote and increment its aggregate.
+
+    A DynamoDB transaction means a retry cannot double-count: the personal
+    row and the aggregate counter either both change or neither changes.
+    Repeating the same request returns the original choice as a successful
+    idempotent read, rather than forcing the UI into an error state.
+    """
+    anonymous_user_id = require_anonymous_user_id(request)
+    window = _daily_moral_crime_window()
+    if vote_request.dayKey != window["dayKey"]:
+        # Do not let a tab kept open across the 09:00 UTC rollover apply a
+        # choice made for yesterday's text to today's entirely different one.
+        request.state.expected_business_error = True
+        raise HTTPException(status_code=409, detail="daily_changed")
+    dilemma, _ = _daily_moral_crime_dilemma(window["dayKey"])
+    choice = vote_request.choice
+    now_ms = int(time.time() * 1000)
+    expires_at = int(time.time()) + DAILY_MORAL_CRIME_RETENTION_SECONDS
+    aggregate_field = "firstVotes" if choice == "first" else "secondVotes"
+    entry_key = _daily_moral_crime_participant_key(anonymous_user_id)
+
+    try:
+        dynamodb.meta.client.transact_write_items(TransactItems=[
+            {
+                "Put": {
+                    "TableName": DAILY_MORAL_CRIME_VOTES_TABLE,
+                    "Item": _dynamodb_item({
+                        "dayKey": window["dayKey"],
+                        "entryKey": entry_key,
+                        "anonymousUserId": anonymous_user_id,
+                        "choice": choice,
+                        "dilemmaBaseId": dilemma.get("baseId") or dilemma["_id"].removesuffix("-en"),
+                        "createdAt": now_ms,
+                        "expirationTime": expires_at,
+                    }),
+                    "ConditionExpression": "attribute_not_exists(dayKey) AND attribute_not_exists(entryKey)",
+                },
+            },
+            {
+                "Update": {
+                    "TableName": DAILY_MORAL_CRIME_VOTES_TABLE,
+                    "Key": _dynamodb_item({
+                        "dayKey": window["dayKey"],
+                        "entryKey": DAILY_MORAL_CRIME_AGGREGATE_KEY,
+                    }),
+                    "UpdateExpression": "SET dilemmaBaseId = :base_id, updatedAt = :now, expirationTime = :expires ADD #votes :increment",
+                    "ExpressionAttributeNames": {"#votes": aggregate_field},
+                    "ExpressionAttributeValues": _dynamodb_item({
+                        ":base_id": dilemma.get("baseId") or dilemma["_id"].removesuffix("-en"),
+                        ":now": now_ms,
+                        ":expires": expires_at,
+                        ":increment": 1,
+                    }),
+                },
+            },
+        ])
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") == "TransactionCanceledException":
+            # The only expected cancellation is a repeated vote. Read the
+            # authoritative original answer; never let a caller replace it.
+            if _daily_moral_crime_vote(window["dayKey"], anonymous_user_id):
+                return _daily_moral_crime_response(window, anonymous_user_id)
+        logger.warning("Daily Moral Crime vote transaction failed: %s", error.response.get("Error", {}).get("Code"))
+        raise HTTPException(status_code=503, detail="Daily vote recording is temporarily unavailable")
+
+    return _daily_moral_crime_response(window, anonymous_user_id)
 
 @app.post("/challenges")
 async def create_challenge(challenge_request: CreateChallengeRequest, request: Request):
@@ -3096,6 +3397,18 @@ async def health_check():
         health_status["checks"]["dynamodb_product_events"] = "ok"
     except Exception as e:
         health_status["checks"]["dynamodb_product_events"] = f"error: {str(e)}"
+        health_status["status"] = "degraded"
+
+    # Daily participation is a retention feature, not a prerequisite for the
+    # core Evaluation/Duel loop, so an outage is reported as degraded rather
+    # than making the whole API unhealthy.
+    try:
+        daily_moral_crime_votes_table.meta.client.describe_table(
+            TableName=DAILY_MORAL_CRIME_VOTES_TABLE,
+        )
+        health_status["checks"]["dynamodb_daily_moral_crime"] = "ok"
+    except Exception as e:
+        health_status["checks"]["dynamodb_daily_moral_crime"] = f"error: {str(e)}"
         health_status["status"] = "degraded"
 
     # Check SSM Parameter Store connectivity
