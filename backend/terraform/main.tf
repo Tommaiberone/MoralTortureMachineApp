@@ -344,8 +344,16 @@ resource "aws_dynamodb_table" "challenge_participants" {
 resource "aws_dynamodb_table" "party_rooms" {
   name           = "${var.environment}-${var.stack_name}-party-rooms"
   billing_mode   = "PROVISIONED"
-  read_capacity  = 1
-  write_capacity = 1
+  # Bumped from 1/1 (2026-08-10): live Party Room polling (every
+  # POLL_INTERVAL_MS per participant, backend_fastapi.py) was hitting
+  # ProvisionedThroughputExceededException with only a few concurrent
+  # participants - see ops_error_alerts. TASK-49 (load test 2-20
+  # participants) was deliberately deferred, so 5/5 is a stopgap sized from
+  # observed real traffic, not from a load test; still tiny within the
+  # shared 25 RCU/25 WCU Free Tier pool. Revisit with real numbers once
+  # TASK-49 runs.
+  read_capacity  = 5
+  write_capacity = 5
   hash_key       = "roomCode"
 
   attribute {
@@ -371,8 +379,10 @@ resource "aws_dynamodb_table" "party_rooms" {
 resource "aws_dynamodb_table" "party_participants" {
   name           = "${var.environment}-${var.stack_name}-party-participants"
   billing_mode   = "PROVISIONED"
-  read_capacity  = 1
-  write_capacity = 1
+  # Bumped from 1/1 alongside party_rooms above - same root cause (real
+  # concurrent Party Room polling exceeding provisioned capacity).
+  read_capacity  = 5
+  write_capacity = 5
   hash_key       = "roomCode"
   range_key      = "participantId"
 
