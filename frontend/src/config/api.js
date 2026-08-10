@@ -5,24 +5,19 @@
 
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 
-// Per debug, log dell'ambiente
-console.log('🔧 Environment:', import.meta.env.MODE);
-console.log('🌐 API URL:', import.meta.env.VITE_API_URL);
+if (import.meta.env.DEV) {
+  console.log('🔧 Environment:', import.meta.env.MODE);
+  console.log('🌐 API URL:', import.meta.env.VITE_API_URL);
+}
 
 // API Base URL
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://yd7dwzpwz5.execute-api.eu-west-1.amazonaws.com';
 
-// API Endpoints
+// API Endpoints actually referenced via API_ENDPOINTS.* elsewhere in the app -
+// every other screen builds its own URL string from API_BASE_URL instead.
 export const API_ENDPOINTS = {
-  getDilemma: `${API_BASE_URL}/get-dilemma`,
-  vote: `${API_BASE_URL}/vote`,
-  analyzeResults: `${API_BASE_URL}/analyze-results`,
-  getStoryFlow: `${API_BASE_URL}/get-story-flow`,
-  storyNodeVote: `${API_BASE_URL}/story-node-vote`,
-  generateDilemma: `${API_BASE_URL}/generate-dilemma`,
   analyticsEvents: `${API_BASE_URL}/analytics/events`,
   analyticsAdminOverview: `${API_BASE_URL}/admin/analytics/overview`,
-  authMe: `${API_BASE_URL}/auth/me`,
 };
 
 // Determina se usare Capacitor HTTP o fetch normale
@@ -32,8 +27,10 @@ const useCapacitorHttp = Capacitor.isNativePlatform();
 export const apiFetch = async (endpoint, options = {}) => {
   const url = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`;
 
-  console.log(`📡 API Request to: ${url}`);
-  console.log(`📱 Using Capacitor HTTP: ${useCapacitorHttp}`);
+  if (import.meta.env.DEV) {
+    console.log(`📡 API Request to: ${url}`);
+    console.log(`📱 Using Capacitor HTTP: ${useCapacitorHttp}`);
+  }
 
   try {
     let response;
@@ -74,7 +71,9 @@ export const apiFetch = async (endpoint, options = {}) => {
       });
     }
 
-    console.log(`📥 API Response: ${response.status} ${response.statusText || ''}`);
+    if (import.meta.env.DEV) {
+      console.log(`📥 API Response: ${response.status} ${response.statusText || ''}`);
+    }
 
     if (!response.ok) {
       const errorText = useCapacitorHttp ? JSON.stringify(response.data) : await response.text();
@@ -83,7 +82,9 @@ export const apiFetch = async (endpoint, options = {}) => {
     }
 
     const data = useCapacitorHttp ? response.data : await response.json();
-    console.log('✅ API request completed successfully');
+    if (import.meta.env.DEV) {
+      console.log('✅ API request completed successfully');
+    }
     return data;
 
   } catch (error) {

@@ -56,36 +56,8 @@ const TutorialScreen = () => {
     },
   ];
 
-  const storyTutorialSteps = [
-    {
-      title: t('tutorial.story_step1_title'),
-      description: t('tutorial.story_step1_desc'),
-      icon: "[📖]",
-    },
-    {
-      title: t('tutorial.story_step2_title'),
-      description: t('tutorial.story_step2_desc'),
-      icon: "[🌳]",
-    },
-    {
-      title: t('tutorial.story_step3_title'),
-      description: t('tutorial.story_step3_desc'),
-      icon: "[⚖️]",
-    },
-  ];
-
-  const getTutorialSteps = () => {
-    if (mode === 'story') return storyTutorialSteps;
-    return evaluationTutorialSteps;
-  };
-
-  const getTargetRoute = () => {
-    if (mode === 'story') return '/story-mode';
-    return '/evaluation-dilemmas';
-  };
-
-  const tutorialSteps = getTutorialSteps();
-  const targetRoute = getTargetRoute();
+  const tutorialSteps = evaluationTutorialSteps;
+  const targetRoute = '/evaluation-dilemmas';
 
   const handleNext = () => {
     if (currentStep < tutorialSteps.length - 1) {

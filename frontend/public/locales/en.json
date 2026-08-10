@@ -7,8 +7,6 @@
     "warning_badge": "! WARNING !",
     "eval_button": "TEST YOUR MORALITY",
     "eval_description": "FACE MORAL DILEMMAS. YOUR CONSCIENCE WILL BE JUDGED.",
-    "story_button": "STORY MODE",
-    "story_description": "LIVE A BRANCHING STORY. EVERY CHOICE SHAPES YOUR FATE.",
     "warning_footer": "[ THIS WILL EXPOSE YOUR DARKEST BOUNDARIES ]",
     "seo_resource_nav_label": "Related guides",
     "seo_resource_test": "Moral dilemma test",
@@ -49,6 +47,8 @@
     "facebook_share_alert": "Text copied to clipboard! Paste it into your Facebook post.",
     "download_card_stories": "Download card (Stories)",
     "download_card_square": "Download card (Square)",
+    "whatsapp": "WhatsApp",
+    "facebook": "Facebook",
     "challenge_title": "[ CHALLENGE SOMEONE ]",
     "challenge_intro": "Send this to someone you know. They answer the same dilemmas without seeing your choices, then you both unlock how morally compatible you really are.",
     "challenge_button": "Challenge a friend",
@@ -73,24 +73,7 @@
     "evaluation_step3_title": "[ SEE OTHERS ]",
     "evaluation_step3_desc": "AFTER YOUR CHOICE, SEE HOW OTHERS RESPONDED. COMPARE YOUR MORAL REASONING WITH THE COMMUNITY.",
     "evaluation_step4_title": "[ DISCOVER PROFILE ]",
-    "evaluation_step4_desc": "AFTER 5 DILEMMAS, VIEW YOUR MORAL PROFILE. SEE WHICH VALUES GUIDE YOUR DECISION-MAKING.",
-    "story_step1_title": "[ LIVE A STORY OF CHOICES ]",
-    "story_step1_desc": "EVERY DECISION LEADS YOU DOWN A DIFFERENT PATH. YOUR CHOICES SHAPE YOUR STORY. THERE'S NO GOING BACK.",
-    "story_step2_title": "[ NAVIGATE YOUR FATE ]",
-    "story_step2_desc": "A TREE OF MORAL DECISIONS. EACH CHOICE OPENS NEW PATHS. CLOSES OTHERS FOREVER. YOUR DESTINY IS IN YOUR HANDS.",
-    "story_step3_title": "[ FACE THE CONSEQUENCES ]",
-    "story_step3_desc": "5 LEVELS OF DEPTH. PREVIOUS CHOICES WEIGH ON FUTURE ONES. IN THE END, YOU'LL SEE WHO YOU REALLY ARE."
-  },
-  "storyMode": {
-    "seoTitle": "Story Mode - Moral Torture Machine",
-    "seoDescription": "Navigate through a branching story of moral dilemmas where every choice matters",
-    "loading": "Loading your story...",
-    "errorFetchingFlow": "Error loading story. Please try again.",
-    "errorVoting": "Error processing your choice. Please try again.",
-    "errorLoading": "Error loading story",
-    "chapter": "Chapter",
-    "continue": "Continue...",
-    "viewResults": "View Your Results"
+    "evaluation_step4_desc": "AFTER 5 DILEMMAS, VIEW YOUR MORAL PROFILE. SEE WHICH VALUES GUIDE YOUR DECISION-MAKING."
   },
   "analyticsAdmin": {
     "title": "Analytics Center",
@@ -191,6 +174,21 @@
   "common": {
     "backToHome": "Back to Home"
   },
+  "consent": {
+    "title": "Your privacy choices",
+    "body": "Essential browser storage runs the game. With permission, Google Analytics measures aggregate web use only. We do not sell data, run advertising, personalise ads, or create cross-site advertising profiles; game results are processed to provide the feature itself.",
+    "accept": "Accept analytics",
+    "reject": "Reject analytics",
+    "prefs": "Privacy preferences",
+    "privacy": "Privacy",
+    "cookies": "Cookies",
+    "terms": "Terms"
+  },
+  "notFound": {
+    "title": "[ NOTHING TO JUDGE HERE ]",
+    "description": "This page doesn't exist. A rare case where the machine has nothing to say about your choices.",
+    "homeButton": "Back to Home"
+  },
   "profile": {
     "loading": "Loading...",
     "not_found_title": "[ PROFILE NOT FOUND ]",
@@ -212,6 +210,7 @@
     "own_challenge_notice": "This is your challenge. Share it with a friend to see how compatible you really are.",
     "copy_link": "Copy link",
     "link_copied": "Link copied!",
+    "whatsapp": "WhatsApp",
     "login_required_title": "[ ONE MORE STEP ]",
     "login_required_text": "You've already done a Moral Duel before. Sign in to accept another one and keep your comparisons.",
     "login_required_button": "Sign in to continue",
@@ -224,6 +223,7 @@
     "seo_description": "See how morally compatible two people really are, dilemma by dilemma.",
     "title": "[ MORAL COMPATIBILITY ]",
     "overall": "{{pct}}% compatible",
+    "vs": "VS",
     "most_aligned": "Most aligned on: {{dimension}}",
     "most_divergent": "Most divided on: {{dimension}}",
     "rematch_button": "Rematch someone else",

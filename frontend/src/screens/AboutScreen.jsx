@@ -99,6 +99,22 @@ const AboutScreen = () => {
                 Perfect for self-reflection and understanding your <strong>ethical decision-making</strong> patterns.
               </p>
             </div>
+            <div className="mode-card">
+              <h3>Moral Duel</h3>
+              <p>
+                Challenge a specific person to the same dilemmas through a private link. Once you have
+                both answered, unlock a symmetric <strong>compatibility comparison</strong>: where you
+                align, where you diverge, and how close your moral frameworks really are.
+              </p>
+            </div>
+            <div className="mode-card">
+              <h3>Party Room</h3>
+              <p>
+                Gather a group in person and answer the same dilemmas together, live. After each round
+                see how the room split, and at the end unlock group awards like the closest pair and
+                the room&apos;s moral minority.
+              </p>
+            </div>
           </div>
         </section>
 

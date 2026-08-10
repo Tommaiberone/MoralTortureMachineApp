@@ -310,7 +310,7 @@ const ResultsScreen = () => {
                       window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`);
                     }}
                   >
-                    WhatsApp
+                    {t('results.whatsapp')}
                   </button>
                   <button
                     className="results-share-button card-download"
@@ -343,7 +343,7 @@ const ResultsScreen = () => {
                 window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`);
               }}
             >
-              WhatsApp
+              {t('results.whatsapp')}
             </button>
             <button
               className="results-share-button facebook"
@@ -358,7 +358,7 @@ const ResultsScreen = () => {
                 window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`);
               }}
             >
-              Facebook
+              {t('results.facebook')}
             </button>
             {archetype && (
               <>

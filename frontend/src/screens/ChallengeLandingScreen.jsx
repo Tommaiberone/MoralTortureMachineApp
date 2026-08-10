@@ -334,7 +334,7 @@ const ChallengeLandingScreen = () => {
                   window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareUrl)}`);
                 }}
               >
-                WhatsApp
+                {t('challenge.whatsapp')}
               </button>
               <button
                 type="button"

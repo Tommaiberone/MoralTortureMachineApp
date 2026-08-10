@@ -122,7 +122,7 @@ const ChallengeCompareScreen = () => {
           <p className="compare-archetype-emoji">{creator.archetype.visual?.emoji}</p>
           <p className="compare-archetype-name">{creator.archetype.name}</p>
         </div>
-        <div className="compare-vs">VS</div>
+        <div className="compare-vs">{t('challengeCompare.vs')}</div>
         <div className="compare-archetype-card" style={{ borderColor: invitee.archetype.visual?.color }}>
           <p className="compare-archetype-emoji">{invitee.archetype.visual?.emoji}</p>
           <p className="compare-archetype-name">{invitee.archetype.name}</p>

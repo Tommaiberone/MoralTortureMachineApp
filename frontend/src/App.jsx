@@ -12,7 +12,6 @@ import HomeScreen from './screens/HomeScreen';
 
 // All other screens are lazy loaded to reduce initial bundle size
 const EvaluationDilemmasScreen = lazy(() => import('./screens/EvaluationDilemmasScreen'));
-// const StoryModeScreen = lazy(() => import('./screens/StoryModeScreen')); // Hidden for now
 const ResultsScreen = lazy(() => import('./screens/ResultsScreen'));
 const TutorialScreen = lazy(() => import('./screens/TutorialScreen'));
 const AboutScreen = lazy(() => import('./screens/AboutScreen'));
@@ -26,6 +25,7 @@ const ChallengeLandingScreen = lazy(() => import('./screens/ChallengeLandingScre
 const ChallengeCompareScreen = lazy(() => import('./screens/ChallengeCompareScreen'));
 const PartyRoomHomeScreen = lazy(() => import('./screens/PartyRoomHomeScreen'));
 const PartyRoomScreen = lazy(() => import('./screens/PartyRoomScreen'));
+const NotFoundScreen = lazy(() => import('./screens/NotFoundScreen'));
 
 import './styles/shared.css';
 import './App.css';
@@ -60,7 +60,6 @@ const App = () => {
                 in sitemap.xml as its own URL, separate from the SEO landings. */}
             <Route path="/pass-the-phone" element={<Navigate to="/evaluation-dilemmas" replace />} />
             <Route path="/evaluation-dilemmas" element={<EvaluationDilemmasScreen />} />
-            {/* <Route path="/story-mode" element={<StoryModeScreen />} /> */}
             <Route path="/results" element={<ResultsScreen />} />
             <Route path="/about" element={<AboutScreen />} />
             <Route path="/moral-dilemma-test" element={<SeoLandingScreen landingId="moralDilemmaTest" locale="en" />} />
@@ -82,6 +81,7 @@ const App = () => {
             <Route path="/challenge/:token/compare" element={<ChallengeCompareScreen />} />
             <Route path="/party" element={<PartyRoomHomeScreen />} />
             <Route path="/party/:roomCode" element={<PartyRoomScreen />} />
+            <Route path="*" element={<NotFoundScreen />} />
           </Routes>
           <AnalyticsConsent />
         </Suspense>

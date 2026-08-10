@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { isWeb } from '../utils/platform';
 import {
   consent,
@@ -8,18 +9,8 @@ import {
   saveConsent,
 } from '../utils/googleAnalytics';
 
-const copy = {
-  title: 'Your privacy choices',
-  body: 'Essential browser storage runs the game. With permission, Google Analytics measures aggregate web use only. We do not sell data, run advertising, personalise ads, or create cross-site advertising profiles; game results are processed to provide the feature itself.',
-  accept: 'Accept analytics',
-  reject: 'Reject analytics',
-  prefs: 'Privacy preferences',
-  privacy: 'Privacy',
-  cookies: 'Cookies',
-  terms: 'Terms',
-};
-
 export const AnalyticsConsent = () => {
+  const { t } = useTranslation();
   const [choice, setChoice] = useState(consent());
   if (!isWeb() || choice) return null;
   const set = (value) => {
@@ -31,18 +22,18 @@ export const AnalyticsConsent = () => {
   return (
     <div className="consent-overlay">
       <section className="consent-card" role="dialog" aria-modal="true" aria-labelledby="consent-title">
-        <h2 id="consent-title">{copy.title}</h2>
-        <p>{copy.body}</p>
+        <h2 id="consent-title">{t('consent.title')}</h2>
+        <p>{t('consent.body')}</p>
         <p>
-          <a href="/privacy" onClick={() => set('denied')}>{copy.privacy}</a>
+          <a href="/privacy" onClick={() => set('denied')}>{t('consent.privacy')}</a>
           {' · '}
-          <a href="/cookies" onClick={() => set('denied')}>{copy.cookies}</a>
+          <a href="/cookies" onClick={() => set('denied')}>{t('consent.cookies')}</a>
           {' · '}
-          <a href="/terms" onClick={() => set('denied')}>{copy.terms}</a>
+          <a href="/terms" onClick={() => set('denied')}>{t('consent.terms')}</a>
         </p>
         <div className="consent-actions">
-          <button type="button" onClick={() => set('denied')}>{copy.reject}</button>
-          <button type="button" className="consent-accept" onClick={() => set('granted')}>{copy.accept}</button>
+          <button type="button" onClick={() => set('denied')}>{t('consent.reject')}</button>
+          <button type="button" className="consent-accept" onClick={() => set('granted')}>{t('consent.accept')}</button>
         </div>
       </section>
     </div>
@@ -50,6 +41,7 @@ export const AnalyticsConsent = () => {
 };
 
 export const PrivacyFooter = () => {
+  const { t } = useTranslation();
   if (!isWeb()) return null;
   const updatePreferences = consent() === 'granted'
     ? revokeGoogleAnalytics
@@ -57,10 +49,10 @@ export const PrivacyFooter = () => {
 
   return (
     <footer className="privacy-footer">
-      <a href="/privacy">{copy.privacy}</a>
-      <a href="/cookies">{copy.cookies}</a>
-      <a href="/terms">{copy.terms}</a>
-      <button type="button" onClick={updatePreferences}>{copy.prefs}</button>
+      <a href="/privacy">{t('consent.privacy')}</a>
+      <a href="/cookies">{t('consent.cookies')}</a>
+      <a href="/terms">{t('consent.terms')}</a>
+      <button type="button" onClick={updatePreferences}>{t('consent.prefs')}</button>
     </footer>
   );
 };

@@ -77,15 +77,11 @@ export const showSplashScreen = async () => {
 export const initializeMobileFeatures = async () => {
   if (!isNativePlatform()) return;
 
-  console.log('Initializing mobile features...');
-  
   // Setup status bar
   await setupStatusBar();
-  
+
   // Nascondi splash screen dopo un piccolo delay
   setTimeout(async () => {
     await hideSplashScreen();
   }, 1000);
-  
-  console.log('Mobile features initialized');
 };
