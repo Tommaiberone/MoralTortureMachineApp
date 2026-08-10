@@ -1944,6 +1944,40 @@ Backend: full suite 174/174 passing (one test updated for the new
 `profilePublicId` field). Frontend: `pnpm lint` and `pnpm build:prod` both
 clean.
 
+### ADR-084 — New `/seo-analytics-status` skill, codifying this session's SEO/analytics status read (TASK-195)
+
+The user asked for an analysis of where SEO and analytics stand, then to
+turn that process into a reusable skill - same request pattern as
+`ADR-082`/`TASK-190` (`app-walkthrough`) and `TASK-130`
+(`ops-alerts-sweep`), so it followed the same convention:
+`.claude/commands/seo-analytics-status.md`, frontmatter `description` naming
+its tracking task, a numbered protocol, read-only (files/enriches Backlog
+tasks only if it finds something untracked, otherwise pure reporting).
+
+The concrete lesson encoded from this session's own run: a Backlog.md
+`Done`/`Blocked` label alone was not enough to answer "where do we stand" -
+`TASK-97` (parent) is `Blocked` while five of its eight subtasks are `Done`;
+`TASK-97.1`'s GA4 wiring is fully implemented per doc-1 and both of its
+first two acceptance criteria are checked, yet it sits `In Progress` because
+its third criterion (a real organic conversion row) is waiting on traffic
+volume, not on more code. The skill's step 1 now explicitly calls out
+reading each matched task's actual body, not just its column, and
+distinguishing a technical blocker from one waiting on the product owner's
+own action (Play Console Data Safety submission for `TASK-63`, Play Console
+read-only grant for `TASK-98`, a Keyword Planner export or Google Ads API
+approval for `TASK-97.4.1`) - conflating the two would have told the user to
+write code that does not need writing. The skill also pulls the real
+`growth-intelligence.yml` artifact (`gh run list`/`gh run download`) rather
+than trusting doc-1's architecture description, since that is where the
+session found the actual signal: Search Console traffic in the latest run
+was almost entirely the branded query itself plus a competitor-app mix-up
+("dilemmo"), not organic traffic to the six non-brand landings yet. Noted
+for the skill: this environment's Bash tool has no working `python`/`python3`
+(Windows App Execution Alias stub), so JSON artifacts must be read via
+`Grep`/`Read`, not a Python one-liner. Not tested against a second,
+independent invocation yet - first real validation will be whenever
+`/seo-analytics-status` next runs.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

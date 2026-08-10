@@ -480,6 +480,16 @@ implement unattended versus needing the user, and always stops for one
 explicit confirmation before the final commit/push/SNS-recap step - see
 ADR-043 for the full protocol and why deploy stays gated.
 
+`.claude/commands/seo-analytics-status.md` (`TASK-195`) is a read-only
+project skill (`/seo-analytics-status`) that reports the real state of
+organic SEO, the Growth Intelligence/demand-radar/ASO automation, and the
+analytics dashboard, by cross-checking Backlog.md task status against the
+actual code (`sitemap.xml`, `robots.txt`, `seoLandings.js`, the GA4
+consent gate) and the most recent real `growth-intelligence.yml` run
+artifact rather than trusting a `Done` label alone - the same
+find-and-route, never-modify-product-code principle as
+`ops-alerts-sweep.md`/`app-walkthrough.md`.
+
 ## Release automation
 
 - `.github/workflows/deploy.yml` builds and signs the release AAB on every push
