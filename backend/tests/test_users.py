@@ -378,6 +378,7 @@ class MyLatestArchetypeTests(unittest.TestCase):
             ))
         expected = assign_archetype({d: 0.8 for d in SIX_DIMENSIONS}, language="en")
         self.assertEqual(result["archetype"]["archetypeId"], expected["archetypeId"])
+        self.assertEqual(result["profilePublicId"], "newer")
 
 
 class MyDuelStatsTests(unittest.TestCase):

@@ -21,12 +21,12 @@ const AccountDeleteScreen = () => {
   const [deleted, setDeleted] = useState(false);
 
   const [archetype, setArchetype] = useState(null);
+  const [archetypePublicId, setArchetypePublicId] = useState('');
   const [archetypeLoading, setArchetypeLoading] = useState(true);
   const [duelStats, setDuelStats] = useState(null);
   const [duelStatsLoading, setDuelStatsLoading] = useState(true);
   const [creatingChallenge, setCreatingChallenge] = useState(false);
   const [challengeError, setChallengeError] = useState('');
-  const [rematchingToken, setRematchingToken] = useState('');
 
   // TASK-177.3/177.5: the results-recap section is authenticated-only by
   // product decision (an extra, concrete activation lever alongside the
@@ -42,7 +42,10 @@ const AccountDeleteScreen = () => {
         const response = await fetch(`${API_URL}/users/me/archetype`, { headers });
         if (!response.ok) throw new Error(`archetype fetch failed: ${response.status}`);
         const data = await response.json();
-        if (!cancelled) setArchetype(data.archetype);
+        if (!cancelled) {
+          setArchetype(data.archetype);
+          setArchetypePublicId(data.profilePublicId || '');
+        }
       } catch (fetchError) {
         console.error('Error fetching latest archetype:', fetchError);
       } finally {
@@ -65,30 +68,6 @@ const AccountDeleteScreen = () => {
 
     return () => { cancelled = true; };
   }, [isAuthenticated, session?.idToken]);
-
-  const handleExport = async () => {
-    setBusy(true);
-    setError('');
-    try {
-      const response = await fetch(`${API_URL}/users/export`, {
-        headers: getAuthenticatedApiHeaders(session.idToken),
-      });
-      if (!response.ok) throw new Error('export failed');
-      const data = await response.json();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'moral-torture-machine-account-data.json';
-      link.click();
-      URL.revokeObjectURL(url);
-      trackEvent('account_data_exported', {});
-    } catch {
-      setError(t('account.exportError'));
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const handleDelete = async () => {
     setBusy(true);
@@ -116,7 +95,11 @@ const AccountDeleteScreen = () => {
       const response = await fetch(`${API_URL}/challenges`, {
         method: 'POST',
         headers: getAuthenticatedApiHeaders(session.idToken),
-        body: JSON.stringify({}),
+        // Explicit profilePublicId, not the create_challenge fallback
+        // (which resolves only the current device's anonymous_user_id):
+        // this account's latest profile may have been created on a
+        // different device and later claimed here.
+        body: JSON.stringify({ profilePublicId: archetypePublicId }),
       });
       if (!response.ok) throw new Error(`challenge creation failed: ${response.status}`);
       const challenge = await response.json();
@@ -127,26 +110,6 @@ const AccountDeleteScreen = () => {
       setChallengeError(t('account.challengeError'));
     } finally {
       setCreatingChallenge(false);
-    }
-  };
-
-  const handleRematch = async (token) => {
-    setRematchingToken(token);
-    setChallengeError('');
-    try {
-      const response = await fetch(`${API_URL}/challenges/${token}/rematch`, {
-        method: 'POST',
-        headers: getAuthenticatedApiHeaders(session.idToken),
-      });
-      if (!response.ok) throw new Error(`rematch failed: ${response.status}`);
-      const rematch = await response.json();
-      trackEvent('challenge_rematch_created', { rematch_of_token: token, surface: 'account' });
-      navigate(`/challenge/${rematch.challengeToken}`);
-    } catch (rematchError) {
-      console.error('Error creating rematch from account page:', rematchError);
-      setChallengeError(t('account.challengeError'));
-    } finally {
-      setRematchingToken('');
     }
   };
 
@@ -265,14 +228,6 @@ const AccountDeleteScreen = () => {
                     <button type="button" className="account-duel-action" onClick={() => navigate(`/challenge/${duel.challengeToken}/compare`)}>
                       {t('account.duelViewAction')}
                     </button>
-                    <button
-                      type="button"
-                      className="account-duel-action"
-                      disabled={rematchingToken === duel.challengeToken}
-                      onClick={() => handleRematch(duel.challengeToken)}
-                    >
-                      {rematchingToken === duel.challengeToken ? t('account.duelRematching') : t('account.duelRematchAction')}
-                    </button>
                   </div>
                 </div>
               ))}
@@ -295,9 +250,6 @@ const AccountDeleteScreen = () => {
           {error && <p className="account-error" role="alert">{error}</p>}
 
           <div className="account-settings-links">
-            <button type="button" className="account-settings-link" onClick={handleExport} disabled={busy}>
-              {t('account.exportButton')}
-            </button>
             {!confirming && (
               <button type="button" className="account-settings-link danger" onClick={() => setConfirming(true)} disabled={busy}>
                 {t('account.deleteButton')}

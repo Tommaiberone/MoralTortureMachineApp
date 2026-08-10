@@ -1897,6 +1897,53 @@ status is unclear (as `TASK-185`/Story Mode already correctly was). Not
 tested against a second, independent invocation yet - first real
 validation will be whenever `/app-walkthrough` next runs.
 
+### ADR-083 — Two live incidents from real usage: Party Room capacity (TASK-191) and a multi-device Duel-creation 400 (TASK-192/193/194)
+
+Context: the user reported "a huge number of errors" seen live, then
+separately pasted a failing `POST /challenges` request from browser
+DevTools with the status code cut off. Both traced to real, current
+production failures, not noise.
+
+**Party Room (`TASK-191`)**: ~80 `ProvisionedThroughputExceededException`
+500s on `/party-rooms/{room_code}` and `.../vote` between 12:28 and 13:38
+UTC today (`ops_error_alerts`). `party_rooms`/`party_participants` were
+provisioned at 1 RCU/1 WCU each; live polling (`POLL_INTERVAL_MS` per
+participant) exceeds that with only a handful of concurrent players. This
+is exactly what `TASK-49` (load test 2-20 participants) was scoped to
+measure before choosing real numbers - deliberately deferred by the user
+on 2026-08-02 ("non ora"). Bumped both tables to 5/5 as an immediate
+stopgap sized from the observed failure, not from a load test (still ~17/25
+RCU and WCU on the shared Free Tier pool); `TASK-49` remains the correct
+path to a properly justified target and is unchanged.
+
+**Multi-device Duel creation (`TASK-192`/`193`)**: the pasted request
+matched `ops_error_alerts` exactly - `POST /challenges` → 400 "Complete a
+moral profile before creating a challenge" at 13:56:52 UTC, from
+`/account`'s "Challenge someone new" button (`TASK-177.5`). Root cause: that
+button calls `POST /challenges` with no `profilePublicId`, relying on
+`create_challenge`'s fallback (`get_latest_profile_for_anonymous_user`),
+which resolves only the *current device's* `X-Anonymous-User-Id` header.
+But the button is only shown when `GET /users/me/archetype` found an
+archetype - and that endpoint (`TASK-177.2`) deliberately resolves *every*
+`anonymous_user_id` ever claimed to the account, not just the current
+device's. `/account` was the first UI to surface claimed-identity data at
+all, so this mismatch had no way to surface before today. Fixed narrowly:
+`/users/me/archetype` now also returns `profilePublicId`, and the frontend
+passes it explicitly instead of relying on the fallback. `rematch_challenge`
+has the identical class of bug (participant-match check against only the
+current device's id) and was very likely why the user also found the
+account page's Rematch button broken - instead of applying the same fix
+there, the user asked to remove that button entirely (`TASK-194`, along
+with Export My Data, unrelated to this bug). The general fix - making
+`create_challenge`/`rematch_challenge` resolve across claimed identities
+for an authenticated caller, the way the two new `TASK-177` endpoints
+already do - is filed as `TASK-192` for whenever a current-device-only
+action needs to work again from a multi-device context.
+
+Backend: full suite 174/174 passing (one test updated for the new
+`profilePublicId` field). Frontend: `pnpm lint` and `pnpm build:prod` both
+clean.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

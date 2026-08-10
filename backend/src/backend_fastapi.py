@@ -1758,7 +1758,15 @@ async def get_my_latest_archetype(request: Request, language: str = "en"):
 
     latest_profile = max(valid_profiles, key=lambda profile: int(profile.get("createdAt", 0)))
     averages = json.loads(latest_profile["dimensionAverages"])
-    return {"archetype": assign_archetype(averages, language=language)}
+    return {
+        "archetype": assign_archetype(averages, language=language),
+        # TASK-193: the frontend passes this straight through to
+        # POST /challenges so challenge creation targets the exact profile
+        # shown here - create_challenge's own profilePublicId-less fallback
+        # only resolves the *current device's* anonymous_user_id, which
+        # this endpoint deliberately does not limit itself to (see above).
+        "profilePublicId": latest_profile["publicId"],
+    }
 
 
 # TASK-177.4: bounded window over a claimed identity's most recent Duel
