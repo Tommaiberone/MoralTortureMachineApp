@@ -86,9 +86,14 @@ dev table, or `/dev` SSM hierarchy.
   `DELETE /users/me` is an idempotent cascade: it removes Cognito, the app
   account, claim locks, profiles, private Daily rows, raw analytics, and any
   Duel/Party object that contains the deleted participant's derived data.
-  Daily aggregates remain because they are no longer linkable to a person;
-  the whole shared Duel/Party object is removed rather than retaining an
-  incoherent comparison. The
+  Daily aggregates remain because they are no longer linkable to a person; a
+  Duel challenge is hard-deleted outright, while a Party Room (TASK-199,
+  ADR-088) is instead replaced with a minimal `participant_left` tombstone
+  (`roomCode`/`status`/a short `expirationTime`, no participant data, votes,
+  or derived content) rather than removed outright, so a still-open
+  co-participant's client gets a distinct 410 instead of a bare 404 -
+  `get_room_or_404` raises that 410 before any caller can read the missing
+  fields. Either way no incoherent comparison/derived data survives. The
   public `/delete-account` route reuses the existing Cognito web/Android auth
   flow, and the current client clears local IDs, queued events, challenge
   progress, and cached game state after a successful deletion.
@@ -230,7 +235,11 @@ dev table, or `/dev` SSM hierarchy.
   provisioned 1/1 with a 6h TTL). There is no WebSocket. Every `GET`/`POST`
   first runs `_advance_party_room_if_due`, which moves `lobby -> question ->
   reveal -> question... -> completed` via a conditional DynamoDB update so
-  concurrent pollers never double-advance. Since `TASK-123`/ADR-057 there is
+  concurrent pollers never double-advance. `participant_left` (TASK-199,
+  ADR-088) is a separate terminal tombstone state reachable only through the
+  account-deletion cascade, never through this state machine; `get_room_or_404`
+  raises a 410 for it before any of the normal states' field reads run. Since
+  `TASK-123`/ADR-057 there is
   no visible timer driving this: voting ends only once everyone has voted,
   and the reveal phase ends only via the host-only `POST
   /party-rooms/{code}/advance` (mirroring the lobby's host-only `start`) -

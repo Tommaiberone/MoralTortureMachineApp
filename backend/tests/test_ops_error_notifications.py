@@ -1,10 +1,13 @@
 import asyncio
+import json
 import os
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from fastapi import HTTPException
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 
 os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")
@@ -220,6 +223,64 @@ class NotifyOpsMiddlewareExpectedErrorTests(unittest.TestCase):
             asyncio.run(backend_module.notify_ops_of_errors(request, call_next))
 
         notify.assert_called_once()
+
+
+class ValidationExceptionHandlerTests(unittest.TestCase):
+    """TASK-198: the default FastAPI 422 handler never logs anything
+    server-side, which made "See CloudWatch logs for the request detail"
+    misleading for validation errors specifically - there was nothing to see.
+    This handler must log which field/constraint failed without ever logging
+    the rejected value itself (privacy: request bodies are never logged)."""
+
+    def _fake_request(self, path="/analytics/events", method="POST"):
+        request = Mock()
+        request.method = method
+        request.url.path = path
+        return request
+
+    def _validation_error(self):
+        return RequestValidationError([
+            {
+                "loc": ("body", "events", 0, "occurredAt"),
+                "msg": "Input should be greater than or equal to 1577836800000",
+                "type": "greater_than_equal",
+                "input": 12345,
+            },
+            {
+                "loc": ("body", "events", 0, "anonymousUserId"),
+                "msg": "Field required",
+                "type": "missing",
+                "input": "super-secret-real-value@example.com",
+            },
+        ])
+
+    def test_logs_only_loc_and_type_never_msg_or_input(self):
+        with self.assertLogs(backend_module.logger, level="WARNING") as captured:
+            asyncio.run(
+                backend_module.validation_exception_handler(
+                    self._fake_request(), self._validation_error()
+                )
+            )
+
+        logged_text = " ".join(captured.output)
+        self.assertIn("greater_than_equal", logged_text)
+        self.assertIn("missing", logged_text)
+        self.assertIn("occurredAt", logged_text)
+        self.assertIn("anonymousUserId", logged_text)
+        # The privacy-sensitive parts of each error must never reach the log.
+        self.assertNotIn("super-secret-real-value@example.com", logged_text)
+        self.assertNotIn("Field required", logged_text)
+        self.assertNotIn("12345", logged_text)
+
+    def test_response_matches_fastapis_default_shape(self):
+        exc = self._validation_error()
+        response = asyncio.run(
+            backend_module.validation_exception_handler(self._fake_request(), exc)
+        )
+
+        self.assertEqual(response.status_code, 422)
+        body = json.loads(response.body)
+        self.assertEqual(body, {"detail": jsonable_encoder(exc.errors())})
 
 
 class RaiseLoginRequiredTests(unittest.TestCase):

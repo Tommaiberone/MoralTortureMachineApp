@@ -329,6 +329,7 @@
     "loading": "Loading...",
     "roomNotFound": "This room does not exist.",
     "roomExpired": "This room has expired.",
+    "roomParticipantLeft": "A participant left and this game has ended.",
     "connectionLost": "Connection lost - trying to reconnect...",
     "backToPartyHome": "Back to Party Room",
     "lobbyTitle": "[ LOBBY ]",

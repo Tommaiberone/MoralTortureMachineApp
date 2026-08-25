@@ -84,7 +84,23 @@ const PartyRoomScreen = () => {
       );
       if (response.status === 404 || response.status === 410) {
         fatalRef.current = true;
-        setFatalError(response.status === 410 ? t('party.roomExpired') : t('party.roomNotFound'));
+        // TASK-199: a participant deleting their account mid-game replaces
+        // the room with a tombstone (backend_fastapi.py get_room_or_404)
+        // returning this exact detail string, so other still-open tabs get
+        // a clear reason instead of the generic "expired" message. Matching
+        // on the string is a small, deliberate coupling to that one backend
+        // message - if it ever changes, this falls back to roomExpired.
+        let detail = '';
+        try {
+          detail = (await response.json())?.detail || '';
+        } catch {
+          // Body may be empty/unparsable; fall through to the generic message.
+        }
+        setFatalError(
+          detail === 'A participant left the platform and this game has ended'
+            ? t('party.roomParticipantLeft')
+            : response.status === 410 ? t('party.roomExpired') : t('party.roomNotFound')
+        );
         return null;
       }
       if (!response.ok) throw new Error(`room fetch failed: ${response.status}`);

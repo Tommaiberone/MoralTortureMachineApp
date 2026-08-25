@@ -6,6 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-08-10 13:58'
+updated_date: '2026-08-24 18:24'
 labels:
   - backend
   - party-room
@@ -24,6 +25,6 @@ L'utente ha segnalato 'tantissimi errori' visti dal vivo. Trovati ~80 alert 500 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 party_rooms_table e party_participants_table sono provisionate a 5/5 RCU/WCU
-- [ ] #2 Il deploy e' andato a buon fine e non si osservano nuovi alert ProvisionedThroughputExceededException su /party-rooms/* dopo il deploy
+- [x] #1 party_rooms_table e party_participants_table sono provisionate a 5/5 RCU/WCU
+- [x] #2 Il deploy e' andato a buon fine e non si osservano nuovi alert ProvisionedThroughputExceededException su /party-rooms/* dopo il deploy
 <!-- AC:END -->

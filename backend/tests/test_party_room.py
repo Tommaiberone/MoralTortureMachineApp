@@ -16,6 +16,7 @@ from backend.src.backend_fastapi import (  # noqa: E402
     CreatePartyRoomRequest,
     JoinPartyRoomRequest,
     SubmitPartyVoteRequest,
+    _delete_party_data,
     advance_party_room,
     create_party_room,
     get_party_room,
@@ -71,6 +72,10 @@ class _FakeTable:
         room_code = ExpressionAttributeValues[":room"]
         items = [dict(v) for k, v in self._items.items() if k[0] == room_code]
         return {"Items": items}
+
+    def delete_item(self, Key):
+        self._items.pop(self._key(Key), None)
+        return {}
 
     def update_item(
         self, Key, UpdateExpression, ExpressionAttributeValues,
@@ -397,6 +402,41 @@ class PartyRoomTestCase(unittest.TestCase):
         for participant in state["participants"]:
             self.assertNotIn("participantId", participant)
         self.assertTrue(any(p["isCaller"] for p in state["participants"]))
+
+    def test_account_deletion_leaves_a_tombstone_not_a_hard_delete(self):
+        # TASK-199: a participant deleting their account still must remove
+        # every participant's data (ADR-073 - no lingering votes/derived
+        # data for either side), but the room row itself becomes a minimal
+        # tombstone instead of disappearing outright, so a still-open,
+        # still-polling co-participant's client gets an explanation instead
+        # of an unexplained 404.
+        room = self._create_room()
+        self._join(room["roomCode"], "guest-1")
+        room_code = room["roomCode"]
+
+        deleted_count = _delete_party_data([{"roomCode": room_code}])
+
+        self.assertEqual(deleted_count, 1)
+        self.assertEqual(self.participants.query(
+            KeyConditionExpression="roomCode = :room",
+            ExpressionAttributeValues={":room": room_code},
+        )["Items"], [])
+        tombstone = self.rooms._items[(room_code,)]
+        self.assertEqual(tombstone["status"], "participant_left")
+        self.assertNotIn("dilemmaBaseIds", tombstone)
+        self.assertNotIn("hostId", tombstone)
+
+    def test_polling_a_tombstoned_room_gets_410_not_a_bare_404(self):
+        room = self._create_room()
+        self._join(room["roomCode"], "guest-1")
+        room_code = room["roomCode"]
+        _delete_party_data([{"roomCode": room_code}])
+
+        with self.assertRaises(Exception) as raised:
+            self._get_state(room_code, "guest-1")
+
+        self.assertEqual(raised.exception.status_code, 410)
+        self.assertIn("participant left", raised.exception.detail)
 
 
 if __name__ == "__main__":

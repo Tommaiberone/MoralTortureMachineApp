@@ -2066,6 +2066,102 @@ The current 1.7.0/code 20 frontend release is still unpushed, so this shared
 frontend addition needs no second version bump unless that build is distributed
 first.
 
+### ADR-088 — Party Room account-deletion cascade leaves a privacy-safe tombstone instead of a hard delete (TASK-199)
+
+Context: a deeper pass on the `ops-alerts-sweep` (TASK-130) triage of TASK-199's
+404 alert group narrowed the mechanism to near-certainty from the code alone:
+the only way a `party_rooms` row can disappear before its own 6h TTL is
+`_delete_party_data`, called only from the account-deletion cascade
+(interactive `DELETE /users/me` or the daily retention sweep). Per its own
+docstring and ADR-073, this is deliberate - a room containing a deleted
+participant's derived data (votes, awards, group verdict) would otherwise show
+an incoherent comparison to the remaining participants. But the existing
+behavior (a hard `delete_item`) gave every other still-open, still-polling
+participant a bare, unexplained 404 the moment it happened - correct on
+privacy grounds, poor on UX, and indistinguishable from "this room never
+existed." Git history rules out the retention-sweep path for any occurrence
+seen so far: Cognito/authenticated login only shipped starting 2026-07-29,
+so no account could be anywhere near the twelve-month inactivity threshold
+yet - meaning today's occurrences are near-certainly the owner's own manual
+Party Room testing (delete a test account from one tab while another tab/
+device is still in the same room), not a real end-user hitting this. Still
+worth fixing now, cheaply, before organic multi-participant traffic exists.
+
+Options considered: keep the hard delete and only soften the frontend's
+generic error copy (rejected - the frontend still can't tell "never existed"
+apart from "just ended," so the message could not actually explain what
+happened); retain the room row with participant data scrubbed but derived
+scores/awards intact (rejected outright - directly reintroduces the exact
+"incoherent comparison" ADR-073 was written to prevent, since group
+verdict/awards were computed using the deleted participant's answers).
+
+Choice: `_delete_party_data` still deletes every `party_participants` row for
+the room exactly as before (all personal/derived data removed, matching
+ADR-073 in substance), but now writes the room row to a minimal tombstone
+(`roomCode`, `status: "participant_left"`, a short `expirationTime`, nothing
+else) instead of calling `delete_item`. `get_room_or_404` raises a distinct
+410 (`"A participant left the platform and this game has ended"`) for that
+status before any caller can read the fields a real room would have -
+mirroring the existing revoked/expired-challenge 410 pattern (ADR-038) rather
+than inventing a new error shape. `PartyRoomScreen.jsx`'s existing 404/410
+fatal-stop-polling branch (TASK-175) already covers this for free; it only
+needed to distinguish the message by matching the exact `detail` string,
+falling back to the generic "room expired" copy for any other 410 (including
+a genuinely just-expired room) so an older, not-yet-rebuilt Android client
+degrades gracefully instead of breaking.
+
+Consequences: additive and backward-compatible - no existing 404/410 handling
+breaks, and an APK that predates this change simply shows the older generic
+message for this one specific case instead of the more precise one, so no
+Android rebuild warning applies. `frontend/public/locales/en.json` gained one
+key (`party.roomParticipantLeft`); per the TASK-101/it.json-drift exceptions,
+`it.json` was not touched. Tests added: `test_party_room.py` (tombstone shape,
+410 on a tombstoned room) and an update to `test_users.py`'s account-deletion
+cascade test, which previously asserted the old hard-delete call. Full backend
+suite: 184/184 passing.
+
+### ADR-089 — Privacy-safe logging for 422 validation errors, replacing a misleading placeholder (TASK-198)
+
+Context: a deeper pass on TASK-198's 422 `/analytics/events` alert group found
+that `notify_ops_of_errors`' generic detail, "See CloudWatch logs for the
+request detail," is actually false for a 422 specifically: FastAPI's default
+`RequestValidationError` handler returns the error to the *client* but never
+logs anything server-side, so there was nothing in CloudWatch to check -
+matching TASK-174's own earlier note that the failing field "could not be
+determined from CloudWatch." Several candidate causes (a `challenge_token`
+analytics property, PII-shaped `error_message`/`error_stack` values, an
+`eventName`/`language` pattern violation) were individually checked against
+the actual frontend code and ruled out; the strongest remaining candidate -
+`occurredAt` landing outside the accepted range on a device with a wrong
+system clock - could not be confirmed further without real failing requests,
+which the privacy policy already forbids logging in full.
+
+Options considered: logging the full Pydantic error (including `msg`/`input`)
+to finally see the failing value (rejected outright - `input` can echo back
+whatever the client sent, e.g. a raw property value, which is exactly the
+request-body content the no-logging privacy rule exists to protect); doing
+nothing further and continuing to guess from code alone (rejected - TASK-198's
+own AC requires empirically identifying the dominant failure mode, which
+guessing from code cannot fully deliver).
+
+Choice: register an explicit `@app.exception_handler(RequestValidationError)`
+that logs only `error["loc"]` (which field) and `error["type"]` (which
+constraint) per error - never `msg` or `input` - then returns the exact same
+`{"detail": exc.errors()}` / 422 shape FastAPI's default handler already
+produced, so no client-visible behavior changes for any existing caller. The
+next real occurrence will answer AC#2 from an actual production log line
+instead of another guess.
+
+Consequences: purely additive/observability-only - no request/response
+contract changed, so no Android rebuild warning applies. TASK-198 is left
+`Blocked` rather than `Done`: its diagnostic is shipped, but the actual
+dominant-failure-mode confirmation and the resulting client-or-schema-fix
+decision (AC#2/#3) can only happen once the new logging catches a real 422 in
+prod. Tests added: `ValidationExceptionHandlerTests` in
+`test_ops_error_notifications.py` (asserts the log line contains only
+`loc`/`type` and never a planted `msg`/`input` value, and that the response
+body/status still match FastAPI's default shape).
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

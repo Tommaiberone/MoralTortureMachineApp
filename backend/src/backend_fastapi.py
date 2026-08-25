@@ -1,4 +1,6 @@
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from mangum import Mangum
@@ -214,6 +216,12 @@ ACTIVITY_REFRESH_INTERVAL_SECONDS = 24 * 60 * 60
 # and verbal sharing) rather than a long opaque token like Duel's; that's
 # safe because a room carries no private data and expires quickly.
 PARTY_ROOM_TTL_SECONDS = 6 * 60 * 60
+# TASK-199: how long a "participant_left" tombstone survives after account
+# deletion cascades through an in-progress room. Only long enough for any
+# still-open tab polling every POLL_INTERVAL_MS to see the distinct status at
+# least once - not a real TTL extension, just enough slack to not race a
+# client's next poll.
+PARTY_ROOM_TOMBSTONE_TTL_SECONDS = 15 * 60
 PARTY_ROOM_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O/1/I/L
 PARTY_ROOM_CODE_LENGTH = 6
 PARTY_ROOM_MIN_DILEMMAS = 3
@@ -1532,6 +1540,28 @@ async def notify_ops_of_errors(request: Request, call_next):
         _notify_ops_of_error(request, response.status_code, "See CloudWatch logs for the request detail.")
     return response
 
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """TASK-198: FastAPI's default 422 handler (which this replicates below,
+    response body included) never logs anything server-side, so the
+    notify_ops_of_errors middleware's "See CloudWatch logs for the request
+    detail" was misleading for validation errors - there was nothing there to
+    see. Logs only which field failed (`loc`) and which constraint it failed
+    (`type`), never `msg`/`input`, which can echo back the rejected value
+    (potentially user-entered text) - keeping this diagnostic privacy-safe
+    per the no-request-body-logging rule."""
+    logger.warning(
+        "Validation error on %s %s: %s",
+        request.method,
+        request.url.path,
+        [{"loc": error.get("loc"), "type": error.get("type")} for error in exc.errors()],
+    )
+    return JSONResponse(
+        status_code=422,
+        content=jsonable_encoder({"detail": exc.errors()}),
+    )
+
 @app.get("/")
 async def root():
     """Health check endpoint"""
@@ -1996,6 +2026,15 @@ def _delete_duel_data(participations: list[Dict[str, Any]]) -> int:
 
 
 def _delete_party_data(participations: list[Dict[str, Any]]) -> int:
+    """Removes every participant's data exactly as before (ADR-073: a Party
+    Room with the deleted participant's derived data - votes, awards, group
+    verdict - still in it would keep an incoherent comparison alive for the
+    others). TASK-199: the room row itself is replaced with a minimal
+    tombstone rather than hard-deleted, so a still-open, still-polling
+    co-participant's client gets a distinct "a participant left" 410 instead
+    of an unexplained 404 - the tombstone carries no participant data,
+    votes, or derived content, so it changes nothing about what ADR-073
+    actually removes."""
     room_codes = {str(item["roomCode"]) for item in participations if item.get("roomCode")}
     for room_code in room_codes:
         all_participants = _query_all(
@@ -2010,7 +2049,11 @@ def _delete_party_data(participations: list[Dict[str, Any]]) -> int:
                 for item in all_participants
             ],
         )
-        party_rooms_table.delete_item(Key={"roomCode": room_code})
+        party_rooms_table.put_item(Item={
+            "roomCode": room_code,
+            "status": "participant_left",
+            "expirationTime": int(time.time()) + PARTY_ROOM_TOMBSTONE_TTL_SECONDS,
+        })
     return len(room_codes)
 
 
@@ -2899,6 +2942,12 @@ def get_room_or_404(room_code: str) -> Dict[str, Any]:
     item = response.get("Item")
     if not item:
         raise HTTPException(status_code=404, detail="Room not found")
+    # TASK-199: a tombstone left by _delete_party_data has none of a real
+    # room's fields (dilemmaBaseIds, currentRoundIndex, ...), so this must be
+    # caught before any caller tries to read them - same reasoning as the
+    # expiration check just below, checked first for the more specific detail.
+    if item.get("status") == "participant_left":
+        raise HTTPException(status_code=410, detail="A participant left the platform and this game has ended")
     expiration = item.get("expirationTime")
     if expiration and int(time.time()) > int(expiration):
         raise HTTPException(status_code=410, detail="This room has expired")

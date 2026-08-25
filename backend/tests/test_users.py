@@ -334,7 +334,15 @@ class ExportAndDeleteAccountTests(unittest.TestCase):
         )
         tables["challenges_table"].delete_item.assert_called_once_with(Key={"challengeToken": "challenge-1"})
         self.assertEqual(tables["party_participants_table"].delete_item.call_count, 2)
-        tables["party_rooms_table"].delete_item.assert_called_once_with(Key={"roomCode": "ROOM1"})
+        # TASK-199: the room row becomes a minimal tombstone rather than
+        # being hard-deleted, so a still-open co-participant's client gets a
+        # distinct "a participant left" 410 instead of a bare 404. All
+        # participant data above is still fully removed either way.
+        tables["party_rooms_table"].delete_item.assert_not_called()
+        tombstone = tables["party_rooms_table"].put_item.call_args.kwargs["Item"]
+        self.assertEqual(tombstone["roomCode"], "ROOM1")
+        self.assertEqual(tombstone["status"], "participant_left")
+        self.assertNotIn("dilemmaBaseIds", tombstone)
         tables["daily_moral_crime_votes_table"].delete_item.assert_called_once_with(Key={
             "dayKey": "2026-08-10",
             "entryKey": "participant#anon-1",
