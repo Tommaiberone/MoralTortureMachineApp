@@ -2568,7 +2568,24 @@ async def create_challenge(challenge_request: CreateChallengeRequest, request: R
 
     if challenge_request.profilePublicId:
         profile = get_profile_or_404(challenge_request.profilePublicId)
-        if profile.get("ownerAnonymousUserId") != anonymous_user_id:
+        owner = profile.get("ownerAnonymousUserId")
+        owned_by_caller = owner == anonymous_user_id
+        if not owned_by_caller:
+            # TASK-212/193: an authenticated caller's latest profile can live
+            # on a different, earlier-claimed device than the one they are
+            # using right now - exactly the scenario get_my_latest_archetype
+            # already resolves across every claimed anonymous_user_id
+            # (_claimed_anonymous_ids) before handing back this same
+            # profilePublicId. Only fall back to that broader, authoritative
+            # ownership check for an authenticated caller; an anonymous
+            # caller has no claimed-identity set to check against, so the
+            # original single-device comparison is already the correct,
+            # narrowest check for them.
+            claims = get_optional_user(request)
+            if claims:
+                claimed_ids, _ = _claimed_anonymous_ids(claims["sub"])
+                owned_by_caller = owner in claimed_ids
+        if not owned_by_caller:
             raise HTTPException(status_code=404, detail="Profile not found")
     else:
         profile = get_latest_profile_for_anonymous_user(anonymous_user_id)

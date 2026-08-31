@@ -243,6 +243,51 @@ class CreateChallengeTests(unittest.TestCase):
                 ))
         self.assertEqual(raised.exception.status_code, 404)
 
+    def test_cross_device_profile_allowed_when_authenticated_and_claimed(self):
+        """TASK-212: a profile created on device A (ownerAnonymousUserId
+        'anon-device-a') must still be usable from device B ('anon-device-b')
+        when both devices are claimed by the same authenticated account -
+        the exact scenario TASK-193's profilePublicId fix was meant to fix,
+        which the original owner==anonymous_user_id-only check still broke."""
+        profiles_table = Mock()
+        profiles_table.get_item.return_value = {"Item": self._profile_item(owner="anon-device-a")}
+        profiles_table.query.return_value = {"Items": [{"publicId": "profile-1"}]}
+        challenges_table = Mock()
+        participants_table = Mock()
+        with (
+            patch.object(backend_module, "moral_profiles_table", profiles_table),
+            patch.object(backend_module, "challenges_table", challenges_table),
+            patch.object(backend_module, "challenge_participants_table", participants_table),
+            patch.object(backend_module, "verify_cognito_id_token", return_value={"sub": "user-sub"}),
+            patch.object(
+                backend_module, "_claimed_anonymous_ids",
+                return_value=(["anon-device-a", "anon-device-b"], []),
+            ),
+        ):
+            result = asyncio.run(create_challenge(
+                CreateChallengeRequest(profilePublicId="profile-1"),
+                request_with_headers({"X-Anonymous-User-Id": "anon-device-b", "Authorization": "Bearer token"}),
+            ))
+        self.assertIn("challengeToken", result)
+
+    def test_404_when_authenticated_but_profile_not_claimed_by_this_account(self):
+        """The broadened cross-device check must stay strict: it only trusts
+        _claimed_anonymous_ids, never grants access just because the caller
+        happens to be authenticated."""
+        profiles_table = Mock()
+        profiles_table.get_item.return_value = {"Item": self._profile_item(owner="someone-elses-device")}
+        with (
+            patch.object(backend_module, "moral_profiles_table", profiles_table),
+            patch.object(backend_module, "verify_cognito_id_token", return_value={"sub": "user-sub"}),
+            patch.object(backend_module, "_claimed_anonymous_ids", return_value=(["anon-device-b"], [])),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                asyncio.run(create_challenge(
+                    CreateChallengeRequest(profilePublicId="profile-1"),
+                    request_with_headers({"X-Anonymous-User-Id": "anon-device-b", "Authorization": "Bearer token"}),
+                ))
+        self.assertEqual(raised.exception.status_code, 404)
+
     def test_second_challenge_requires_login(self):
         """TASK-136: the first challenge stays anonymous, but owning any
         profile besides the one used for this challenge means it's not the
