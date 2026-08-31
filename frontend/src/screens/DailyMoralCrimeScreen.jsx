@@ -130,8 +130,8 @@ const DailyMoralCrimeScreen = () => {
 
   const results = daily?.results;
   const selectedAnswer = daily?.choice === 'first'
-    ? daily.dilemma?.firstAnswer
-    : daily.dilemma?.secondAnswer;
+    ? daily?.dilemma?.firstAnswer
+    : daily?.dilemma?.secondAnswer;
 
   return (
     <main className="screen-container daily-screen">

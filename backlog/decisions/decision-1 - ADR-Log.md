@@ -2390,6 +2390,44 @@ added later should reuse `--choice-a`/`--choice-b` rather than reintroducing
 red/green or a fifth set of hardcoded hex values. No AWS/infrastructure
 change; `pnpm lint` and `pnpm build:prod` both clean.
 
+### ADR-094 — DailyMoralCrimeScreen's 100%-of-visits crash was a pre-existing bug ADR-091's fix finally made reachable (TASK-208)
+
+Context: the user reported a live production crash on `/daily` -
+`TypeError: Cannot read properties of null (reading 'dilemma')`, caught by
+the app's ErrorBoundary. The cause was in `DailyMoralCrimeScreen.jsx`'s
+`selectedAnswer` computation, which ran unconditionally on every render
+(outside the `{!loading && daily && (...)}` guard the rest of the component
+uses): `daily?.choice === 'first' ? daily.dilemma?.firstAnswer :
+daily.dilemma?.secondAnswer` - the `:` branch read `daily.dilemma` without
+optional-chaining `daily` itself. Since `daily` starts as `null`
+(`useState(null)`) and that branch is exactly the one taken while it's still
+null, this threw on the component's very first render, before the
+`/daily-moral-crime` fetch could ever resolve - a 100%, not intermittent,
+crash. The code has been on `main` since `TASK-42/43/44` (commit `a1c26b3`,
+2026-08-10) and was never touched since, meaning it never worked, at any
+point, once. It was invisible until now only because `ADR-091`/`TASK-206`'s
+Terraform tag bug had kept the entire deploy pipeline (and therefore this
+exact frontend code) from ever reaching production for three weeks; fixing
+that bug earlier today made this pre-existing frontend bug reachable by
+real traffic for the first time.
+
+Choice: added the missing `?.` after `daily` in both ternary branches
+(`daily?.dilemma?.firstAnswer` / `daily?.dilemma?.secondAnswer`) - a
+two-line diff. Grepped the rest of the file for other `daily.` accesses
+without optional chaining; every other one is already inside the
+`daily &&`-guarded JSX block or a function that early-returns on `!daily`,
+so no second instance of the same mistake exists in this file.
+
+Consequences: this is the second distinct latent bug `TASK-206`'s pipeline
+fix has surfaced in code that looked "Done" but had never actually run in
+production (the first being the Terraform tag itself). Any other feature
+merged during the 2026-08-10 to 2026-08-31 freeze window should be treated
+as unverified-in-production until someone actually exercises it, regardless
+of its Backlog.md status - a `Done` label from that window recorded that
+the code was merged and reviewed, not that a real user ever successfully
+loaded it. TASK-208 (pre-existing task, filled in and closed here) tracks
+this fix; no other freeze-window feature has been audited yet.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

@@ -2535,7 +2535,11 @@ async def vote_daily_moral_crime(vote_request: DailyMoralCrimeVoteRequest, reque
             # authoritative original answer; never let a caller replace it.
             if _daily_moral_crime_vote(window["dayKey"], anonymous_user_id):
                 return _daily_moral_crime_response(window, anonymous_user_id)
-        logger.warning("Daily Moral Crime vote transaction failed: %s", error.response.get("Error", {}).get("Code"))
+        logger.warning(
+            "Daily Moral Crime vote transaction failed: %s: %s",
+            error.response.get("Error", {}).get("Code"),
+            error.response.get("Error", {}).get("Message"),
+        )
         raise HTTPException(status_code=503, detail="Daily vote recording is temporarily unavailable")
 
     return _daily_moral_crime_response(window, anonymous_user_id)
