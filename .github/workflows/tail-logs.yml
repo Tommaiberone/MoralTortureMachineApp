@@ -111,6 +111,35 @@ jobs:
           aws dynamodb delete-item --table-name "$TABLE" --key '{"dayKey":{"S":"__diag__"},"entryKey":{"S":"__diag_aggregate__"}}'
           aws dynamodb delete-item --table-name "$TABLE" --key '{"dayKey":{"S":"__diag__"},"entryKey":{"S":"participant#__diag__"}}'
           set -e
+      - name: CLI test with realistic large numbers (isolate magnitude)
+        if: ${{ github.event.inputs.scan_daily_moral_crime_votes == 'true' }}
+        run: |
+          TABLE="prod-moral-torture-machine-daily-moral-crime-votes"
+          set +e
+          echo "--- transact-write-items, Put+Update, but with REALISTIC 13-digit ms / 10-digit epoch numbers ---"
+          aws dynamodb transact-write-items --transact-items '[
+            {
+              "Put": {
+                "TableName": "'"$TABLE"'",
+                "Item": {"dayKey":{"S":"__diag_big__"},"entryKey":{"S":"participant#__diag_big__"},"anonymousUserId":{"S":"__diag_big__"},"choice":{"S":"first"},"dilemmaBaseId":{"S":"c318c3238ad14def8453fd03"},"createdAt":{"N":"1788173115135"},"expirationTime":{"N":"1795949115"}},
+                "ConditionExpression": "attribute_not_exists(dayKey) AND attribute_not_exists(entryKey)"
+              }
+            },
+            {
+              "Update": {
+                "TableName": "'"$TABLE"'",
+                "Key": {"dayKey":{"S":"__diag_big__"},"entryKey":{"S":"__diag_big_aggregate__"}},
+                "UpdateExpression": "SET dilemmaBaseId = :base_id, updatedAt = :now, expirationTime = :expires ADD #votes :increment",
+                "ExpressionAttributeNames": {"#votes":"firstVotes"},
+                "ExpressionAttributeValues": {":base_id":{"S":"c318c3238ad14def8453fd03"},":now":{"N":"1788173115135"},":expires":{"N":"1795949115"},":increment":{"N":"1"}}
+              }
+            }
+          ]'
+          echo "exit code: $?"
+          echo "--- cleanup ---"
+          aws dynamodb delete-item --table-name "$TABLE" --key '{"dayKey":{"S":"__diag_big__"},"entryKey":{"S":"__diag_big_aggregate__"}}'
+          aws dynamodb delete-item --table-name "$TABLE" --key '{"dayKey":{"S":"__diag_big__"},"entryKey":{"S":"participant#__diag_big__"}}'
+          set -e
       - name: Python/boto3 repro test (exact code path, scratch key)
         if: ${{ github.event.inputs.scan_daily_moral_crime_votes == 'true' }}
         run: |
