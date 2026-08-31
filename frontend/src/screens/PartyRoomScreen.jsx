@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
 import QRCode from 'qrcode';
 
 import { getApiHeaders } from '../utils/session';
@@ -37,6 +38,28 @@ const dominantDimension = (dilemma) => {
     }
   }
   return best;
+};
+
+// TASK-204: same percentage-label technique as EvaluationDilemmasScreen/
+// ChallengeLandingScreen's reveal pies - Recharts' default pie label has no
+// explicit fill, unreadable against this theme's dark background.
+const RADIAN = Math.PI / 180;
+const renderPieLabel = ({ cx, cy, midAngle, outerRadius, percent }) => {
+  const radius = outerRadius + 18;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  return (
+    <text
+      x={x}
+      y={y}
+      fill="var(--text-highlight)"
+      textAnchor={x > cx ? 'start' : 'end'}
+      dominantBaseline="central"
+      fontSize={14}
+    >
+      {`${(percent * 100).toFixed(0)}%`}
+    </text>
+  );
 };
 
 // TASK-123: no countdown/suspense (explicitly not wanted) - just a reaction
@@ -386,13 +409,30 @@ const PartyRoomScreen = () => {
 
   if (room.status === 'reveal') {
     const result = room.roundResult || { firstVotes: 0, secondVotes: 0 };
-    const total = result.firstVotes + result.secondVotes || 1;
     const priorRounds = Object.entries(revealHistory).filter(([index]) => Number(index) !== room.currentRoundIndex);
     const currentImbalance = Math.abs(result.firstVotes - result.secondVotes);
     const isMostDividedSoFar = priorRounds.length > 0 && priorRounds.every(
       ([, priorResult]) => Math.abs(priorResult.firstVotes - priorResult.secondVotes) >= currentImbalance,
     );
     const dimension = dominantDimension(room.currentDilemma);
+    // TASK-204: the caustic tease tied to the caller's own vote this round,
+    // same personalized-punchline pattern as Solo Evaluation's reveal.
+    const callerVote = room.roundVotes?.find((vote) => vote.isCaller);
+    const callerTease = callerVote && room.currentDilemma
+      ? (callerVote.choice === 'first' ? room.currentDilemma.teaseOption1 : room.currentDilemma.teaseOption2)
+      : null;
+    const pieChartData = [
+      {
+        name: room.currentDilemma?.firstAnswer || 'Option 1',
+        value: result.firstVotes,
+        color: 'var(--choice-a)',
+      },
+      {
+        name: room.currentDilemma?.secondAnswer || 'Option 2',
+        value: result.secondVotes,
+        color: 'var(--choice-b)',
+      },
+    ];
 
     return (
       <main className="screen-container party-room-screen">
@@ -408,8 +448,27 @@ const PartyRoomScreen = () => {
         {isMostDividedSoFar && <p className="party-reveal-badge">{t('party.mostDividedSoFar')}</p>}
         {dimension && <p className="screen-subtitle">{t('party.dimensionTested', { dimension })}</p>}
 
-        <div className="party-reveal-bar">
-          <div className="party-reveal-first" style={{ width: `${(result.firstVotes / total) * 100}%` }} />
+        {callerTease && <p className="party-reveal-tease">{callerTease}</p>}
+
+        <div className="party-reveal-chart-container">
+          <ResponsiveContainer width="100%" height={260}>
+            <PieChart>
+              <Pie
+                data={pieChartData}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={renderPieLabel}
+                outerRadius={window.innerWidth < 480 ? 55 : 75}
+                dataKey="value"
+              >
+                {pieChartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Pie>
+              <Legend wrapperStyle={{ fontSize: window.innerWidth < 480 ? '12px' : '14px' }} />
+            </PieChart>
+          </ResponsiveContainer>
         </div>
         <p>{t('party.revealSplit', { first: result.firstVotes, second: result.secondVotes })}</p>
 
