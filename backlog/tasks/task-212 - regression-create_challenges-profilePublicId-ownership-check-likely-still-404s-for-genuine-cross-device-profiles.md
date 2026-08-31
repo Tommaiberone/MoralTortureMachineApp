@@ -6,7 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-08-31 10:17'
-updated_date: '2026-08-31 10:55'
+updated_date: '2026-08-31 11:07'
 labels:
   - backend
   - duel
@@ -35,4 +35,6 @@ Trovato durante l'audit generale post-TASK-206 delle feature mergeate tra il 10 
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
 Confermato e corretto. create_challenge ora, quando profilePublicId e' specificato e il controllo diretto owner==anonymous_user_id fallisce, verifica se il chiamante e' autenticato (get_optional_user) e in tal caso risolve l'ownership su TUTTE le identita' rivendicate dall'account (_claimed_anonymous_ids(claims['sub'])) - la stessa mappa autoritativa gia' usata da get_my_latest_archetype per produrre quello stesso profilePublicId. Un chiamante anonimo (nessun bearer token) continua a usare solo il confronto diretto sul dispositivo corrente, quindi non si allarga la superficie per utenti non autenticati. Aggiunti 2 test in test_duel.py: test_cross_device_profile_allowed_when_authenticated_and_claimed (profilo del dispositivo A, richiesta autenticata dal dispositivo B, stesso account -> sfida creata con successo) e test_404_when_authenticated_but_profile_not_claimed_by_this_account (essere autenticati non e' sufficiente da solo, il profilo deve comparire davvero in _claimed_anonymous_ids, altrimenti resta 404 - garantisce che il controllo sia diventato piu' corretto, non piu' permissivo). 186 test backend verdi (184 + 2 nuovi), py_compile pulito.
+
+Deploy confermato: run 33385072640, tutti i job verdi (Publish to Google Play correttamente skippato, nessun bump di versione richiesto per un fix backend-only).
 <!-- SECTION:FINAL_SUMMARY:END -->
