@@ -16,6 +16,11 @@ on:
           - /aws/lambda/moral-torture-machine-api
           - /aws/lambda/moral-torture-machine-retention-sweep
           - /aws/apigateway/moral-torture-machine-api
+      scan_daily_moral_crime_votes:
+        description: 'Also scan the prod-moral-torture-machine-daily-moral-crime-votes table (small, read-only) and print every item'
+        required: false
+        default: false
+        type: boolean
       since:
         description: 'How far back to look (e.g. 1h, 30m, 2d)'
         required: false
@@ -52,3 +57,13 @@ jobs:
           else
             aws logs tail "$LOG_GROUP" --since "${{ github.event.inputs.since }}" --format short
           fi
+      - name: Scan daily_moral_crime_votes (read-only)
+        if: ${{ github.event.inputs.scan_daily_moral_crime_votes == 'true' }}
+        run: |
+          TABLE="prod-moral-torture-machine-daily-moral-crime-votes"
+          echo "📋 Scanning $TABLE (read-only, no writes)"
+          echo "--- describe-table ---"
+          aws dynamodb describe-table --table-name "$TABLE" \
+            --query 'Table.{Status:TableStatus,ItemCount:ItemCount,GSIs:GlobalSecondaryIndexes[].{Name:IndexName,Status:IndexStatus}}'
+          echo "--- scan (all items, raw AttributeValue shape) ---"
+          aws dynamodb scan --table-name "$TABLE"
