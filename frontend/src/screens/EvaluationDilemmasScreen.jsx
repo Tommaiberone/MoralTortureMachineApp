@@ -3,26 +3,16 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
 import { useTranslation } from 'react-i18next';
-import { getApiHeaders, getAnonymousUserId } from '../utils/session';
+import { getApiHeaders } from '../utils/session';
 import { getSeenDilemmas, markDilemmaAsSeen } from '../utils/seenDilemmas';
 import SEO from '../components/SEO';
 import { trackEvent } from '../utils/analytics';
 import "./EvaluationDilemmasScreen.css";
 
-// TASK-23: 3-way test-length experiment (doc-2 M2 activation). A simple
-// djb2 string hash of the existing anonymous_user_id gives a stable,
-// deterministic assignment - the same identity always lands on the same
-// variant across visits, with no new storage key or backend call.
-const TEST_LENGTH_VARIANTS = [3, 5, 7];
-
-const getTestLengthVariant = () => {
-  const id = getAnonymousUserId();
-  let hash = 5381;
-  for (let i = 0; i < id.length; i++) {
-    hash = ((hash << 5) + hash + id.charCodeAt(i)) | 0;
-  }
-  return TEST_LENGTH_VARIANTS[Math.abs(hash) % TEST_LENGTH_VARIANTS.length];
-};
+// TASK-203: fixed length for every user, superseding TASK-23's 3/5/7
+// length experiment (see ADR-090/decision-1 for why the experiment was
+// retired instead of measured to completion).
+const MAX_DILEMMAS = 5;
 
 // TASK-124: Recharts' default pie label text has no explicit fill, which
 // reads poorly against this theme's dark background. Rendering the <text>
@@ -65,10 +55,6 @@ const EvaluationDilemmasScreen = () => {
   // Prefetched next dilemma. A ref (not state) is enough: nothing renders
   // from it directly, fetchDilemma only reads it synchronously on click.
   const nextDilemmaRef = useRef(null);
-  // TASK-23: assigned once per mount, stable for the rest of the session -
-  // doesn't need to trigger a re-render on its own.
-  const maxDilemmasRef = useRef(getTestLengthVariant());
-  const maxDilemmas = maxDilemmasRef.current;
 
   // TASK-22: no separate click is needed to get the first dilemma.
   useEffect(() => {
@@ -77,10 +63,10 @@ const EvaluationDilemmasScreen = () => {
   }, []);
 
   useEffect(() => {
-    if (currentDilemmaCount >= maxDilemmas) {
+    if (currentDilemmaCount >= MAX_DILEMMAS) {
       setEvaluationComplete(true);
     }
-  }, [currentDilemmaCount, maxDilemmas]);
+  }, [currentDilemmaCount]);
 
   useEffect(() => {
     // Block browser back button
@@ -143,7 +129,7 @@ const EvaluationDilemmasScreen = () => {
       testStarted.current = true;
       trackEvent('test_started', {
         mode: 'evaluation',
-        planned_dilemmas: maxDilemmas,
+        planned_dilemmas: MAX_DILEMMAS,
       });
     }
 
@@ -262,7 +248,7 @@ const EvaluationDilemmasScreen = () => {
       choice,
       question_number: nextDilemmaCount,
     });
-    if (nextDilemmaCount >= maxDilemmas) {
+    if (nextDilemmaCount >= MAX_DILEMMAS) {
       trackEvent('test_completed', {
         mode: 'evaluation',
         completed_dilemmas: nextDilemmaCount,
@@ -275,7 +261,7 @@ const EvaluationDilemmasScreen = () => {
 
     // TASK-22: prefetch the next dilemma in the background while the
     // reveal/tease for this one is on screen, so advancing feels instant.
-    if (nextDilemmaCount < maxDilemmas && !prefetchInFlight.current) {
+    if (nextDilemmaCount < MAX_DILEMMAS && !prefetchInFlight.current) {
       prefetchInFlight.current = true;
       fetchDilemmaData()
         .then((prefetched) => { nextDilemmaRef.current = prefetched; })
@@ -333,7 +319,7 @@ const EvaluationDilemmasScreen = () => {
     <div className="evaluation-scroll-container">
       <SEO
         title="Moral Evaluation - Discover Your Ethical Framework"
-        description="Take a moral evaluation through a curated set of ethical dilemmas. Receive AI-powered analysis of your moral compass and philosophical framework based on your decisions."
+        description="Take a moral evaluation through 5 carefully selected ethical dilemmas. Receive AI-powered analysis of your moral compass and philosophical framework based on your decisions."
         keywords="moral evaluation, ethical assessment, moral compass test, philosophy test, trolley problem, moral framework analysis, AI ethics analysis, personality test, moral reasoning test"
         url="/evaluation-dilemmas"
       />
@@ -350,7 +336,7 @@ const EvaluationDilemmasScreen = () => {
           {t('evaluation.title')}
         </h1>
         <p className="screen-subtitle evaluation-subtitle">
-          {currentDilemmaCount} / {maxDilemmas}
+          {currentDilemmaCount} / {MAX_DILEMMAS}
         </p>
       </div>
 
