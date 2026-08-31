@@ -111,6 +111,75 @@ jobs:
           aws dynamodb delete-item --table-name "$TABLE" --key '{"dayKey":{"S":"__diag__"},"entryKey":{"S":"__diag_aggregate__"}}'
           aws dynamodb delete-item --table-name "$TABLE" --key '{"dayKey":{"S":"__diag__"},"entryKey":{"S":"participant#__diag__"}}'
           set -e
+      - name: Python/boto3 repro test (exact code path, scratch key)
+        if: ${{ github.event.inputs.scan_daily_moral_crime_votes == 'true' }}
+        run: |
+          pip install --quiet boto3
+          python3 << 'PYEOF'
+          import time
+          import boto3
+          from boto3.dynamodb.types import TypeSerializer
+          from botocore.exceptions import ClientError
+
+          TABLE = "prod-moral-torture-machine-daily-moral-crime-votes"
+          dynamodb = boto3.resource("dynamodb", region_name="eu-west-1")
+          serializer = TypeSerializer()
+
+          def _dynamodb_item(values):
+              return {key: serializer.serialize(value) for key, value in values.items()}
+
+          now_ms = int(time.time() * 1000)
+          expires_at = int(time.time()) + 90 * 24 * 60 * 60
+          entry_key = "participant#__diag_py__"
+          dilemma_id = "c318c3238ad14def8453fd03"
+          choice = "first"
+          aggregate_field = "firstVotes" if choice == "first" else "secondVotes"
+
+          try:
+              dynamodb.meta.client.transact_write_items(TransactItems=[
+                  {
+                      "Put": {
+                          "TableName": TABLE,
+                          "Item": _dynamodb_item({
+                              "dayKey": "__diag_py__",
+                              "entryKey": entry_key,
+                              "anonymousUserId": "__diag_py__",
+                              "choice": choice,
+                              "dilemmaBaseId": dilemma_id,
+                              "createdAt": now_ms,
+                              "expirationTime": expires_at,
+                          }),
+                          "ConditionExpression": "attribute_not_exists(dayKey) AND attribute_not_exists(entryKey)",
+                      },
+                  },
+                  {
+                      "Update": {
+                          "TableName": TABLE,
+                          "Key": _dynamodb_item({
+                              "dayKey": "__diag_py__",
+                              "entryKey": "__diag_py_aggregate__",
+                          }),
+                          "UpdateExpression": "SET dilemmaBaseId = :base_id, updatedAt = :now, expirationTime = :expires ADD #votes :increment",
+                          "ExpressionAttributeNames": {"#votes": aggregate_field},
+                          "ExpressionAttributeValues": _dynamodb_item({
+                              ":base_id": dilemma_id,
+                              ":now": now_ms,
+                              ":expires": expires_at,
+                              ":increment": 1,
+                          }),
+                      },
+                  },
+              ])
+              print("SUCCESS: transaction committed")
+          except ClientError as error:
+              print("FAILED:", error.response.get("Error", {}))
+              print("CancellationReasons:", error.response.get("CancellationReasons"))
+          finally:
+              table = dynamodb.Table(TABLE)
+              table.delete_item(Key={"dayKey": "__diag_py__", "entryKey": entry_key})
+              table.delete_item(Key={"dayKey": "__diag_py__", "entryKey": "__diag_py_aggregate__"})
+              print("cleaned up")
+          PYEOF
       - name: Scan daily_moral_crime_votes (read-only)
         if: ${{ github.event.inputs.scan_daily_moral_crime_votes == 'true' }}
         run: |
