@@ -3,10 +3,10 @@ id: TASK-206
 title: >-
   [regression] Production deploy pipeline broken since 2026-08-10 (invalid
   DynamoDB tag), 3 weeks of merged work never reached prod
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-31 08:43'
-updated_date: '2026-08-31 08:43'
+updated_date: '2026-08-31 09:04'
 labels:
   - regression
   - infra
@@ -26,8 +26,22 @@ Reported by the user as: the Play Store app still shows the removed Pass-the-Pho
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 backend/terraform/main.tf's daily_moral_crime_votes tag value no longer contains a comma
-- [ ] #2 A push to main runs Deploy Backend (prod) Terraform apply to completion without error
-- [ ] #3 The resulting deploy successfully rebuilds and (once explicitly confirmed) publishes a new Android AAB without Pass-the-Phone mode
-- [ ] #4 prod-moral-torture-machine-daily-moral-crime-votes table exists in DynamoDB after the fixed apply
+- [x] #1 backend/terraform/main.tf's daily_moral_crime_votes tag value no longer contains a comma
+- [x] #2 A push to main runs Deploy Backend (prod) Terraform apply to completion without error
+- [x] #3 The resulting deploy successfully rebuilds and (once explicitly confirmed) publishes a new Android AAB without Pass-the-Phone mode
+- [x] #4 prod-moral-torture-machine-daily-moral-crime-votes table exists in DynamoDB after the fixed apply
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Populate DynamoDB (append) confirmed: 27 EN dilemmas added (TASK-201's 15 new + 12 pre-existing EN-only dilemmas that were in dilemmas_en.json but had never reached DynamoDB before - a second, older drift this run incidentally fixed), 17 already-present EN and all 17 IT correctly skipped. Play Store publish (production, versionCode 20/1.7.0) triggered per explicit user confirmation - AC3 now in progress.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Root cause confirmed and fixed: backend/terraform/main.tf's daily_moral_crime_votes tag ('Anonymous Daily participation and aggregate reveal, retained for 90 days') had a comma, which DynamoDB CreateTable rejects (ValidationException). Fixed by replacing the comma with a hyphen (commit 0028329). Verified fixed: GitHub Actions run 33374289840 (push, ordinary deploy) ran Deploy Backend (prod) Terraform apply to 'Apply complete! Resources: 1 added, 5 changed, 0 destroyed' with 'aws_dynamodb_table.daily_moral_crime_votes: Creation complete after 25s' in the log - AC1/AC2/AC4 satisfied. Downstream jobs that had been skipped for 3 weeks ran again in the same run: Build Android APK succeeded (fresh AAB artifact built from current main, no Pass-the-Phone mode), Build & Deploy Frontend (prod) succeeded (S3 + CloudFront now current). Populate DynamoDB and Publish to Google Play were correctly skipped by design (no [populate-db] marker, no versionCode bump in this commit) - not a partial fix. AC3 (publish a new AAB without Pass-the-Phone to Play Store) intentionally left unchecked: an actual Play Store publish is gated behind explicit user confirmation per CLAUDE.md regardless of the general deploy authorization, and hasn't been requested/executed yet - the AAB exists as a build artifact and is ready to publish once confirmed. Also retried the append-only DynamoDB dilemma populate (blocked in the previous attempt by this same regression) via workflow_dispatch.
+
+Play Store publish confirmed successful: run 33375430473 (workflow_dispatch, publish_to_play_store=true, track=production) - Deploy Backend (prod) Terraform apply succeeded again (idempotent, no further errors), Build Android APK produced a fresh AAB from current main (versionCode 20/1.7.0, no Pass-the-Phone), and 'Publish to Google Play (production)' succeeded in 30s. AC3 satisfied. All four ACs now checked; TASK-206 fully resolved end to end.
+<!-- SECTION:FINAL_SUMMARY:END -->
