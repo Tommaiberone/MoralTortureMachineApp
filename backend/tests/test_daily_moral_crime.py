@@ -49,7 +49,6 @@ class _FakeDailyVotesTable:
     def __init__(self):
         self.items = {}
         self.transactions = []
-        self.meta = SimpleNamespace(client=SimpleNamespace(transact_write_items=self.transact_write_items))
 
     @staticmethod
     def _value(attribute):
@@ -104,7 +103,16 @@ class DailyMoralCrimeTests(unittest.TestCase):
         self.patches = [
             patch.object(backend_module, "daily_moral_crime_votes_table", self.daily_votes),
             patch.object(backend_module, "table", self.dilemmas),
-            patch.object(backend_module, "dynamodb", SimpleNamespace(meta=self.daily_votes.meta)),
+            # TASK-213: the real code deliberately calls a plain
+            # dynamodb_client.transact_write_items(...), never
+            # dynamodb.meta.client - see the ADR/comment at its declaration
+            # for why routing this through a resource's client silently
+            # double-serializes already-serialized AttributeValue dicts.
+            patch.object(
+                backend_module,
+                "dynamodb_client",
+                SimpleNamespace(transact_write_items=self.daily_votes.transact_write_items),
+            ),
         ]
         for current_patch in self.patches:
             current_patch.start()

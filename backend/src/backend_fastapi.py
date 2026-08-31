@@ -1,34 +1,35 @@
+import hashlib
+import hmac
+import html
+import json
+import logging
+import os
+import random
+import re
+import secrets
+import time
+from collections import Counter, defaultdict, deque
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from math import ceil
+from pathlib import Path
+from threading import Lock
+from typing import Any
+from urllib.parse import urlparse
+
+import boto3
+import jwt
+import requests
+from boto3.dynamodb.types import TypeSerializer
+from botocore.exceptions import ClientError
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
+from jwt import InvalidTokenError, PyJWKClient
 from mangum import Mangum
 from pydantic import BaseModel, Field, field_validator
-import boto3
-from botocore.exceptions import ClientError
-import jwt
-from jwt import InvalidTokenError, PyJWKClient
-import requests
-import os
-import logging
-import time
-import hmac
-import hashlib
-import re
-import secrets
-import random
-import html
-from collections import Counter, defaultdict, deque
-from datetime import datetime, timedelta, timezone
-from math import ceil
-from threading import Lock
-from typing import Optional, Dict, Any
-from decimal import Decimal
-import json
-from urllib.parse import urlparse
-from pathlib import Path
-from boto3.dynamodb.types import TypeSerializer
 
 # archetype_engine.py is deployed as a flat sibling of this file (see
 # .github/workflows/deploy.yml), so the same import must resolve whether this
@@ -258,6 +259,21 @@ MODEL_FALLBACK_CHAIN = [
 # Initialize AWS clients
 s3_client = boto3.client('s3', region_name=AWS_REGION)
 dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
+# TASK-213: a plain low-level client, deliberately NOT dynamodb.meta.client.
+# boto3's DynamoDB resource attaches an auto-serialization event handler to
+# its underlying client that transforms native Python values into the
+# low-level AttributeValue wire format - but that handler fires for every
+# call made through the shared client, including .meta.client. Any caller
+# that builds already-serialized AttributeValue dicts by hand (as
+# _dynamodb_item() does for transact_write_items) and sends them through
+# dynamodb.meta.client gets them serialized a *second* time, turning e.g.
+# {"N": "1"} into {"M": {"N": {"S": "1"}}} - DynamoDB then rejects it with
+# "Incorrect operand type for operator or function; operator: ADD, operand
+# type: MAP". A client created directly via boto3.client(), never touched by
+# a resource, has no such handler and sends the already-serialized shape
+# unchanged. Confirmed by reproducing both outcomes against the live table
+# with an otherwise byte-identical payload.
+dynamodb_client = boto3.client('dynamodb', region_name=AWS_REGION)
 table = dynamodb.Table(DYNAMODB_TABLE)
 analytics_table = dynamodb.Table(ANALYTICS_TABLE)
 product_events_table = dynamodb.Table(PRODUCT_EVENTS_TABLE)
@@ -281,9 +297,9 @@ _cognito_jwks_client = None
 _burst_windows = defaultdict(deque)
 _burst_lock = Lock()
 _burst_request_count = 0
-_ops_notification_last_sent: Dict[str, float] = {}
+_ops_notification_last_sent: dict[str, float] = {}
 _ops_notification_lock = Lock()
-_daily_moral_crime_catalog_cache: Optional[Dict[str, Any]] = None
+_daily_moral_crime_catalog_cache: dict[str, Any] | None = None
 _dynamodb_type_serializer = TypeSerializer()
 
 def get_groq_api_key() -> str:
@@ -310,7 +326,7 @@ def get_groq_api_key() -> str:
         logger.info("Successfully retrieved API key from SSM Parameter Store")
         return _api_key_cache
     except Exception as e:
-        logger.error(f"Failed to retrieve API key from SSM Parameter Store: {str(e)}")
+        logger.error(f"Failed to retrieve API key from SSM Parameter Store: {e!s}")
         raise HTTPException(
             status_code=500,
             detail="API key configuration error"
@@ -347,14 +363,14 @@ def get_analytics_fingerprint_secret() -> str:
         logger.error("Failed to retrieve analytics fingerprint secret: %s", str(error))
         raise HTTPException(status_code=503, detail="Analytics fingerprinting is not configured")
 
-def _extract_bearer_token(request: Request) -> Optional[str]:
+def _extract_bearer_token(request: Request) -> str | None:
     authorization = request.headers.get("Authorization", "")
     scheme, _, token = authorization.partition(" ")
     if scheme.lower() != "bearer" or not token:
         return None
     return token.strip()
 
-def verify_cognito_id_token(token: str) -> Dict[str, Any]:
+def verify_cognito_id_token(token: str) -> dict[str, Any]:
     """Verify signature, issuer, audience, expiry, and token use."""
     global _cognito_jwks_client
 
@@ -385,7 +401,7 @@ def verify_cognito_id_token(token: str) -> Dict[str, Any]:
         raise HTTPException(status_code=401, detail="An ID token is required")
     return claims
 
-def require_authenticated_user(request: Request) -> Dict[str, Any]:
+def require_authenticated_user(request: Request) -> dict[str, Any]:
     token = _extract_bearer_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="Authentication required")
@@ -395,7 +411,7 @@ def require_authenticated_user(request: Request) -> Dict[str, Any]:
     return claims
 
 
-def require_active_cognito_user(claims: Dict[str, Any]) -> Dict[str, Any]:
+def require_active_cognito_user(claims: dict[str, Any]) -> dict[str, Any]:
     """Reject a locally valid JWT once its Cognito identity was deleted.
 
     Signature verification alone deliberately has no network call, but a
@@ -425,7 +441,7 @@ def require_active_cognito_user(claims: Dict[str, Any]) -> Dict[str, Any]:
         raise HTTPException(status_code=503, detail="Authentication service unavailable")
     return claims
 
-def _claims_are_admin(claims: Dict[str, Any]) -> bool:
+def _claims_are_admin(claims: dict[str, Any]) -> bool:
     groups = claims.get("cognito:groups", [])
     if isinstance(groups, str):
         groups = [groups]
@@ -441,7 +457,7 @@ def require_analytics_admin(request: Request) -> None:
     if not _claims_are_admin(claims):
         raise HTTPException(status_code=403, detail="Administrator role required")
 
-def get_optional_user(request: Request) -> Optional[Dict[str, Any]]:
+def get_optional_user(request: Request) -> dict[str, Any] | None:
     """Verify a bearer token if present; anonymous requests keep working with None."""
     token = _extract_bearer_token(request)
     if not token:
@@ -453,7 +469,7 @@ def get_optional_user(request: Request) -> Optional[Dict[str, Any]]:
     except HTTPException:
         return None
 
-def upsert_user_record(sub: str, claims: Dict[str, Any]) -> None:
+def upsert_user_record(sub: str, claims: dict[str, Any]) -> None:
     """Idempotently persist a user record keyed by the immutable Cognito sub."""
     now = int(time.time() * 1000)
     expiration_time = int(time.time()) + ACCOUNT_RETENTION_SECONDS
@@ -476,7 +492,7 @@ def upsert_user_record(sub: str, claims: Dict[str, Any]) -> None:
     )
 
 
-def _touch_existing_account_activity(claims: Dict[str, Any]) -> None:
+def _touch_existing_account_activity(claims: dict[str, Any]) -> None:
     """Refresh a known app account's lifecycle without write amplification.
 
     The client heartbeats `/auth/me` after session restoration, while optional
@@ -568,7 +584,7 @@ def generate_public_token(byte_length: int = 16) -> str:
     return secrets.token_urlsafe(byte_length)
 
 
-def _build_profile_og_html(public_id: str, archetype: Dict[str, Any], language: str) -> str:
+def _build_profile_og_html(public_id: str, archetype: dict[str, Any], language: str) -> str:
     """Static, bot-only HTML snapshot for /p/:publicId (TASK-30/113).
 
     Mirrors the meta tags PublicProfileScreen/SEO.jsx render client-side, so
@@ -621,7 +637,7 @@ def _build_profile_og_html(public_id: str, archetype: Dict[str, Any], language: 
 </html>"""
 
 
-def _write_profile_og_html(public_id: str, archetype: Dict[str, Any], language: str) -> None:
+def _write_profile_og_html(public_id: str, archetype: dict[str, Any], language: str) -> None:
     """Best-effort: a failed write here must never break profile creation."""
     try:
         body = _build_profile_og_html(public_id, archetype, language)
@@ -636,7 +652,7 @@ def _write_profile_og_html(public_id: str, archetype: Dict[str, Any], language: 
         logger.exception("Unable to write bot-preview OG HTML for profile %s", public_id)
 
 
-def create_moral_profile(anonymous_user_id: str, answers: list, language: str) -> Dict[str, Any]:
+def create_moral_profile(anonymous_user_id: str, answers: list, language: str) -> dict[str, Any]:
     """Persist a shareable moral profile (TASK-28) from a completed test.
 
     Reuses the same deterministic archetype engine as /analyze-results.
@@ -672,7 +688,7 @@ def create_moral_profile(anonymous_user_id: str, answers: list, language: str) -
     }
 
 
-def get_profile_or_404(public_id: str) -> Dict[str, Any]:
+def get_profile_or_404(public_id: str) -> dict[str, Any]:
     response = moral_profiles_table.get_item(Key={"publicId": public_id})
     item = response.get("Item")
     if not item:
@@ -725,7 +741,7 @@ def _touch_profile_activity(public_id: str) -> bool:
     return True
 
 
-def get_latest_profile_for_anonymous_user(anonymous_user_id: str) -> Optional[Dict[str, Any]]:
+def get_latest_profile_for_anonymous_user(anonymous_user_id: str) -> dict[str, Any] | None:
     items = _query_all(
         moral_profiles_table,
         IndexName="OwnerIndex",
@@ -747,7 +763,7 @@ def get_latest_profile_for_anonymous_user(anonymous_user_id: str) -> Optional[Di
     return None
 
 
-def _has_prior_profile(anonymous_user_id: str, exclude_public_id: Optional[str] = None) -> bool:
+def _has_prior_profile(anonymous_user_id: str, exclude_public_id: str | None = None) -> bool:
     """TASK-136: true if this anon id already owns a moral profile other than
     exclude_public_id - the signal used to detect a second-or-later Moral
     Duel interaction. Reuses the existing OwnerIndex GSI (no new table/index,
@@ -791,7 +807,7 @@ def _raise_login_required(request: Request) -> None:
     raise HTTPException(status_code=401, detail="login_required")
 
 
-def require_authenticated_for_repeat_duel(request: Request, anonymous_user_id: str, exclude_public_id: Optional[str] = None) -> None:
+def require_authenticated_for_repeat_duel(request: Request, anonymous_user_id: str, exclude_public_id: str | None = None) -> None:
     """TASK-136: the first Moral Duel challenge/join stays fully anonymous
     (doc-2 social MVP definition of done, TASK-14 AC1); from the second one
     on, continuing requires an account - the concrete, higher-pressure login
@@ -815,7 +831,7 @@ def require_authenticated_for_repeat_duel(request: Request, anonymous_user_id: s
         _raise_login_required(request)
 
 
-def get_challenge_or_404(token: str) -> Dict[str, Any]:
+def get_challenge_or_404(token: str) -> dict[str, Any]:
     response = challenges_table.get_item(Key={"challengeToken": token})
     item = response.get("Item")
     if not item:
@@ -823,7 +839,7 @@ def get_challenge_or_404(token: str) -> Dict[str, Any]:
     return item
 
 
-def ensure_challenge_is_actionable(challenge: Dict[str, Any]) -> None:
+def ensure_challenge_is_actionable(challenge: dict[str, Any]) -> None:
     """Distinguish revoked/expired from other errors, per TASK-35 AC2."""
     if challenge["status"] == "revoked":
         raise HTTPException(status_code=410, detail="This challenge has been revoked")
@@ -832,12 +848,12 @@ def ensure_challenge_is_actionable(challenge: Dict[str, Any]) -> None:
         raise HTTPException(status_code=410, detail="This challenge has expired")
 
 
-def get_participant(token: str, role: str) -> Optional[Dict[str, Any]]:
+def get_participant(token: str, role: str) -> dict[str, Any] | None:
     response = challenge_participants_table.get_item(Key={"challengeToken": token, "role": role})
     return response.get("Item")
 
 
-def _network_fingerprint(ip_address: Optional[str]) -> Optional[str]:
+def _network_fingerprint(ip_address: str | None) -> str | None:
     """Create a stable, non-reversible network pseudonym without storing the IP."""
     if not ip_address:
         return None
@@ -857,7 +873,7 @@ def _network_fingerprint(ip_address: Optional[str]) -> Optional[str]:
 TIME_ZONE_PATTERN = re.compile(r"^[A-Za-z0-9_+/-]{1,64}$")
 
 
-def _normalize_time_zone(value: Optional[str]) -> Optional[str]:
+def _normalize_time_zone(value: str | None) -> str | None:
     """Accept only a bounded IANA-style timezone; never infer it from an IP."""
     if not value:
         return None
@@ -867,16 +883,16 @@ def _normalize_time_zone(value: Optional[str]) -> Optional[str]:
 def track_analytics_event(
     session_id: str,
     action_type: str,
-    action_data: Optional[Dict] = None,
+    action_data: dict | None = None,
     language: str = "en",
-    user_agent: Optional[str] = None,
-    ip_address: Optional[str] = None,
-    anonymous_user_id: Optional[str] = None,
-    install_id: Optional[str] = None,
-    platform: Optional[str] = None,
-    app_version: Optional[str] = None,
-    client_language: Optional[str] = None,
-    time_zone: Optional[str] = None,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
+    anonymous_user_id: str | None = None,
+    install_id: str | None = None,
+    platform: str | None = None,
+    app_version: str | None = None,
+    client_language: str | None = None,
+    time_zone: str | None = None,
 ) -> None:
     """
     Track user analytics event to DynamoDB
@@ -943,7 +959,7 @@ def track_analytics_event(
 
     except Exception as e:
         # Don't fail the request if analytics tracking fails
-        logger.error(f"Failed to track analytics event: {str(e)}")
+        logger.error(f"Failed to track analytics event: {e!s}")
 
 def extract_session_id(request: Request) -> str:
     """
@@ -955,7 +971,7 @@ def extract_session_id(request: Request) -> str:
 
     return request.headers.get("X-Session-Id") or str(uuid.uuid4())
 
-def extract_client_analytics_context(request: Request) -> Dict[str, Optional[str]]:
+def extract_client_analytics_context(request: Request) -> dict[str, str | None]:
     """Shared web/native metadata for legacy server-side events."""
     return {
         "anonymous_user_id": request.headers.get("X-Anonymous-User-Id"),
@@ -977,7 +993,7 @@ class VoteRequest(BaseModel):
 
 class DilemmaResponse(BaseModel):
     id: str = Field(..., alias="_id")
-    baseId: Optional[str] = None
+    baseId: str | None = None
     dilemma: str
     firstAnswer: str
     secondAnswer: str
@@ -1008,25 +1024,25 @@ class DilemmaWithChoice(BaseModel):
     firstAnswer: str = Field(..., description="First answer option")
     secondAnswer: str = Field(..., description="Second answer option")
     chosenAnswer: str = Field(..., description="The answer the user chose")
-    chosenValues: Dict[str, float] = Field(..., description="Moral values of the chosen answer")
+    chosenValues: dict[str, float] = Field(..., description="Moral values of the chosen answer")
 
 class AnalyzeResultsRequest(BaseModel):
-    answers: list[Dict[str, float]] = Field(..., description="List of moral category scores from user's answers")
-    dilemmasWithChoices: Optional[list[DilemmaWithChoice]] = Field(default=[], description="List of dilemmas with user's choices")
+    answers: list[dict[str, float]] = Field(..., description="List of moral category scores from user's answers")
+    dilemmasWithChoices: list[DilemmaWithChoice] | None = Field(default=[], description="List of dilemmas with user's choices")
 
 class ClaimAnonymousDataRequest(BaseModel):
     anonymousUserId: str = Field(..., min_length=1, max_length=100)
 
 class DilemmaAnswer(BaseModel):
     dilemmaBaseId: str = Field(..., min_length=1, max_length=100)
-    chosenValues: Dict[str, float] = Field(..., max_length=12)
+    chosenValues: dict[str, float] = Field(..., max_length=12)
 
 class CreateProfileRequest(BaseModel):
     answers: list[DilemmaAnswer] = Field(..., min_length=1, max_length=20)
     language: str = Field(default="en", min_length=2, max_length=10, pattern=r'^[a-zA-Z]+$')
 
 class CreateChallengeRequest(BaseModel):
-    profilePublicId: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    profilePublicId: str | None = Field(default=None, min_length=1, max_length=64)
 
 class SubmitChallengeRequest(BaseModel):
     answers: list[DilemmaAnswer] = Field(..., min_length=1, max_length=20)
@@ -1045,7 +1061,7 @@ class JoinPartyRoomRequest(BaseModel):
 
 class SubmitPartyVoteRequest(BaseModel):
     choice: str = Field(..., pattern=r'^(first|second)$')
-    chosenValues: Dict[str, float] = Field(..., max_length=12)
+    chosenValues: dict[str, float] = Field(..., max_length=12)
 
 
 class DailyMoralCrimeVoteRequest(BaseModel):
@@ -1082,22 +1098,22 @@ class AnalyticsEvent(BaseModel):
     schemaVersion: int = Field(default=1, ge=1, le=10)
     anonymousUserId: str = Field(..., min_length=1, max_length=100)
     sessionId: str = Field(..., min_length=1, max_length=100)
-    installId: Optional[str] = Field(default=None, max_length=100)
+    installId: str | None = Field(default=None, max_length=100)
     platform: str = Field(default="unknown", pattern=r'^(web|android|ios|unknown)$')
     appVersion: str = Field(default="unknown", min_length=1, max_length=32)
     language: str = Field(default="en", min_length=2, max_length=10, pattern=r'^[a-zA-Z]+$')
-    timeZone: Optional[str] = Field(
+    timeZone: str | None = Field(
         default=None,
         max_length=64,
         pattern=r'^[A-Za-z0-9_+/-]+$',
     )
-    referrer: Optional[str] = Field(default=None, max_length=500)
-    utm: Dict[str, str] = Field(default_factory=dict)
-    properties: Dict[str, Any] = Field(default_factory=dict)
+    referrer: str | None = Field(default=None, max_length=500)
+    utm: dict[str, str] = Field(default_factory=dict)
+    properties: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("utm")
     @classmethod
-    def validate_utm(cls, value: Dict[str, str]) -> Dict[str, str]:
+    def validate_utm(cls, value: dict[str, str]) -> dict[str, str]:
         allowed_keys = {"utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"}
         if len(value) > len(allowed_keys):
             raise ValueError("Too many UTM parameters")
@@ -1112,7 +1128,7 @@ class AnalyticsEvent(BaseModel):
 
     @field_validator("referrer")
     @classmethod
-    def validate_referrer(cls, value: Optional[str]) -> Optional[str]:
+    def validate_referrer(cls, value: str | None) -> str | None:
         """Keep attribution at origin granularity, never a link path/query."""
         if value is None:
             return value
@@ -1132,7 +1148,7 @@ class AnalyticsEvent(BaseModel):
 
     @field_validator("properties")
     @classmethod
-    def validate_properties(cls, value: Dict[str, Any]) -> Dict[str, Any]:
+    def validate_properties(cls, value: dict[str, Any]) -> dict[str, Any]:
         forbidden_tokens = {"email", "password", "token", "secret", "ip", "analysis"}
         forbidden_keys = {
             "dilemma_text",
@@ -1233,7 +1249,7 @@ def call_groq_api_with_fallback(payload: dict, api_key: str, operation: str = "A
             errors.append(f"{model_name}: Timeout")
             continue
         except Exception as e:
-            logger.warning(f"{operation}: Exception on model {model_name}: {str(e)}")
+            logger.warning(f"{operation}: Exception on model {model_name}: {e!s}")
             errors.append(f"{model_name}: {str(e)[:50]}")
             continue
 
@@ -1288,7 +1304,7 @@ async def log_requests(request: Request, call_next):
 def _consume_burst_window(
     bucket_key: str,
     limit: int,
-    now_seconds: Optional[float] = None,
+    now_seconds: float | None = None,
 ) -> tuple[bool, int]:
     """Consume one slot in a per-container sliding window."""
     global _burst_request_count
@@ -1377,10 +1393,10 @@ def _rate_limit_participant_source(request: Request) -> str:
     as its abuse backstop."""
     ip = request.client.host if request.client else "unknown"
     anonymous_user_id = request.headers.get("X-Anonymous-User-Id") or "unknown"
-    return hashlib.sha256(f"{ip}:{anonymous_user_id}".encode("utf-8")).hexdigest()
+    return hashlib.sha256(f"{ip}:{anonymous_user_id}".encode()).hexdigest()
 
 
-def _rate_limit_cors_headers(request: Request) -> Dict[str, str]:
+def _rate_limit_cors_headers(request: Request) -> dict[str, str]:
     origin = request.headers.get("Origin")
     if not origin or origin not in CORS_ALLOWED_ORIGINS:
         return {}
@@ -1433,7 +1449,7 @@ async def enforce_zero_cost_burst_guard(request: Request, call_next):
     return await call_next(request)
 
 
-def _should_notify_ops(status_code: int, path: str, now_seconds: Optional[float] = None) -> bool:
+def _should_notify_ops(status_code: int, path: str, now_seconds: float | None = None) -> bool:
     """One notification per (status_code, path) per cooldown window, per warm
     container - avoids flooding the owner's inbox from an ordinary burst of
     the same client error."""
@@ -1447,7 +1463,7 @@ def _should_notify_ops(status_code: int, path: str, now_seconds: Optional[float]
         return True
 
 
-def _request_path_signature(request: Request, status_code: Optional[int] = None) -> str:
+def _request_path_signature(request: Request, status_code: int | None = None) -> str:
     """TASK-129: the matched route template (e.g. '/party-rooms/{room_code}')
     when the router resolved one, so distinct instances of the same endpoint
     (different room codes, profile ids, challenge tokens...) coalesce into one
@@ -1607,7 +1623,7 @@ async def claim_anonymous_data(claim_request: ClaimAnonymousDataRequest, request
     return {"claimed": True, "anonymousUserId": claim_request.anonymousUserId}
 
 
-def _query_all(dynamodb_table, **query_kwargs) -> list[Dict[str, Any]]:
+def _query_all(dynamodb_table, **query_kwargs) -> list[dict[str, Any]]:
     """Return every page of a DynamoDB query without exposing pagination to
     account export/deletion callers."""
     items = []
@@ -1620,7 +1636,7 @@ def _query_all(dynamodb_table, **query_kwargs) -> list[Dict[str, Any]]:
         query_kwargs["ExclusiveStartKey"] = last_key
 
 
-def _scan_all(dynamodb_table, **scan_kwargs) -> list[Dict[str, Any]]:
+def _scan_all(dynamodb_table, **scan_kwargs) -> list[dict[str, Any]]:
     """Return every page of a narrowly filtered DynamoDB scan."""
     items = []
     while True:
@@ -1632,7 +1648,7 @@ def _scan_all(dynamodb_table, **scan_kwargs) -> list[Dict[str, Any]]:
         scan_kwargs["ExclusiveStartKey"] = last_key
 
 
-def _claimed_anonymous_ids(account_sub: str) -> tuple[list[str], list[Dict[str, Any]]]:
+def _claimed_anonymous_ids(account_sub: str) -> tuple[list[str], list[dict[str, Any]]]:
     """Use claim-lock rows as the authoritative account-to-device mapping.
 
     The duplicated set on the user record is useful for display, but an
@@ -1656,7 +1672,7 @@ def _scan_for_anonymous_ids(
     dynamodb_table,
     attribute_name: str,
     anonymous_ids: list[str],
-) -> list[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Scan an unindexed anonymous-id attribute once per claimed identity.
 
     These domains are currently small and have bounded retention. The profile
@@ -1674,7 +1690,7 @@ def _scan_for_anonymous_ids(
     return items
 
 
-def _profiles_for_anonymous_ids(anonymous_ids: list[str]) -> list[Dict[str, Any]]:
+def _profiles_for_anonymous_ids(anonymous_ids: list[str]) -> list[dict[str, Any]]:
     profiles = []
     for anonymous_id in anonymous_ids:
         profiles.extend(_query_all(
@@ -1686,7 +1702,7 @@ def _profiles_for_anonymous_ids(anonymous_ids: list[str]) -> list[Dict[str, Any]
     return profiles
 
 
-def _product_events_for_anonymous_ids(anonymous_ids: list[str]) -> list[Dict[str, Any]]:
+def _product_events_for_anonymous_ids(anonymous_ids: list[str]) -> list[dict[str, Any]]:
     events = []
     for anonymous_id in anonymous_ids:
         events.extend(_query_all(
@@ -1698,7 +1714,7 @@ def _product_events_for_anonymous_ids(anonymous_ids: list[str]) -> list[Dict[str
     return events
 
 
-def _daily_votes_for_anonymous_ids(anonymous_ids: list[str]) -> list[Dict[str, Any]]:
+def _daily_votes_for_anonymous_ids(anonymous_ids: list[str]) -> list[dict[str, Any]]:
     """Daily participation is private account data for export/deletion. The
     aggregate row has no anonymousUserId and is deliberately not queried or
     removed here, so deletion cannot alter an already anonymous statistic."""
@@ -1713,7 +1729,7 @@ def _daily_votes_for_anonymous_ids(anonymous_ids: list[str]) -> list[Dict[str, A
     return votes
 
 
-def _collect_account_data(account_sub: str) -> Dict[str, Any]:
+def _collect_account_data(account_sub: str) -> dict[str, Any]:
     """Build one complete, repeatable data plan for export or deletion."""
     account = users_table.get_item(Key={"sub": account_sub}).get("Item", {})
     anonymous_ids, claim_locks = _claimed_anonymous_ids(account_sub)
@@ -1755,7 +1771,7 @@ def _portable_value(value: Any) -> Any:
     return value
 
 
-def _portable_profile(profile: Dict[str, Any]) -> Dict[str, Any]:
+def _portable_profile(profile: dict[str, Any]) -> dict[str, Any]:
     result = _portable_value(profile)
     averages = result.get("dimensionAverages")
     if isinstance(averages, str):
@@ -1768,7 +1784,7 @@ def _portable_profile(profile: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-def _portable_duel_participation(participation: Dict[str, Any]) -> Dict[str, Any]:
+def _portable_duel_participation(participation: dict[str, Any]) -> dict[str, Any]:
     return _portable_value({
         key: participation[key]
         for key in ("challengeToken", "role", "profilePublicId", "joinedAt", "submittedAt")
@@ -1776,7 +1792,7 @@ def _portable_duel_participation(participation: Dict[str, Any]) -> Dict[str, Any
     })
 
 
-def _portable_party_participation(participation: Dict[str, Any]) -> Dict[str, Any]:
+def _portable_party_participation(participation: dict[str, Any]) -> dict[str, Any]:
     return _portable_value({
         key: participation[key]
         for key in ("roomCode", "displayName", "isHost", "joinedAt", "votes", "completedAt")
@@ -1784,7 +1800,7 @@ def _portable_party_participation(participation: Dict[str, Any]) -> Dict[str, An
     })
 
 
-def _portable_daily_vote(vote: Dict[str, Any]) -> Dict[str, Any]:
+def _portable_daily_vote(vote: dict[str, Any]) -> dict[str, Any]:
     return _portable_value({
         key: vote[key]
         for key in ("dayKey", "choice", "dilemmaBaseId", "createdAt")
@@ -1875,12 +1891,12 @@ _DUEL_STATS_PARTICIPATION_LIMIT = 50
 _DUEL_STATS_RECENT_LIMIT = 5
 
 
-def _duel_participations_for_anonymous_ids(anonymous_ids: list[str]) -> list[Dict[str, Any]]:
+def _duel_participations_for_anonymous_ids(anonymous_ids: list[str]) -> list[dict[str, Any]]:
     """Most recent participations first, via the ParticipantIndex GSI (never
     a table Scan) - submittedAt exists on every row (TASK-34/36) so it works
     as a recency key even though it does not by itself mean the challenge
     reached 'completed'; callers still check challenges_table.status."""
-    participations: list[Dict[str, Any]] = []
+    participations: list[dict[str, Any]] = []
     for anonymous_id in anonymous_ids:
         response = challenge_participants_table.query(
             IndexName="ParticipantIndex",
@@ -1894,12 +1910,12 @@ def _duel_participations_for_anonymous_ids(anonymous_ids: list[str]) -> list[Dic
     return participations[:_DUEL_STATS_PARTICIPATION_LIMIT]
 
 
-def _compute_duel_stats_for_anonymous_ids(anonymous_ids: list[str], language: str) -> Dict[str, Any]:
+def _compute_duel_stats_for_anonymous_ids(anonymous_ids: list[str], language: str) -> dict[str, Any]:
     completed_count = 0
     agreement_sum = 0.0
     distinct_archetype_ids: set[str] = set()
-    recent: list[Dict[str, Any]] = []
-    own_averages_by_profile_id: Dict[str, Dict[str, float]] = {}
+    recent: list[dict[str, Any]] = []
+    own_averages_by_profile_id: dict[str, dict[str, float]] = {}
 
     for participation in _duel_participations_for_anonymous_ids(anonymous_ids):
         token = participation["challengeToken"]
@@ -1979,7 +1995,7 @@ async def get_my_duel_stats(request: Request, language: str = "en"):
     return _compute_duel_stats_for_anonymous_ids(anonymous_ids, language)
 
 
-def _delete_records(dynamodb_table, keys: list[Dict[str, Any]]) -> int:
+def _delete_records(dynamodb_table, keys: list[dict[str, Any]]) -> int:
     deleted = 0
     seen = set()
     for key in keys:
@@ -2005,7 +2021,7 @@ def _remove_rematch_references(deleted_tokens: set[str]) -> None:
             )
 
 
-def _delete_duel_data(participations: list[Dict[str, Any]]) -> int:
+def _delete_duel_data(participations: list[dict[str, Any]]) -> int:
     tokens = {str(item["challengeToken"]) for item in participations if item.get("challengeToken")}
     for token in tokens:
         all_participants = _query_all(
@@ -2025,7 +2041,7 @@ def _delete_duel_data(participations: list[Dict[str, Any]]) -> int:
     return len(tokens)
 
 
-def _delete_party_data(participations: list[Dict[str, Any]]) -> int:
+def _delete_party_data(participations: list[dict[str, Any]]) -> int:
     """Removes every participant's data exactly as before (ADR-073: a Party
     Room with the deleted participant's derived data - votes, awards, group
     verdict - still in it would keep an incoherent comparison alive for the
@@ -2057,7 +2073,7 @@ def _delete_party_data(participations: list[Dict[str, Any]]) -> int:
     return len(room_codes)
 
 
-def _delete_linked_account_data(data: Dict[str, Any]) -> Dict[str, int]:
+def _delete_linked_account_data(data: dict[str, Any]) -> dict[str, int]:
     """Delete raw user-linked domains while preserving only aggregates.
 
     This deliberately removes an entire shared Duel/Party object when the
@@ -2094,7 +2110,7 @@ def _delete_linked_account_data(data: Dict[str, Any]) -> Dict[str, int]:
     return counts
 
 
-def _resolve_cognito_username(cognito_username: Optional[str], account_sub: str) -> Optional[str]:
+def _resolve_cognito_username(cognito_username: str | None, account_sub: str) -> str | None:
     """Find a legacy federated username only when it was never persisted.
 
     New account records retain ``cognito:username``. Historic rows may
@@ -2118,7 +2134,7 @@ def _resolve_cognito_username(cognito_username: Optional[str], account_sub: str)
     return users[0].get("Username") if users else None
 
 
-def _delete_cognito_user(cognito_username: Optional[str], account_sub: str) -> None:
+def _delete_cognito_user(cognito_username: str | None, account_sub: str) -> None:
     if not COGNITO_USER_POOL_ID:
         # Unit tests intentionally run without an external Cognito pool.
         return
@@ -2139,7 +2155,7 @@ def _delete_cognito_user(cognito_username: Optional[str], account_sub: str) -> N
             raise HTTPException(status_code=503, detail="Account deletion service unavailable")
 
 
-def _delete_account_by_sub(account_sub: str, cognito_username: Optional[str]) -> Dict[str, int]:
+def _delete_account_by_sub(account_sub: str, cognito_username: str | None) -> dict[str, int]:
     """Idempotently cascade app data first, then remove the sign-in identity."""
     data = _collect_account_data(account_sub)
     counts = _delete_linked_account_data(data)
@@ -2152,7 +2168,7 @@ def _delete_account_by_sub(account_sub: str, cognito_username: Optional[str]) ->
     return counts
 
 
-def _retention_expiration_from_activity(item: Dict[str, Any], retention_seconds: int) -> int:
+def _retention_expiration_from_activity(item: dict[str, Any], retention_seconds: int) -> int:
     """Derive a seconds-based expiry from the millisecond activity fields."""
     for field in ("lastActiveAt", "lastAccessedAt", "updatedAt", "createdAt"):
         value = item.get(field)
@@ -2238,7 +2254,7 @@ async def delete_user_account(request: Request):
     counts = _delete_account_by_sub(claims["sub"], claims.get("cognito:username"))
     return {"deleted": True, "deletedData": counts}
 
-def _track_duel_event(request: Request, action_type: str, action_data: Optional[Dict[str, Any]] = None) -> None:
+def _track_duel_event(request: Request, action_type: str, action_data: dict[str, Any] | None = None) -> None:
     session_id = extract_session_id(request)
     track_analytics_event(
         session_id=session_id,
@@ -2308,7 +2324,7 @@ async def get_dilemmas_by_ids(ids: str, request: Request, language: str = "en"):
     return {"dilemmas": ordered}
 
 
-def _load_daily_moral_crime_catalog() -> Dict[str, Any]:
+def _load_daily_moral_crime_catalog() -> dict[str, Any]:
     """Load the immutable v1 Daily deck from the repository/deployment
     package. The deck is a versioned selection of the existing EN catalog,
     not a second source of dilemma copy and not AI-generated content."""
@@ -2351,7 +2367,7 @@ def _load_daily_moral_crime_catalog() -> Dict[str, Any]:
     return _daily_moral_crime_catalog_cache
 
 
-def _daily_moral_crime_window(now: Optional[datetime] = None) -> Dict[str, Any]:
+def _daily_moral_crime_window(now: datetime | None = None) -> dict[str, Any]:
     """Return the authoritative global Daily window.
 
     Every player shares a single UTC-based Daily. It rolls at 09:00 UTC,
@@ -2389,7 +2405,7 @@ def _daily_moral_crime_base_id(day_key: str) -> tuple[str, str]:
     return catalog["baseIds"][index], catalog["version"]
 
 
-def _daily_moral_crime_dilemma(day_key: str) -> tuple[Dict[str, Any], str]:
+def _daily_moral_crime_dilemma(day_key: str) -> tuple[dict[str, Any], str]:
     base_id, catalog_version = _daily_moral_crime_base_id(day_key)
     dilemma = decimal_to_native(table.get_item(Key={"_id": f"{base_id}-en"}).get("Item") or {})
     if not dilemma:
@@ -2402,14 +2418,14 @@ def _daily_moral_crime_participant_key(anonymous_user_id: str) -> str:
     return f"{DAILY_MORAL_CRIME_PARTICIPANT_PREFIX}{anonymous_user_id}"
 
 
-def _daily_moral_crime_vote(day_key: str, anonymous_user_id: str) -> Optional[Dict[str, Any]]:
+def _daily_moral_crime_vote(day_key: str, anonymous_user_id: str) -> dict[str, Any] | None:
     return daily_moral_crime_votes_table.get_item(Key={
         "dayKey": day_key,
         "entryKey": _daily_moral_crime_participant_key(anonymous_user_id),
     }).get("Item")
 
 
-def _daily_moral_crime_results(day_key: str) -> Dict[str, int]:
+def _daily_moral_crime_results(day_key: str) -> dict[str, int]:
     aggregate = daily_moral_crime_votes_table.get_item(Key={
         "dayKey": day_key,
         "entryKey": DAILY_MORAL_CRIME_AGGREGATE_KEY,
@@ -2427,9 +2443,9 @@ def _daily_moral_crime_results(day_key: str) -> Dict[str, int]:
 
 
 def _daily_moral_crime_response(
-    window: Dict[str, Any],
+    window: dict[str, Any],
     anonymous_user_id: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     dilemma, catalog_version = _daily_moral_crime_dilemma(window["dayKey"])
     vote = _daily_moral_crime_vote(window["dayKey"], anonymous_user_id)
     response = {
@@ -2459,7 +2475,7 @@ def _daily_moral_crime_response(
     return response
 
 
-def _dynamodb_item(values: Dict[str, Any]) -> Dict[str, Any]:
+def _dynamodb_item(values: dict[str, Any]) -> dict[str, Any]:
     return {key: _dynamodb_type_serializer.serialize(value) for key, value in values.items()}
 
 
@@ -2495,7 +2511,7 @@ async def vote_daily_moral_crime(vote_request: DailyMoralCrimeVoteRequest, reque
     entry_key = _daily_moral_crime_participant_key(anonymous_user_id)
 
     try:
-        dynamodb.meta.client.transact_write_items(TransactItems=[
+        dynamodb_client.transact_write_items(TransactItems=[
             {
                 "Put": {
                     "TableName": DAILY_MORAL_CRIME_VOTES_TABLE,
@@ -2536,9 +2552,10 @@ async def vote_daily_moral_crime(vote_request: DailyMoralCrimeVoteRequest, reque
             if _daily_moral_crime_vote(window["dayKey"], anonymous_user_id):
                 return _daily_moral_crime_response(window, anonymous_user_id)
         logger.warning(
-            "Daily Moral Crime vote transaction failed: %s: %s",
+            "Daily Moral Crime vote transaction failed: %s: %s | cancellation_reasons=%s",
             error.response.get("Error", {}).get("Code"),
             error.response.get("Error", {}).get("Message"),
+            error.response.get("CancellationReasons"),
         )
         raise HTTPException(status_code=503, detail="Daily vote recording is temporarily unavailable")
 
@@ -2713,7 +2730,7 @@ def _fallback_duel_pair_insight(creator_name: str, invitee_name: str, overall_pc
 
 
 def _generate_duel_pair_insight(
-    creator_name: str, invitee_name: str, compatibility: Dict[str, Any], language: str,
+    creator_name: str, invitee_name: str, compatibility: dict[str, Any], language: str,
 ) -> str:
     """TASK-135: one short AI-enriched line about what this specific pairing
     means, generated once and cached on the challenge record (never
@@ -2938,7 +2955,7 @@ def _pick_random_dilemma_base_ids(language: str, count: int) -> list[str]:
     return random.sample(base_ids, count)
 
 
-def get_room_or_404(room_code: str) -> Dict[str, Any]:
+def get_room_or_404(room_code: str) -> dict[str, Any]:
     """Normalizes DynamoDB Decimal fields (currentRoundIndex, phaseEndsAt, ...)
     to native int/float here, once, so every caller can use them directly -
     e.g. as a list index - without re-converting."""
@@ -2958,7 +2975,7 @@ def get_room_or_404(room_code: str) -> Dict[str, Any]:
     return decimal_to_native(item)
 
 
-def _list_party_participants(room_code: str) -> list[Dict[str, Any]]:
+def _list_party_participants(room_code: str) -> list[dict[str, Any]]:
     response = party_participants_table.query(
         KeyConditionExpression="roomCode = :room",
         ExpressionAttributeValues={":room": room_code},
@@ -2966,7 +2983,7 @@ def _list_party_participants(room_code: str) -> list[Dict[str, Any]]:
     return [decimal_to_native(item) for item in response.get("Items", [])]
 
 
-def _advance_party_room_if_due(room: Dict[str, Any]) -> Dict[str, Any]:
+def _advance_party_room_if_due(room: dict[str, Any]) -> dict[str, Any]:
     """Move the room to its next phase if it's actually due. TASK-123: no
     visible timer drives this - "question" only ends once everyone has
     voted, and "reveal" only ends when the host explicitly requests it
@@ -3234,8 +3251,8 @@ async def submit_party_vote(room_code: str, vote_request: SubmitPartyVoteRequest
 
 
 def _party_room_participant_summary(
-    participant: Dict[str, Any], caller_anonymous_user_id: str, archetype: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+    participant: dict[str, Any], caller_anonymous_user_id: str, archetype: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Never returns the raw anonymous_user_id to other participants (it's an
     internal identifier, same rule as everywhere else in the product) - only
     whether this entry is the caller themselves."""
@@ -3321,9 +3338,9 @@ async def get_party_room(room_code: str, request: Request, language: str = "en")
     # TASK-48/123: participant-index keys, never the raw anonymous_user_id,
     # both for the awards computation and for referencing "which participant"
     # from the response - consistent with never exposing internal IDs.
-    participant_averages_by_index: Dict[int, Dict[str, float]] = {}
-    participant_choices_by_index: Dict[int, Dict[int, str]] = {}
-    archetypes_by_index: Dict[int, Dict[str, Any]] = {}
+    participant_averages_by_index: dict[int, dict[str, float]] = {}
+    participant_choices_by_index: dict[int, dict[int, str]] = {}
+    archetypes_by_index: dict[int, dict[str, Any]] = {}
     if is_completed:
         for index, participant in enumerate(participants):
             votes = participant.get("votes", {})
@@ -3439,7 +3456,7 @@ async def health_check():
         table.meta.client.describe_table(TableName=DYNAMODB_TABLE)
         health_status["checks"]["dynamodb_dilemmas"] = "ok"
     except Exception as e:
-        health_status["checks"]["dynamodb_dilemmas"] = f"error: {str(e)}"
+        health_status["checks"]["dynamodb_dilemmas"] = f"error: {e!s}"
         health_status["status"] = "unhealthy"
 
     # Check Analytics Table connectivity
@@ -3447,7 +3464,7 @@ async def health_check():
         analytics_table.meta.client.describe_table(TableName=ANALYTICS_TABLE)
         health_status["checks"]["dynamodb_analytics"] = "ok"
     except Exception as e:
-        health_status["checks"]["dynamodb_analytics"] = f"error: {str(e)}"
+        health_status["checks"]["dynamodb_analytics"] = f"error: {e!s}"
         health_status["status"] = "degraded"
 
     # Check idempotent product event table connectivity
@@ -3455,7 +3472,7 @@ async def health_check():
         product_events_table.meta.client.describe_table(TableName=PRODUCT_EVENTS_TABLE)
         health_status["checks"]["dynamodb_product_events"] = "ok"
     except Exception as e:
-        health_status["checks"]["dynamodb_product_events"] = f"error: {str(e)}"
+        health_status["checks"]["dynamodb_product_events"] = f"error: {e!s}"
         health_status["status"] = "degraded"
 
     # Daily participation is a retention feature, not a prerequisite for the
@@ -3467,7 +3484,7 @@ async def health_check():
         )
         health_status["checks"]["dynamodb_daily_moral_crime"] = "ok"
     except Exception as e:
-        health_status["checks"]["dynamodb_daily_moral_crime"] = f"error: {str(e)}"
+        health_status["checks"]["dynamodb_daily_moral_crime"] = f"error: {e!s}"
         health_status["status"] = "degraded"
 
     # Check SSM Parameter Store connectivity
@@ -3475,7 +3492,7 @@ async def health_check():
         ssm_client.get_parameter(Name=GROQ_API_KEY_SSM_NAME, WithDecryption=True)
         health_status["checks"]["ssm_parameter"] = "ok"
     except Exception as e:
-        health_status["checks"]["ssm_parameter"] = f"error: {str(e)}"
+        health_status["checks"]["ssm_parameter"] = f"error: {e!s}"
         health_status["status"] = "degraded"
 
     # Set appropriate HTTP status code
@@ -3532,7 +3549,7 @@ async def ingest_analytics_events(batch: AnalyticsBatchRequest, request: Request
 
         return {"accepted": len(batch.events)}
     except Exception as e:
-        logger.error(f"Failed to ingest analytics batch: {str(e)}")
+        logger.error(f"Failed to ingest analytics batch: {e!s}")
         raise HTTPException(status_code=503, detail="Analytics ingestion unavailable")
 
 def infer_platform(user_agent: str) -> str:
@@ -3567,7 +3584,7 @@ def _has_known_automation_signature(user_agent: str) -> bool:
     normalized = (user_agent or "").lower()
     return any(signature in normalized for signature in KNOWN_AUTOMATION_SIGNATURES)
 
-def _parse_event_properties(value: Any) -> Dict[str, Any]:
+def _parse_event_properties(value: Any) -> dict[str, Any]:
     if isinstance(value, str):
         try:
             value = json.loads(value)
@@ -3590,7 +3607,7 @@ def _parse_event_properties(value: Any) -> Dict[str, Any]:
             )
     return safe_properties
 
-def normalize_analytics_event(item: Dict[str, Any], source: str) -> Dict[str, Any]:
+def normalize_analytics_event(item: dict[str, Any], source: str) -> dict[str, Any]:
     """Normalize both DynamoDB event generations into one dashboard contract."""
     is_product_event = source == "product"
     occurred_at = int(item.get("occurredAt" if is_product_event else "timestamp", 0) or 0)
@@ -3646,7 +3663,7 @@ def normalize_analytics_event(item: Dict[str, Any], source: str) -> Dict[str, An
         ),
     }
 
-def _scan_all_rows(dynamodb_table) -> list[Dict[str, Any]]:
+def _scan_all_rows(dynamodb_table) -> list[dict[str, Any]]:
     rows = []
     scan_kwargs = {}
     while True:
@@ -3659,7 +3676,7 @@ def _scan_all_rows(dynamodb_table) -> list[Dict[str, Any]]:
     return rows
 
 
-def _get_daily_moral_crime_current_aggregate() -> list[Dict[str, Any]]:
+def _get_daily_moral_crime_current_aggregate() -> list[dict[str, Any]]:
     """Read only today's non-linkable aggregate row for the admin dashboard.
 
     The primary key is known from the server-owned global Daily window, so a
@@ -3705,7 +3722,7 @@ ABUSE_MONITORING_THRESHOLDS = {
 }
 
 
-def build_abuse_monitoring(events: list[Dict[str, Any]]) -> Dict[str, Any]:
+def build_abuse_monitoring(events: list[dict[str, Any]]) -> dict[str, Any]:
     """Flag anomalous patterns without returning IPs, user agents, or stable IDs."""
     grouped = defaultdict(list)
     for event in events:
@@ -3798,10 +3815,10 @@ def build_abuse_monitoring(events: list[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def build_daily_moral_crime_analytics(
-    events: list[Dict[str, Any]],
-    aggregate_rows: Optional[list[Dict[str, Any]]],
+    events: list[dict[str, Any]],
+    aggregate_rows: list[dict[str, Any]] | None,
     now_ms: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build the Daily panel from generic events plus one public aggregate.
 
     Event metrics can respect the selected platform filter. Vote distribution
@@ -3858,14 +3875,14 @@ def build_daily_moral_crime_analytics(
     }
 
 def build_analytics_overview(
-    legacy_rows: list[Dict[str, Any]],
-    product_rows: list[Dict[str, Any]],
+    legacy_rows: list[dict[str, Any]],
+    product_rows: list[dict[str, Any]],
     days: int,
-    now_ms: Optional[int] = None,
+    now_ms: int | None = None,
     platform: str = "all",
-    registered_users: Optional[int] = None,
-    daily_moral_crime_aggregates: Optional[list[Dict[str, Any]]] = None,
-) -> Dict[str, Any]:
+    registered_users: int | None = None,
+    daily_moral_crime_aggregates: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Build privacy-safe aggregates used by both the web and Android dashboard."""
     now_ms = now_ms or int(time.time() * 1000)
     end_date = datetime.fromtimestamp(now_ms / 1000, tz=timezone.utc).date()
@@ -4137,7 +4154,7 @@ async def vote(vote_request: VoteRequest, request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in /vote: {str(e)}")
+        logger.error(f"Error in /vote: {e!s}")
         raise HTTPException(status_code=500, detail="Vote recording is unavailable")
 
 @app.get("/get-dilemma", response_model=DilemmaResponse, response_model_by_alias=True)
@@ -4222,7 +4239,7 @@ async def get_dilemma(request: Request, language: str = "en", exclude: str = "")
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in /get-dilemma: {str(e)}")
+        logger.error(f"Error in /get-dilemma: {e!s}")
         raise HTTPException(status_code=500, detail="Unable to fetch a dilemma")
 
 @app.post("/generate-dilemma")
@@ -4257,7 +4274,7 @@ async def generate_dilemma(request: Request, language: str = "en"):
             sample_dilemmas = [decimal_to_native(item) for item in sample_items]
             logger.info(f"Retrieved {len(sample_dilemmas)} sample dilemmas for language: {language}")
         except Exception as e:
-            logger.warning(f"Could not fetch sample dilemmas: {str(e)}")
+            logger.warning(f"Could not fetch sample dilemmas: {e!s}")
             sample_dilemmas = []
 
         # Build the examples string from database dilemmas
@@ -4341,15 +4358,15 @@ async def generate_dilemma(request: Request, language: str = "en"):
         return api_response_json
 
     except requests.exceptions.RequestException as e:
-        logger.error(f"Request error in /generate-dilemma: {str(e)}")
+        logger.error(f"Request error in /generate-dilemma: {e!s}")
         raise HTTPException(status_code=502, detail="Failed to connect to external API")
     except json.JSONDecodeError as e:
-        logger.error(f"JSON decode error in /generate-dilemma: {str(e)}")
+        logger.error(f"JSON decode error in /generate-dilemma: {e!s}")
         raise HTTPException(status_code=500, detail="Invalid JSON response from external API")
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in /generate-dilemma: {str(e)}")
+        logger.error(f"Error in /generate-dilemma: {e!s}")
         raise HTTPException(status_code=500, detail="Unable to generate a dilemma")
 
 @app.post("/analyze-results")
@@ -4465,7 +4482,7 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
             analysis_text = result['choices'][0]['message']['content']
             logger.info("Successfully generated analysis from Groq API")
         except requests.exceptions.RequestException as e:
-            logger.error(f"Request error in /analyze-results: {str(e)}")
+            logger.error(f"Request error in /analyze-results: {e!s}")
             return JSONResponse(
                 status_code=502,
                 content={
@@ -4489,7 +4506,7 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
                 },
             )
         except (json.JSONDecodeError, KeyError, IndexError) as e:
-            logger.error(f"Invalid AI response in /analyze-results: {str(e)}")
+            logger.error(f"Invalid AI response in /analyze-results: {e!s}")
             return JSONResponse(
                 status_code=502,
                 content={
@@ -4527,7 +4544,7 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in /analyze-results: {str(e)}")
+        logger.error(f"Error in /analyze-results: {e!s}")
         raise HTTPException(status_code=500, detail="Unable to analyze your results")
 
 # Lambda handler
