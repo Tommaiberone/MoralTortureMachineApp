@@ -1,9 +1,10 @@
 ---
 id: TASK-66
 title: Aggiungere report dilemma classificazione sensibile e age gate
-status: Backlog
+status: To Do
 assignee: []
 created_date: '2026-07-29 11:29'
+updated_date: '2026-08-31 08:04'
 labels:
   - m9-privacy
   - safety

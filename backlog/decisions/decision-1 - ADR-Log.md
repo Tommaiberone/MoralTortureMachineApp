@@ -2162,6 +2162,79 @@ prod. Tests added: `ValidationExceptionHandlerTests` in
 `loc`/`type` and never a planted `msg`/`input` value, and that the response
 body/status still match FastAPI's default shape).
 
+### ADR-090 — Backlog grooming for TASK-201-205: drop IT translation for new dilemmas, retire the 3/5/7 length experiment, scope the choice-color fix against ADR-044 (TASK-201/202/203/204/205)
+
+Context: a review of the newly created TASK-201 through TASK-205 (requested by
+the user before implementation started on any of them) surfaced three
+conflicts with existing state. (1) TASK-201 required Italian translations for
+15 new dilemmas in `dilemmas_it.json` while the app is forced English-only
+(TASK-101) and Italian sits under 1% of historical events - the same
+reasoning behind the existing `en.json`/`it.json` drift exception, even
+though that exception's text names only the i18next dictionaries, not the
+dilemma content catalog. (2) TASK-203 proposed hard-coding Solo Evaluation
+and Party Room back to a fixed 5 dilemmas, directly reversing the still
+`In Progress` TASK-23 3/5/7 length experiment, whose own AC#3 was
+deliberately left open on 2026-08-07 pending roughly two weeks of real
+traffic across all three variants before any comparison. (3) TASK-202's plan
+to neutralize the red/green dual-choice colors touches the exact same
+`btn-yes`/`btn-no` pairing ADR-044 (TASK-102/107) already modified for a
+WCAG AA contrast fix; that ADR explicitly scoped a full palette redesign as
+out of scope for that narrower accessibility task, not as a permanent
+rejection of one.
+
+Options considered: keep TASK-201's Italian-translation requirement as
+originally scoped (rejected by the user as wasted effort given the current
+English-only exception); add TASK-23 as a formal TASK-203 dependency and
+require pulling its completion/share comparison data before hardcoding 5
+(the user stated explicit confidence that 5 is the right call and chose to
+retire the experiment outright instead); leave TASK-202's four modes as
+separately hardcoded per-screen color values (rejected in favor of shared
+neutral tokens applied everywhere a dual ethical choice exists, per the
+user's explicit "ovunque ci sia la doppia scelta" instruction).
+
+Choice:
+- TASK-201: dropped the Italian-translation acceptance criterion;
+  `dilemmas_it.json` is not updated for these 15 dilemmas and is allowed to
+  drift, the same posture as the existing `en.json`/`it.json` exception.
+  TASK-66 (dilemma sensitive-content classification/age gate, still
+  `Backlog`/not started) is archived at the user's explicit instruction
+  rather than left as an unresolved dependency for this or future dilemma
+  content work - the bioethics dilemmas in this pool (euthanasia/genetics)
+  ship without a dedicated age gate.
+- TASK-203: TASK-23 (3/5/7 length experiment, `In Progress`) is archived.
+  The decision to fix both Solo Evaluation and Party Room at exactly 5
+  dilemmas is made directly by the user rather than derived from the AC#3
+  comparison TASK-23 was built to produce; that comparison will never be
+  completed. TASK-203 is expanded to also revert `EvaluationDilemmasScreen`'s
+  SEO description to name the fixed count again, since TASK-180's generic
+  wording existed only to avoid contradicting the now-removed experiment.
+- TASK-202: expanded to explicitly require preserving ADR-044's >=4.5:1 text
+  contrast (no regression), and to introduce the new neutral palette as
+  shared CSS variables applied consistently across every confirmed
+  dual-choice surface - Solo Evaluation (buttons + pie chart), Party Room
+  (buttons + reveal bar/vote text), Daily Moral Crime (buttons + result
+  bars), Moral Duel/`ChallengeLandingScreen` (buttons) - instead of four
+  separate ad-hoc per-screen fixes. TASK-204's new reveal donut/pie chart is
+  made to depend on TASK-202 so it is built with the neutral tokens directly
+  rather than repainting a freshly-added red/green chart.
+
+Consequences: TASK-23's own AC#3 stays permanently unresolved (task
+archived, not completed) - a future reader of `backlog/archive/tasks/task-23
+...` should treat the archive as a deliberate supersession by TASK-203, not
+an abandoned/forgotten task. TASK-66 remains unimplemented indefinitely; any
+future dilemma content work involving genuinely graphic or traumatic
+material should re-raise sensitive-content classification as a fresh task
+rather than assume TASK-66's old scope still applies. `dilemmas_it.json`
+drift now explicitly extends to new dilemma content, not just UI translation
+strings - if Italian is ever reactivated (per the TASK-101 exception note in
+`CLAUDE.md`), TASK-201's new dilemmas will need their own IT translation pass
+at that time. TASK-205 was also rewritten (without disputing its
+description) to state the TASK-123 baseline explicitly and scope the spike
+to only the three genuinely new asks, since its original draft re-described
+already-shipped awards (`contrarian`, `moralMinority`, `closestPair`) as if
+proposing them for the first time. No AWS/infrastructure change from any of
+this - pure backlog, content, and frontend scope adjustments.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
