@@ -2235,6 +2235,51 @@ already-shipped awards (`contrarian`, `moralMinority`, `closestPair`) as if
 proposing them for the first time. No AWS/infrastructure change from any of
 this - pure backlog, content, and frontend scope adjustments.
 
+### ADR-091 — TASK-201's 15 new dilemmas ship as content only; production DynamoDB repopulation stays a separate, explicit step (TASK-201)
+
+Context: implementing TASK-201 required understanding how `backend/data/
+dilemmas_en.json` actually reaches players. Nothing in `backend_fastapi.py`
+reads the JSON files at request time - `GET /get-dilemma` and
+`GET /dilemmas/by-ids` both `table.scan`/`get_item` directly against the
+single production `moral-torture-machine-dilemmas` DynamoDB table. The JSON
+files are seed content only, loaded by `backend/scripts/
+populate_dynamodb_multilang.py`, which is wired into `.github/workflows/
+deploy.yml`'s `populate-dynamodb` job - itself gated behind an explicit
+opt-in (`[populate-db]` in the commit message, or a manual `workflow_dispatch`
+run with `populate_dynamodb: true`), not run on an ordinary push to `main`.
+That script's `clear_dynamodb_table` step deletes every existing item in the
+table before reloading both language files from scratch, on the one
+production stack this repo has.
+
+Options considered: include `[populate-db]` in this task's commit so the new
+dilemmas go live immediately as part of the ordinary push-to-main deploy the
+user has standing authorization for (rejected - a full clear-then-reload of
+the only production dilemma table is exactly the kind of hard-to-reverse,
+production-data-affecting action that warrants asking first, and the
+workflow's own opt-in gate signals the repo already treats it that way,
+similar to how `versionCode` bumps get a separate confirmation despite the
+general deploy authorization); skip pushing the content until population is
+confirmed (rejected - the JSON content itself is inert until that job runs,
+so committing and pushing it carries no production risk on its own and
+matches the existing authorization for ordinary commits).
+
+Choice: the 15 new dilemmas are appended to `dilemmas_en.json` only (new,
+collision-checked 24-hex-char `_id`s not overlapping either language file;
+none of the existing 29 entries or their `_id`s were touched), pushed to
+`main` through the ordinary deploy path without the `[populate-db]` marker,
+and the user is asked explicitly whether/when to run the population step
+that actually clears and reloads the production table.
+
+Consequences: TASK-201 is `Done` (its acceptance criteria are about the
+content file, which is complete and validated - 44 total EN entries, no
+duplicate or malformed IDs, all 12 dimension weights per entry within
+0.0-1.0, `compute_dimension_averages`/`archetype_engine.py` have no
+hardcoded dilemma-count assumption per TASK-23's prior implementation notes)
+but the 15 new dilemmas will not appear to real players until someone
+explicitly runs `populate_dynamodb_multilang.py` against the production
+table (via the `[populate-db]` commit marker or `workflow_dispatch`) -
+future readers should not assume `Done` here means "live in production."
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
