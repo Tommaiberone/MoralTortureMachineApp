@@ -6,7 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-08-31 09:47'
-updated_date: '2026-08-31 10:02'
+updated_date: '2026-08-31 10:08'
 labels: []
 dependencies: []
 priority: high
@@ -33,4 +33,6 @@ Segnalato dall'utente in produzione (moraltorturemachine.com): DailyMoralCrimeSc
 Fix: aggiunto '?.' dopo 'daily' in entrambi i rami del ternario (frontend/src/screens/DailyMoralCrimeScreen.jsx righe 132-134): 'daily?.dilemma?.firstAnswer' / 'daily?.dilemma?.secondAnswer'. Diff minimale (2 righe), nessun'altra modifica. Verificato che non esistono altri accessi 'daily.xxx' non protetti fuori dal blocco guardato '{!loading && daily && (...)}' nello stesso file (grep completo eseguito). pnpm lint pulito, pnpm build:prod pulito. Nota: nel working tree locale era presente anche una riga duplicata e sintatticamente invalida (una seconda coda di ternario orfana) non presente in HEAD/produzione - rimossa insieme al fix vero.
 
 Inclusa anche una piccola modifica gia' presente nel working tree locale (non collegata al crash frontend): vote_daily_moral_crime ora logga anche error.response['Error']['Message'] oltre al Code quando la transazione DynamoDB fallisce (backend_fastapi.py), per diagnosticare piu' facilmente futuri 503 'Daily vote recording is temporarily unavailable' - sicuro da loggare (messaggio di errore lato AWS sulla transazione, non contenuto lato client). 184 test backend verdi, py_compile pulito. Version bump: 1.7.3 -> 1.7.4, versionCode 23 -> 24 (fix urgente di un crash al 100% delle visite, packaged web code).
+
+Deploy confermato: run 33380623870, tutti i job verdi incluso 'Publish to Google Play (production)' - fix live su web (S3/CloudFront) e versione 1.7.4/24 pubblicata su Play Store.
 <!-- SECTION:FINAL_SUMMARY:END -->
