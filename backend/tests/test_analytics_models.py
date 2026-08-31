@@ -299,6 +299,120 @@ class AnalyticsOverviewTests(unittest.TestCase):
         )
         daily_votes_table.scan.assert_not_called()
 
+    def test_party_room_panel_separates_participant_funnel_from_host_actions(self):
+        now_ms = 1785369600000
+        host_id = "party-host"
+        joiner_id = "party-joiner"
+        product_rows = [
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": host_id, "occurredAt": now_ms - 6000,
+             "actionType": "party_room_create_clicked", "platform": "web", "properties": "{}"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": host_id, "occurredAt": now_ms - 5000,
+             "actionType": "party_room_entered", "platform": "web", "properties": "{}"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": joiner_id, "occurredAt": now_ms - 4500,
+             "actionType": "party_room_entered", "platform": "web", "properties": "{}"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": host_id, "occurredAt": now_ms - 4000,
+             "actionType": "party_room_started_ui", "platform": "web", "properties": "{}"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": host_id, "occurredAt": now_ms - 3000,
+             "actionType": "party_room_vote_submitted", "platform": "web", "properties": "{}"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": joiner_id, "occurredAt": now_ms - 2500,
+             "actionType": "party_room_vote_submitted", "platform": "web", "properties": "{}"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": host_id, "occurredAt": now_ms - 2000,
+             "actionType": "party_room_advanced_ui", "platform": "web", "properties": "{}"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": host_id, "occurredAt": now_ms - 1000,
+             "actionType": "party_room_recap_shared", "platform": "web", "properties": "{}"},
+            # Outside the 7-day window and on a filtered-out platform - must not count anywhere below.
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "stale-user", "occurredAt": now_ms - (30 * 24 * 60 * 60 * 1000),
+             "actionType": "party_room_entered", "platform": "web", "properties": "{}"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "android-user", "occurredAt": now_ms - 500,
+             "actionType": "party_room_entered", "platform": "android", "properties": "{}"},
+        ]
+
+        overview = build_analytics_overview(
+            legacy_rows=[], product_rows=product_rows, days=7, now_ms=now_ms, platform="web",
+        )
+        party_room = overview["partyRoom"]
+
+        self.assertEqual(party_room["eventFunnel"], [
+            {"stage": "entered", "identities": 2, "fromPreviousPct": None},
+            {"stage": "voted", "identities": 2, "fromPreviousPct": 100.0},
+            {"stage": "shared", "identities": 1, "fromPreviousPct": 50.0},
+        ])
+        self.assertEqual(party_room["hostActions"], {
+            "createClicked": 1, "started": 1, "advanced": 1, "rematchCreated": 0,
+        })
+
+    def test_moral_duel_panel_counts_distinct_identities_across_both_sides(self):
+        now_ms = 1785369600000
+        creator_id = "duel-creator"
+        invitee_id = "duel-invitee"
+        product_rows = [
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": creator_id, "occurredAt": now_ms - 5000,
+             "actionType": "challenge_share_ready", "platform": "web", "properties": "{}"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": invitee_id, "occurredAt": now_ms - 4000,
+             "actionType": "challenge_landing_viewed", "platform": "web", "properties": "{}"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": invitee_id, "occurredAt": now_ms - 3000,
+             "actionType": "challenge_joined_client", "platform": "web", "properties": "{}"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": invitee_id, "occurredAt": now_ms - 2000,
+             "actionType": "challenge_completed_client", "platform": "web", "properties": "{}"},
+        ]
+
+        overview = build_analytics_overview(
+            legacy_rows=[], product_rows=product_rows, days=7, now_ms=now_ms, platform="web",
+        )
+
+        self.assertEqual(overview["moralDuel"]["eventFunnel"], [
+            {"stage": "challengeCreated", "identities": 1, "fromPreviousPct": None},
+            {"stage": "landingViewed", "identities": 1, "fromPreviousPct": 100.0},
+            {"stage": "joined", "identities": 1, "fromPreviousPct": 100.0},
+            {"stage": "completed", "identities": 1, "fromPreviousPct": 100.0},
+            {"stage": "compared", "identities": 0, "fromPreviousPct": 0.0},
+        ])
+
+    def test_interaction_breakdowns_cover_mode_share_and_login_ctr(self):
+        now_ms = 1785369600000
+        product_rows = [
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-1", "occurredAt": now_ms - 9000,
+             "actionType": "mode_selected", "platform": "web", "properties": '{"mode": "evaluation"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-2", "occurredAt": now_ms - 8000,
+             "actionType": "mode_selected", "platform": "web", "properties": '{"mode": "evaluation"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-3", "occurredAt": now_ms - 7000,
+             "actionType": "mode_selected", "platform": "web", "properties": '{"mode": "party"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-1", "occurredAt": now_ms - 6000,
+             "actionType": "share_clicked", "platform": "web",
+             "properties": '{"channel": "whatsapp", "object_type": "challenge"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-2", "occurredAt": now_ms - 5000,
+             "actionType": "share_clicked", "platform": "web",
+             "properties": '{"channel": "whatsapp", "object_type": "challenge"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-3", "occurredAt": now_ms - 4000,
+             "actionType": "share_clicked", "platform": "web",
+             "properties": '{"channel": "copy_link", "object_type": "result"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-1", "occurredAt": now_ms - 3000,
+             "actionType": "auth_prompt_shown", "platform": "web", "properties": '{"surface": "results_challenge"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-2", "occurredAt": now_ms - 2000,
+             "actionType": "auth_prompt_shown", "platform": "web", "properties": '{"surface": "results_challenge"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-3", "occurredAt": now_ms - 1000,
+             "actionType": "auth_prompt_shown", "platform": "web", "properties": '{"surface": "results_challenge"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-1", "occurredAt": now_ms - 500,
+             "actionType": "auth_prompt_clicked", "platform": "web", "properties": '{"surface": "results_challenge"}'},
+        ]
+
+        overview = build_analytics_overview(
+            legacy_rows=[], product_rows=product_rows, days=7, now_ms=now_ms, platform="web",
+        )
+        breakdowns = overview["interactionBreakdowns"]
+
+        self.assertEqual(breakdowns["modeSelected"], [
+            {"mode": "evaluation", "count": 2},
+            {"mode": "party", "count": 1},
+        ])
+        self.assertEqual(breakdowns["shareClicked"], [
+            {"channel": "whatsapp", "objectType": "challenge", "count": 2},
+            {"channel": "copy_link", "objectType": "result", "count": 1},
+        ])
+        self.assertEqual(breakdowns["authPromptCtr"], [
+            {"surface": "results_challenge", "shown": 3, "clicked": 1, "clickThroughPct": 33.3},
+        ])
+
     def test_flags_rapid_replay_without_exposing_source_identity(self):
         now_ms = 1785369600000
         raw_network_hash = "legacy-network-value"

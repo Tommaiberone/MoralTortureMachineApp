@@ -2480,6 +2480,70 @@ verified by `pnpm lint`/`pnpm build:prod` and code review only - per
 a manual visual pass on `/daily`, `/party/:code`, `/challenge/:token`, and the
 evaluation flow is still worth doing before/at next deploy.
 
+### ADR-096 — Dedicated Party Room/Duel funnels, property-level click breakdowns, and stacked mobile tables for the analytics dashboard (TASK-215/216/217)
+
+Context: the user judged the analytics dashboard "behind", with bad mobile UX
+and no visibility into the individual game modes or key clicks. Auditing
+`AnalyticsAdminScreen.jsx` and `build_analytics_overview` (backend) found this
+was concrete, not a vague impression: the dashboard's only generic funnel
+(`test_started` -> `answered` -> `test_completed` -> `result_viewed` ->
+`shared`) is Solo-Evaluation-shaped, and only Daily Moral Crime (`TASK-197`)
+had ever gotten its own dedicated panel - Party Room and Moral Duel, despite
+having rich dedicated events, were invisible beyond flat rows in the raw
+`eventCounts` list (i.e. `TASK-40`, "Strumentare e reportizzare il loop
+challenge", closed `Done` without ever actually building a Duel-specific
+report - the TASK-138 lesson about not trusting a `Done` label applies here
+too). Separately, `mode_selected` - the one event that should say which mode
+people actually pick from the home screen - turned out to be broken at the
+instrumentation layer, not just undisplayed: the Party Room home button fired
+no `trackEvent` call at all, and the Daily button only fired its own distinct
+event, so in practice `mode_selected` only ever carried `mode: "evaluation"`.
+Building a dashboard breakdown on top of that without fixing it first would
+have shipped a breakdown that confidently reported the wrong thing. The two
+widest tables (abuse: 9 columns, recent events: 8, the latter with nested
+`<details>`) were also confirmed pure horizontal-scroll strips below the
+dashboard's own existing 45rem/28rem breakpoints, unlike every other section
+already reworked by `TASK-128`/`189`.
+
+Choice: (1) `TASK-215` added `build_party_room_analytics` (per-participant
+funnel entered -> voted -> shared, with host-only actions counted
+separately so they cannot narrow the participant funnel) and
+`build_moral_duel_analytics` (challenge created -> landing viewed -> joined
+-> completed -> compared, deliberately counting identities across both
+sides of the invite), both built on one shared `_build_identity_funnel`
+helper factored out of Daily's inline version rather than a third copy
+(CLAUDE.md's reuse-over-duplicate rule from ADR-095, applied the same day it
+was written). (2) Fixed `HomeScreen.jsx` so all three home CTAs
+(evaluation/daily/party) fire `mode_selected` before navigating, then added
+`build_interaction_breakdowns` (`TASK-216`): `mode_selected` by `mode`,
+`share_clicked` by `channel`+`object_type`, and an
+`auth_prompt_shown`/`auth_prompt_clicked` click-through rate by `surface` -
+confirmed none of these properties are on the ingest or dashboard-display
+forbidden-property lists (`challenge_token` is, per the pre-existing,
+unrelated `TASK-200`, but neither new funnel depends on it). Both new
+backend blocks are wired into the existing `/admin/analytics/overview`
+response, respecting the same `days`/`platform` filters and 60-second cache
+as every other block, at zero extra AWS cost (pure Lambda computation over
+already-fetched events, no new DynamoDB reads or writes). (3) `TASK-217`
+added a `.analytics-table-wrap--stack` modifier that turns both dense tables
+into one card per row below 45rem, using `data-label` attributes already
+present on every `<td>` plus a CSS `::before { content: attr(data-label) }`
+label - chosen over hiding "less important" columns because it is strictly
+non-lossy and requires no subjective judgment about which of the 8-9 columns
+matters most on a phone.
+
+Consequences: two of the four game modes have a real read on how far people
+get, not just how many raw events fired; `mode_selected` is now a trustworthy
+"which mode did they pick" signal instead of a Solo-only stat masquerading as
+global. New i18n strings went into `en.json` only, per the `it.json` drift
+exception. All three tasks' 189-test backend suite, `pnpm lint`, and
+`pnpm build:prod` pass; per `CLAUDE.md`'s browser-automation ban no live
+browser/device check was performed, so the stacked-table mobile layout in
+particular is worth a manual phone check before treating `TASK-217` as fully
+verified. `TASK-200` (challenge_token dropped from every analytics event)
+remains open and unrelated to this work, but blocks any *future* per-challenge
+(as opposed to per-identity) Duel report.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

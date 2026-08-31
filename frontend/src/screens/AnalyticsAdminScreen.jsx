@@ -159,6 +159,20 @@ const AnalyticsAdminScreen = () => {
   const dailyAggregate = dailyMoralCrime.currentAggregate || {};
   const dailyFunnelMaximum = Math.max(...dailyFunnel.map((stage) => stage.identities), 1);
 
+  const partyRoom = data.partyRoom || {};
+  const partyFunnel = Array.isArray(partyRoom.eventFunnel) ? partyRoom.eventFunnel : [];
+  const partyFunnelMaximum = Math.max(...partyFunnel.map((stage) => stage.identities), 1);
+  const partyHostActions = Object.entries(partyRoom.hostActions || {});
+
+  const moralDuel = data.moralDuel || {};
+  const duelFunnel = Array.isArray(moralDuel.eventFunnel) ? moralDuel.eventFunnel : [];
+  const duelFunnelMaximum = Math.max(...duelFunnel.map((stage) => stage.identities), 1);
+
+  const interactionBreakdowns = data.interactionBreakdowns || {};
+  const modeSelectedBreakdown = Array.isArray(interactionBreakdowns.modeSelected) ? interactionBreakdowns.modeSelected : [];
+  const shareClickedBreakdown = Array.isArray(interactionBreakdowns.shareClicked) ? interactionBreakdowns.shareClicked : [];
+  const authPromptCtr = Array.isArray(interactionBreakdowns.authPromptCtr) ? interactionBreakdowns.authPromptCtr : [];
+
   return (
     <main className="analytics-admin">
       <aside className="analytics-sidebar">
@@ -173,6 +187,9 @@ const AnalyticsAdminScreen = () => {
           {[
             ['abuse', '⌁', t('analyticsAdmin.abuseTitle')],
             ['daily', '◉', t('analyticsAdmin.dailyTitle')],
+            ['party', '◈', t('analyticsAdmin.partyTitle')],
+            ['duel', '⚔', t('analyticsAdmin.duelTitle')],
+            ['interactions', '⊙', t('analyticsAdmin.interactionsTitle')],
             ['trends', '↝', t('analyticsAdmin.trend')],
             ['funnel', '↳', t('analyticsAdmin.funnel')],
             ['breakdowns', '▦', t('analyticsAdmin.breakdowns')],
@@ -299,7 +316,7 @@ const AnalyticsAdminScreen = () => {
           })}</span>
           <small>{t('analyticsAdmin.abuseGuardLimitation')}</small>
         </aside>
-        <div className="analytics-table-wrap">
+        <div className="analytics-table-wrap analytics-table-wrap--stack">
           <table>
             <thead>
               <tr>
@@ -317,19 +334,19 @@ const AnalyticsAdminScreen = () => {
             <tbody>
               {abuse.anomalies.length ? abuse.anomalies.map((row) => (
                 <tr key={row.identity}>
-                  <td><code>{row.identity}</code><small className="analytics-cell-note">{row.identitySource}</small></td>
-                  <td><span className={`analytics-badge analytics-badge--${row.risk}`}>{t(`analyticsAdmin.abuseRisk_${row.risk}`)}</span></td>
-                  <td className="analytics-num">{formatNumber(row.events)}</td>
-                  <td className="analytics-num">{formatNumber(row.peakEventsPerMinute)}/min</td>
-                  <td className="analytics-num">{formatNumber(row.dilemmasFetched)} / {formatNumber(row.votesCast)} / {formatNumber(row.resultsAnalyzed)}</td>
-                  <td className="analytics-num">{formatNumber(row.sessions)}</td>
-                  <td>{row.platform}</td>
-                  <td className="analytics-reasons">
+                  <td data-label={t('analyticsAdmin.identity')}><code>{row.identity}</code><small className="analytics-cell-note">{row.identitySource}</small></td>
+                  <td data-label={t('analyticsAdmin.abuseRisk')}><span className={`analytics-badge analytics-badge--${row.risk}`}>{t(`analyticsAdmin.abuseRisk_${row.risk}`)}</span></td>
+                  <td className="analytics-num" data-label={t('analyticsAdmin.events')}>{formatNumber(row.events)}</td>
+                  <td className="analytics-num" data-label={t('analyticsAdmin.abusePeak')}>{formatNumber(row.peakEventsPerMinute)}/min</td>
+                  <td className="analytics-num" data-label={t('analyticsAdmin.abuseFlow')}>{formatNumber(row.dilemmasFetched)} / {formatNumber(row.votesCast)} / {formatNumber(row.resultsAnalyzed)}</td>
+                  <td className="analytics-num" data-label={t('analyticsAdmin.sessions')}>{formatNumber(row.sessions)}</td>
+                  <td data-label={t('analyticsAdmin.platform')}>{row.platform}</td>
+                  <td className="analytics-reasons" data-label={t('analyticsAdmin.abuseReasons')}>
                     {row.reasons.map((reason) => (
                       <span key={reason}>{t(`analyticsAdmin.abuseReason_${reason}`)}</span>
                     ))}
                   </td>
-                  <td>{formatDateTime(row.lastSeen)}</td>
+                  <td data-label={t('analyticsAdmin.abuseLastSeen')}>{formatDateTime(row.lastSeen)}</td>
                 </tr>
               )) : (
                 <tr><td colSpan="9" className="analytics-empty-row">{t('analyticsAdmin.abuseNoAnomalies')}</td></tr>
@@ -404,6 +421,150 @@ const AnalyticsAdminScreen = () => {
               </div>
             </>
           ) : <p className="analytics-chart-empty">{t('analyticsAdmin.dailyAggregateUnavailable')}</p>}
+        </article>
+      </section>
+      )}
+
+      {activeSection === 'party' && (
+      <section className="analytics-grid analytics-grid--daily" id="panel-party" role="tabpanel" aria-labelledby="tab-party">
+        <article className="analytics-card">
+          <div className="analytics-section-heading">
+            <div>
+              <h2>{t('analyticsAdmin.partyTitle')}</h2>
+              <p>{t('analyticsAdmin.partyDescription')}</p>
+            </div>
+          </div>
+          <p className="analytics-card-copy analytics-daily-scope">{t('analyticsAdmin.partyEventScope')}</p>
+          {partyFunnel.length ? (
+            <div className="analytics-daily-funnel">
+              {partyFunnel.map((stage, index) => (
+                <div className="analytics-funnel-row" key={stage.stage}>
+                  <div>
+                    <span>{index + 1}. {t(`analyticsAdmin.partyStage_${stage.stage}`)}</span>
+                    <strong>{formatNumber(stage.identities)}</strong>
+                  </div>
+                  <div className="analytics-funnel-track">
+                    <i style={{ width: `${Math.max((stage.identities / partyFunnelMaximum) * 100, stage.identities ? 3 : 0)}%` }} />
+                  </div>
+                  <small>
+                    {stage.fromPreviousPct === null
+                      ? t('analyticsAdmin.baseline')
+                      : `${stage.fromPreviousPct}% ${t('analyticsAdmin.fromPrevious')}`}
+                  </small>
+                </div>
+              ))}
+            </div>
+          ) : <p className="analytics-chart-empty">{t('analyticsAdmin.noData')}</p>}
+        </article>
+
+        <article className="analytics-card">
+          <div className="analytics-section-heading">
+            <div>
+              <h2>{t('analyticsAdmin.partyHostActionsTitle')}</h2>
+              <p>{t('analyticsAdmin.partyHostActionsDescription')}</p>
+            </div>
+          </div>
+          <div className="analytics-ranked-list analytics-ranked-list--compact">
+            {partyHostActions.map(([key, count]) => (
+              <div key={key}>
+                <code>{t(`analyticsAdmin.partyHostAction_${key}`)}</code>
+                <strong>{formatNumber(count)}</strong>
+              </div>
+            ))}
+          </div>
+        </article>
+      </section>
+      )}
+
+      {activeSection === 'duel' && (
+      <section className="analytics-card" id="panel-duel" role="tabpanel" aria-labelledby="tab-duel">
+        <div className="analytics-section-heading">
+          <div>
+            <h2>{t('analyticsAdmin.duelTitle')}</h2>
+            <p>{t('analyticsAdmin.duelDescription')}</p>
+          </div>
+        </div>
+        <p className="analytics-card-copy analytics-daily-scope">{t('analyticsAdmin.duelEventScope')}</p>
+        {duelFunnel.length ? (
+          <div className="analytics-daily-funnel">
+            {duelFunnel.map((stage, index) => (
+              <div className="analytics-funnel-row" key={stage.stage}>
+                <div>
+                  <span>{index + 1}. {t(`analyticsAdmin.duelStage_${stage.stage}`)}</span>
+                  <strong>{formatNumber(stage.identities)}</strong>
+                </div>
+                <div className="analytics-funnel-track">
+                  <i style={{ width: `${Math.max((stage.identities / duelFunnelMaximum) * 100, stage.identities ? 3 : 0)}%` }} />
+                </div>
+                <small>
+                  {stage.fromPreviousPct === null
+                    ? t('analyticsAdmin.baseline')
+                    : `${stage.fromPreviousPct}% ${t('analyticsAdmin.fromPrevious')}`}
+                </small>
+              </div>
+            ))}
+          </div>
+        ) : <p className="analytics-chart-empty">{t('analyticsAdmin.noData')}</p>}
+      </section>
+      )}
+
+      {activeSection === 'interactions' && (
+      <section className="analytics-grid analytics-grid--daily" id="panel-interactions" role="tabpanel" aria-labelledby="tab-interactions">
+        <article className="analytics-card">
+          <div className="analytics-section-heading">
+            <div>
+              <h2>{t('analyticsAdmin.interactionsTitle')}</h2>
+              <p>{t('analyticsAdmin.interactionsDescription')}</p>
+            </div>
+          </div>
+          <h3>{t('analyticsAdmin.modeSelectedTitle')}</h3>
+          <div className="analytics-ranked-list analytics-ranked-list--compact">
+            {modeSelectedBreakdown.length ? modeSelectedBreakdown.map((row) => (
+              <div key={row.mode}><code>{row.mode}</code><strong>{formatNumber(row.count)}</strong></div>
+            )) : <p>{t('analyticsAdmin.noData')}</p>}
+          </div>
+          <h3>{t('analyticsAdmin.shareClickedTitle')}</h3>
+          <div className="analytics-ranked-list analytics-ranked-list--compact">
+            {shareClickedBreakdown.length ? shareClickedBreakdown.map((row) => (
+              <div key={`${row.channel}-${row.objectType}`}>
+                <code>{row.channel} · {row.objectType}</code>
+                <strong>{formatNumber(row.count)}</strong>
+              </div>
+            )) : <p>{t('analyticsAdmin.noData')}</p>}
+          </div>
+        </article>
+
+        <article className="analytics-card">
+          <div className="analytics-section-heading">
+            <div>
+              <h2>{t('analyticsAdmin.authPromptCtrTitle')}</h2>
+              <p>{t('analyticsAdmin.authPromptCtrDescription')}</p>
+            </div>
+          </div>
+          <div className="analytics-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>{t('analyticsAdmin.ctrSurface')}</th>
+                  <th className="analytics-num">{t('analyticsAdmin.ctrShown')}</th>
+                  <th className="analytics-num">{t('analyticsAdmin.ctrClicked')}</th>
+                  <th className="analytics-num">{t('analyticsAdmin.ctrRate')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {authPromptCtr.length ? authPromptCtr.map((row) => (
+                  <tr key={row.surface}>
+                    <td><code>{row.surface}</code></td>
+                    <td className="analytics-num">{formatNumber(row.shown)}</td>
+                    <td className="analytics-num">{formatNumber(row.clicked)}</td>
+                    <td className="analytics-num">{row.clickThroughPct === null ? '—' : `${row.clickThroughPct}%`}</td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan="4" className="analytics-empty-row">{t('analyticsAdmin.noData')}</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </article>
       </section>
       )}
@@ -570,7 +731,7 @@ const AnalyticsAdminScreen = () => {
           </div>
           <span>{t('analyticsAdmin.generatedAt')} {formatDateTime(data.generatedAt)}</span>
         </div>
-        <div className="analytics-table-wrap">
+        <div className="analytics-table-wrap analytics-table-wrap--stack">
           <table>
             <thead>
               <tr>
@@ -587,14 +748,14 @@ const AnalyticsAdminScreen = () => {
             <tbody>
               {data.recentEvents.map((event, index) => (
                 <tr key={`${event.occurredAt}-${event.eventName}-${index}`}>
-                  <td>{formatDateTime(event.occurredAt)}</td>
-                  <td><code>{event.eventName}</code></td>
-                  <td>{event.platform}</td>
-                  <td>{event.appVersion}</td>
-                  <td><span className={`analytics-badge analytics-badge--${event.platformResolution}`}>{event.platformResolution}</span></td>
-                  <td>{event.source}</td>
-                  <td><code>{event.identity}</code></td>
-                  <td className="analytics-details-cell">
+                  <td data-label={t('analyticsAdmin.time')}>{formatDateTime(event.occurredAt)}</td>
+                  <td data-label={t('analyticsAdmin.event')}><code>{event.eventName}</code></td>
+                  <td data-label={t('analyticsAdmin.platform')}>{event.platform}</td>
+                  <td data-label={t('analyticsAdmin.version')}>{event.appVersion}</td>
+                  <td data-label={t('analyticsAdmin.quality')}><span className={`analytics-badge analytics-badge--${event.platformResolution}`}>{event.platformResolution}</span></td>
+                  <td data-label={t('analyticsAdmin.source')}>{event.source}</td>
+                  <td data-label={t('analyticsAdmin.identity')}><code>{event.identity}</code></td>
+                  <td className="analytics-details-cell" data-label={t('analyticsAdmin.details')}>
                     {Object.keys(event.properties).length ? (
                       <details>
                         <summary>

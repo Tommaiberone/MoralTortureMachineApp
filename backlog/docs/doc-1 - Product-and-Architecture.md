@@ -332,6 +332,39 @@ dev table, or `/dev` SSM hierarchy.
   The overview reads that one known `(dayKey, "aggregate")` primary key with
   a projected `GetItem`, never scans or returns participant rows, and marks
   the aggregate unavailable rather than substituting zero on a DynamoDB error.
+- `TASK-215` added the same per-identity-funnel treatment for Party Room and
+  Moral Duel, previously only visible as flat rows in `eventCounts`: `party`
+  (`build_party_room_analytics`) is a per-participant funnel
+  (`party_room_entered` -> `party_room_vote_submitted` ->
+  `party_room_recap_shared`) plus separate host-only action counts
+  (create/start/advance/rematch), kept out of the funnel itself because only
+  the host ever fires those and mixing them in would undercount participants
+  as "narrowing"; `duel` (`build_moral_duel_analytics`) is
+  `challenge_share_ready` -> `challenge_landing_viewed` ->
+  `challenge_joined_client` -> `challenge_completed_client` ->
+  `challenge_compare_viewed`, intentionally counting distinct identities
+  across *both* the creator and invitee side since the loop is inherently
+  two-sided. Both reuse the identical stage-set/identity-count logic via a
+  shared `_build_identity_funnel` helper rather than a third copy of Daily's
+  inline version. `TASK-216` added `interactionBreakdowns`
+  (`build_interaction_breakdowns`): `mode_selected` broken down by its own
+  `mode` property, `share_clicked` by `channel`+`object_type`, and an
+  `auth_prompt_clicked`/`auth_prompt_shown` click-through rate per `surface` -
+  none of these were answerable from the flat per-event-name counts alone.
+  Fixing this exposed a real instrumentation gap it would otherwise have
+  reported misleadingly: the Party Room home-screen button fired no
+  `trackEvent` at all, and the Daily button only fired its own dedicated
+  event, so `mode_selected` in practice only ever reflected the Solo
+  Evaluation button; `HomeScreen.jsx` now fires `mode_selected` from all
+  three home CTAs (`evaluation`/`daily`/`party`) so the breakdown is
+  comparable across modes. Separately, `TASK-200` (still open, unrelated to
+  this fix) documents that `challenge_token` is silently dropped from every
+  analytics event by an overly broad "token" substring filter on both the
+  ingest validator and the dashboard's property normalizer - the new Duel
+  funnel above does not depend on `challenge_token` (it counts by event name
+  and identity, not by joining on the token), so it is unaffected, but a
+  future per-challenge (rather than per-identity) Duel report would need
+  TASK-200 resolved first.
 - Abuse monitoring groups events using a server-generated, HMAC-peppered network
   pseudonym where available, falling back to anonymous or session identity. The
   dashboard returns only a short derived mask, behavioral counts, thresholds,

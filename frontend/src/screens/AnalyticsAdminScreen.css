@@ -819,6 +819,45 @@
     height: 0.15rem;
   }
   .analytics-sidebar-account { display: none; }
+
+  /* TASK-217: below the width every other section already stacks at, the
+     abuse and recent-events tables (9 and 8 columns) stop being a pure
+     horizontal-scroll strip and become one card per row instead - every
+     cell keeps its own data-label (set in AnalyticsAdminScreen.jsx) as a
+     heading above its value, so no column is dropped, only reflowed. */
+  .analytics-table-wrap--stack { overflow: visible; }
+  .analytics-table-wrap--stack table,
+  .analytics-table-wrap--stack tbody,
+  .analytics-table-wrap--stack tr { display: block; width: 100%; }
+  .analytics-table-wrap--stack thead { display: none; }
+  .analytics-table-wrap--stack tbody tr {
+    margin-bottom: 0.75rem;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid var(--analytics-line);
+    border-radius: 8px;
+  }
+  .analytics-table-wrap--stack tbody tr:last-child { margin-bottom: 0; }
+  .analytics-table-wrap--stack td {
+    display: block;
+    max-width: none;
+    padding: 0.4rem 0;
+    border-bottom: 1px dashed var(--analytics-line);
+    text-align: left;
+    white-space: normal;
+  }
+  .analytics-table-wrap--stack td:last-child { border-bottom: 0; }
+  .analytics-table-wrap--stack td.analytics-num { text-align: left; }
+  .analytics-table-wrap--stack td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.2rem;
+    color: var(--analytics-muted);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .analytics-table-wrap--stack .analytics-empty-row { padding: 0.6rem 0; }
 }
 
 @media (max-width: 28rem) {

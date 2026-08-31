@@ -201,6 +201,36 @@ DAILY_MORAL_CRIME_ANALYTICS_STAGES = (
     ("shared", "daily_moral_crime_audience_shared"),
 )
 
+# TASK-215: per-participant stages only (host-only actions like
+# create/start/advance/rematch are counted separately in
+# PARTY_ROOM_HOST_ACTION_EVENTS below) so the funnel reflects "how far did a
+# person get", not "who happened to be the host". party_room_entered fires
+# for the host and every joiner alike once they are in the room.
+PARTY_ROOM_ANALYTICS_STAGES = (
+    ("entered", "party_room_entered"),
+    ("voted", "party_room_vote_submitted"),
+    ("shared", "party_room_recap_shared"),
+)
+PARTY_ROOM_HOST_ACTION_EVENTS = (
+    ("createClicked", "party_room_create_clicked"),
+    ("started", "party_room_started_ui"),
+    ("advanced", "party_room_advanced_ui"),
+    ("rematchCreated", "party_room_rematch_created"),
+)
+
+# TASK-215: the Duel loop inherently spans two people (creator, invitee), so
+# unlike the other funnels this one intentionally counts distinct identities
+# across both sides of the invite rather than one person's own journey -
+# stage order still tracks how far the *pair* got, from a challenge existing
+# to being compared.
+MORAL_DUEL_ANALYTICS_STAGES = (
+    ("challengeCreated", "challenge_share_ready"),
+    ("landingViewed", "challenge_landing_viewed"),
+    ("joined", "challenge_joined_client"),
+    ("completed", "challenge_completed_client"),
+    ("compared", "challenge_compare_viewed"),
+)
+
 # TASK-64: accounts and shareable profiles expire after twelve months without
 # activity. Shorter domain-specific limits (analytics, challenges, Party Room,
 # and operational alerts) remain defined separately below/above.
@@ -3891,6 +3921,127 @@ def build_daily_moral_crime_analytics(
         },
     }
 
+
+def _build_identity_funnel(
+    events: list[dict[str, Any]],
+    stages: tuple[tuple[str, str], ...],
+) -> list[dict[str, Any]]:
+    """Shared per-identity funnel builder (TASK-215): same shape as Daily
+    Moral Crime's own inline version above, factored out since Party Room
+    and Moral Duel both need the identical stage-set/identity-count logic."""
+    stage_identities = {stage: set() for stage, _ in stages}
+    for event in events:
+        for stage, event_name in stages:
+            if event["eventName"] == event_name:
+                stage_identities[stage].add(event["identity"])
+
+    funnel = []
+    previous_count = None
+    for stage, _ in stages:
+        count = len(stage_identities[stage])
+        funnel.append({
+            "stage": stage,
+            "identities": count,
+            "fromPreviousPct": (
+                round((count / previous_count) * 100, 1) if previous_count else None
+            ),
+        })
+        previous_count = count
+    return funnel
+
+
+def build_party_room_analytics(events: list[dict[str, Any]]) -> dict[str, Any]:
+    """Party Room dashboard panel (TASK-215): a per-participant funnel
+    (entered -> voted -> shared) plus separate counts for the host-only
+    actions, which would otherwise silently narrow a per-participant funnel
+    down to "how many hosts" instead of "how many participants"."""
+    host_action_identities = {key: set() for key, _ in PARTY_ROOM_HOST_ACTION_EVENTS}
+    for event in events:
+        for key, event_name in PARTY_ROOM_HOST_ACTION_EVENTS:
+            if event["eventName"] == event_name:
+                host_action_identities[key].add(event["identity"])
+
+    return {
+        "eventFunnel": _build_identity_funnel(events, PARTY_ROOM_ANALYTICS_STAGES),
+        "hostActions": {
+            key: len(identities) for key, identities in host_action_identities.items()
+        },
+    }
+
+
+def build_moral_duel_analytics(events: list[dict[str, Any]]) -> dict[str, Any]:
+    """Moral Duel dashboard panel (TASK-215): challenge created -> invite
+    landing viewed -> joined -> completed -> compared. Intentionally counts
+    distinct identities across both the creator and the invitee side of the
+    invite, since the loop is inherently two-sided."""
+    return {
+        "eventFunnel": _build_identity_funnel(events, MORAL_DUEL_ANALYTICS_STAGES),
+    }
+
+
+# TASK-216: the dashboard's flat per-event-name eventCounts cannot answer
+# "which value" for a click that matters precisely because of its own
+# property - which mode people actually pick from the home screen, which
+# channel they share through. Both properties already pass ingest validation
+# (backend_fastapi.py's validate_properties) and are not on the
+# forbidden/identifying list, unlike challenge_token (TASK-200, unrelated
+# pre-existing gap: dropped by an overly broad "token" substring filter).
+INTERACTION_BREAKDOWN_SINGLE_PROPERTY_EVENTS = (
+    ("modeSelected", "mode_selected", "mode"),
+)
+
+
+def build_interaction_breakdowns(events: list[dict[str, Any]]) -> dict[str, Any]:
+    """Property-level breakdowns for clicks the flat eventCounts list can't
+    answer (TASK-216): which mode gets picked, which share channel gets
+    used, and the login-prompt click-through rate per surface."""
+    single_property_counts: dict[str, Counter] = {
+        key: Counter() for key, _, _ in INTERACTION_BREAKDOWN_SINGLE_PROPERTY_EVENTS
+    }
+    share_clicked_counts: Counter = Counter()
+    auth_prompt_shown: Counter = Counter()
+    auth_prompt_clicked: Counter = Counter()
+
+    for event in events:
+        properties = event["properties"]
+        for key, event_name, property_key in INTERACTION_BREAKDOWN_SINGLE_PROPERTY_EVENTS:
+            if event["eventName"] == event_name:
+                value = properties.get(property_key)
+                single_property_counts[key][str(value) if value is not None else "unknown"] += 1
+
+        if event["eventName"] == "share_clicked":
+            channel = str(properties.get("channel") or "unknown")
+            object_type = str(properties.get("object_type") or "unknown")
+            share_clicked_counts[(channel, object_type)] += 1
+        elif event["eventName"] == "auth_prompt_shown":
+            auth_prompt_shown[str(properties.get("surface") or "unknown")] += 1
+        elif event["eventName"] == "auth_prompt_clicked":
+            auth_prompt_clicked[str(properties.get("surface") or "unknown")] += 1
+
+    auth_prompt_ctr = []
+    for surface in sorted(set(auth_prompt_shown) | set(auth_prompt_clicked)):
+        shown = auth_prompt_shown[surface]
+        clicked = auth_prompt_clicked[surface]
+        auth_prompt_ctr.append({
+            "surface": surface,
+            "shown": shown,
+            "clicked": clicked,
+            "clickThroughPct": round((clicked / shown) * 100, 1) if shown else None,
+        })
+
+    return {
+        "modeSelected": [
+            {"mode": mode, "count": count}
+            for mode, count in single_property_counts["modeSelected"].most_common()
+        ],
+        "shareClicked": [
+            {"channel": channel, "objectType": object_type, "count": count}
+            for (channel, object_type), count in share_clicked_counts.most_common()
+        ],
+        "authPromptCtr": auth_prompt_ctr,
+    }
+
+
 def build_analytics_overview(
     legacy_rows: list[dict[str, Any]],
     product_rows: list[dict[str, Any]],
@@ -4019,6 +4170,9 @@ def build_analytics_overview(
         daily_moral_crime_aggregates,
         now_ms,
     )
+    party_room = build_party_room_analytics(events)
+    moral_duel = build_moral_duel_analytics(events)
+    interaction_breakdowns = build_interaction_breakdowns(events)
 
     return {
         "generatedAt": now_ms,
@@ -4052,6 +4206,9 @@ def build_analytics_overview(
         "recentEvents": recent_events,
         "abuseMonitoring": abuse_monitoring,
         "dailyMoralCrime": daily_moral_crime,
+        "partyRoom": party_room,
+        "moralDuel": moral_duel,
+        "interactionBreakdowns": interaction_breakdowns,
         "dataQuality": {
             "exactPlatformCoveragePct": round((exact_events / total_events) * 100, 1) if total_events else 0,
             "anonymousIdentityCoveragePct": round((anonymous_events / total_events) * 100, 1) if total_events else 0,
