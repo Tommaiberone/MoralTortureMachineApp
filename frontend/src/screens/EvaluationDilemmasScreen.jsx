@@ -377,7 +377,7 @@ const EvaluationDilemmasScreen = () => {
               </div>
             ) : (
               <div>
-                <p className="evaluation-tease-text">
+                <p className="tease-text">
                   {selectedTease}
                 </p>
                 <div className="evaluation-chart-container">

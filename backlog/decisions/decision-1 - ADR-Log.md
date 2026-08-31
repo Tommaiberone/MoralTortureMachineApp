@@ -2428,6 +2428,58 @@ the code was merged and reviewed, not that a real user ever successfully
 loaded it. TASK-208 (pre-existing task, filled in and closed here) tracks
 this fix; no other freeze-window feature has been audited yet.
 
+### ADR-095 — One shared `.tease-text` class and stricter shared.css reuse instead of per-screen CSS drift across game modes (TASK-214)
+
+Context: the user asked to make fonts/sizes/colors consistent across all four
+game modes (Solo Evaluation, Party Room, Moral Duel, Daily Moral Crime) and to
+create reusable snippets so they stop diverging again. Auditing the four
+screens' CSS against `shared.css` found concrete, not cosmetic, drift:
+`DailyMoralCrimeScreen.css` was the only game-mode stylesheet using `rem`
+(the app's root font-size is a non-standard `21px`, so its sizes silently
+drifted out of the `px` convention every other screen uses, and would resize
+under browser text-zoom while sibling screens would not); `.daily-kicker`/
+`.daily-choice-label`/`.daily-inline-error` painted text with the raw
+`--text-danger` token, the same sub-3:1-contrast bug `ADR-044`
+(`TASK-102`/`107`) had already fixed everywhere else via
+`--text-danger-readable` - a regression by omission in a screen written after
+that fix landed; the dilemma question is wrapped in the shared
+`.text-box-default` panel in Evaluation, Duel, and Party, but rendered as
+larger unboxed text in Daily; and the post-answer commentary panel
+(`.evaluation-tease-text`/`.challenge-tease-text`/`.party-reveal-tease`) was
+three near-byte-identical CSS blocks copy-pasted into three separate files -
+only one of the three had a mobile breakpoint, so the panel's mobile size
+silently differed by mode. `.daily-choice` also forced
+`text-transform: none` while `btn-yes`/`btn-no` uppercase this exact kind of
+free-text dilemma answer everywhere else, an unexplained one-off exception.
+
+Choice: added one `.tease-text` class to `shared.css` (with its own mobile
+breakpoints) and pointed all four screens at it, deleting the three duplicated
+blocks; switched Daily's dilemma prompt to `.text-box-default`; converted
+`DailyMoralCrimeScreen.css` off `rem` to the same `px` convention as its
+siblings (1:1 value conversion, no visual-size change beyond the fixes below);
+fixed the three `--text-danger` text-color instances to
+`--text-danger-readable`; removed `.daily-results .screen-title`'s local
+font-size override so it matches Party Room's equivalent nested heading; and
+removed `.daily-choice`'s `text-transform: none` so free-text answers
+uppercase consistently with every other mode. Documented the shared-first
+convention in `doc-1` ("Frontend styling conventions") and in this repo's
+`CLAUDE.md` as a standing instruction: check `shared.css` before writing a new
+visual pattern, and promote something to a shared class once it is duplicated
+across two or more screens instead of leaving it copy-pasted.
+
+Consequences: game-mode screens now render the same dilemma-box, tease-panel,
+and label treatment; a future tweak to any of these (e.g. tease-panel padding)
+changes once in `shared.css` instead of needing four synchronized edits. The
+`--text-danger`-as-text-color bug class is worth a repo-wide grep
+(`var(--text-danger)`) the next time a contrast issue is reported, since this
+is the second time it has resurfaced in a screen written after ADR-044. No
+visual regression is expected from the `rem`→`px` conversion (same computed
+sizes at default zoom) or from the label/prompt/panel changes, but this was
+verified by `pnpm lint`/`pnpm build:prod` and code review only - per
+`CLAUDE.md`'s browser-automation ban, no live browser check was performed, so
+a manual visual pass on `/daily`, `/party/:code`, `/challenge/:token`, and the
+evaluation flow is still worth doing before/at next deploy.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

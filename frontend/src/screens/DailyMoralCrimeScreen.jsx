@@ -161,7 +161,7 @@ const DailyMoralCrimeScreen = () => {
 
       {!loading && daily && (
         <section className="card-default daily-card" aria-busy={voting}>
-          <p className="daily-prompt">{daily.dilemma?.dilemma}</p>
+          <p className="text-box-default daily-prompt">{daily.dilemma?.dilemma}</p>
 
           {!daily.hasVoted ? (
             <>
@@ -190,7 +190,7 @@ const DailyMoralCrimeScreen = () => {
             <div className="daily-reveal">
               <p className="daily-choice-label">{t('daily.your_choice')}</p>
               <p className="daily-selected-answer">{selectedAnswer}</p>
-              {daily.reflection && <p className="daily-reflection">{daily.reflection}</p>}
+              {daily.reflection && <p className="tease-text">{daily.reflection}</p>}
 
               {results && (
                 <section className="daily-results" aria-label={t('daily.results_label')}>

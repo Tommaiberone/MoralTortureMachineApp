@@ -49,6 +49,34 @@ dev table, or `/dev` SSM hierarchy.
 - Before changing the backend in a way that makes the distributed Android APK
   insufficient or incompatible, stop and warn the user before implementation.
 
+## Frontend styling conventions
+
+- `frontend/src/styles/horrorTheme.css` (color tokens, animations) and
+  `frontend/src/styles/shared.css` (layout/typography/button/panel classes:
+  `screen-container`, `screen-title`/`screen-title-large`/`screen-subtitle`,
+  `card-default`/`card-large`, `btn-primary`/`btn-secondary`/`btn-yes`/`btn-no`,
+  `text-box-default`/`text-box-left-align`, `tease-text`, `nav-back-button`,
+  `progress-dot`) are the source of truth for how every game mode (Solo
+  Evaluation, Party Room, Moral Duel, Daily Moral Crime) looks. A screen's own
+  CSS file should only add screen-specific layout (width, margin, spacing) on
+  top of a shared class, never redeclare font-family/font-size/color/spacing
+  that a shared class already provides - `TASK-214` found and fixed several
+  cross-game-mode divergences (Daily Moral Crime alone using `rem` against a
+  non-standard 21px root while every other screen uses `px`; the same
+  `--text-danger` low-contrast text bug `TASK-102/107`/ADR-044 already fixed
+  elsewhere, reintroduced in a newer screen; the dilemma prompt boxed with
+  `text-box-default` in three modes but plain text in the fourth; the
+  post-answer commentary panel duplicated near-identically across three CSS
+  files instead of using one shared class) that trace back to screens not
+  reusing what already existed. Before adding a new visual pattern (a text
+  panel, a label style, a button variant), check `shared.css` first; if an
+  equivalent already exists there or is duplicated 2+ times across screens,
+  extend/promote the shared class instead of writing another local one.
+- Text colors must use `--text-danger-readable`/`--choice-a-text`/
+  `--choice-b-text`, never the raw `--text-danger`/`--choice-a`/`--choice-b`
+  border-oriented tokens, which measure below WCAG AA contrast as text color
+  (ADR-044, `TASK-102`/`107`/`202`).
+
 ## Identity and authentication
 
 - Anonymous play remains available through the first useful result.

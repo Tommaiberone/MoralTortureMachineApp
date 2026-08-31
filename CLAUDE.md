@@ -249,6 +249,24 @@ Growth metric or strategic gate changed        -> backlog/docs/doc-2
 - Add or update tests with behavioral changes.
 - Run the narrowest relevant checks first, then the full available suite.
 - Use `apply_patch` for manual file edits.
+- **Reuse and unify over duplicating (2026-08-31, at the user's explicit
+  request, TASK-214/ADR-095):** before writing a new UI pattern, string
+  constant, or piece of logic, check whether an equivalent already exists
+  (e.g. `frontend/src/styles/shared.css`/`horrorTheme.css` for cross-screen
+  typography, colors, buttons, panels, layout) and reuse or extend it rather
+  than adding a local one-off. When work touches a screen/module and its
+  styling, copy, or behavior has visibly drifted from the equivalent element
+  in another screen/module of the same kind (e.g. one game mode's font size,
+  color token, or unit convention no longer matches its siblings, or the same
+  CSS block is copy-pasted across 2+ files), fix and unify it as part of the
+  change instead of leaving the divergence in place, and promote the repeated
+  pattern into a shared, documented class/constant so it cannot silently
+  re-diverge later. Route this the same way as any other found issue (see
+  "Autonomous backlog management" above): low-impact unification found while
+  already touching the area is fine to do and note; a bigger unification
+  effort outside the current task's scope gets a Backlog task instead of
+  scope creep. This does not license inventing new abstractions nobody asked
+  for — only consolidating patterns that already visibly repeat or diverge.
 - **Commit and push standing authorization (2026-08-02, at the user's explicit
   request):** once the work requested in a turn/session is actually done
   (checks passing), commit and push to `main` as the closing step without

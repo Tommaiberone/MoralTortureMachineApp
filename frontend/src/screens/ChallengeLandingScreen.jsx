@@ -383,7 +383,7 @@ const ChallengeLandingScreen = () => {
           </div>
         ) : (
           <div>
-            <p className="challenge-tease-text">{selectedTease}</p>
+            <p className="tease-text">{selectedTease}</p>
             <div className="challenge-chart-container">
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>

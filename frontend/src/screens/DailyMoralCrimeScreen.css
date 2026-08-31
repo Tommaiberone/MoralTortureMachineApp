@@ -1,22 +1,31 @@
+/* TASK-214: px throughout, matching the unit convention used by every other
+   game mode's CSS (root font-size is a non-standard 21px, so rem sizing here
+   drifted out of step with Evaluation/Party/Duel and would resize under
+   accessibility text-zoom while the others would not). Values below are the
+   direct px equivalent of what this file used to declare in rem. */
 .daily-screen {
   min-height: 100vh;
-  padding-top: 5.25rem;
+  padding-top: 110px;
 }
 
 .daily-header {
   max-width: 640px;
-  margin: 0 auto 1.5rem;
+  margin: 0 auto 32px;
   text-align: center;
 }
 
+/* TASK-214: text color was var(--text-danger), the same <3:1-contrast text
+   color TASK-102/107/ADR-044 already fixed everywhere else via
+   --text-danger-readable; font-size/letter-spacing now match screen-subtitle,
+   the shared class this label sits directly under in the header. */
 .daily-kicker,
 .daily-choice-label {
-  margin: 0 0 0.55rem;
-  color: var(--text-danger);
+  margin: 0 0 12px;
+  color: var(--text-danger-readable);
   font-family: 'Courier New', Courier, monospace;
-  font-size: 0.76rem;
+  font-size: 16px;
   font-weight: 700;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -25,67 +34,57 @@
   margin: 0 auto;
 }
 
-.daily-prompt {
-  margin: 0;
-  color: var(--text-highlight);
-  font-size: clamp(1.05rem, 2.7vw, 1.25rem);
-  line-height: 1.55;
-  text-align: left;
-}
+/* Uses text-box-default from shared.css for the dilemma text, like every
+   other game mode - no local override needed. */
 
 .daily-before-vote {
-  margin: 1.4rem 0 0;
+  margin: 29px 0 0;
   color: var(--text-dim);
-  font-size: 0.92rem;
+  font-size: 19px;
   text-align: center;
 }
 
 .daily-choice-stack {
   display: grid;
-  gap: 0.75rem;
-  margin-top: 1.15rem;
+  gap: 16px;
+  margin-top: 24px;
 }
 
+/* TASK-214: no text-transform override here anymore - btn-yes/btn-no already
+   uppercase this same kind of free-text dilemma answer in every other game
+   mode, so this only adds the extra height/line-height long answers need. */
 .daily-choice {
-  min-height: 3.8rem;
-  padding: 0.8rem 1rem;
+  min-height: 80px;
+  padding: 17px 21px;
   line-height: 1.35;
-  text-transform: none;
 }
 
 .daily-reveal {
-  margin-top: 1.7rem;
+  margin-top: 36px;
 }
 
 .daily-selected-answer {
   margin: 0;
   color: var(--text-highlight);
-  font-size: 1.05rem;
+  font-size: 22px;
   font-weight: 700;
 }
 
-.daily-reflection {
-  margin: 1rem 0 0;
-  padding: 1rem;
-  border-left: 3px solid var(--creepy-rust);
-  background: var(--creepy-dark-gray);
-  color: var(--text-normal);
-  line-height: 1.5;
-}
+/* Uses tease-text from shared.css for the post-vote AI reflection, like the
+   equivalent post-answer commentary in every other game mode. */
 
 .daily-results {
-  margin-top: 1.6rem;
-  padding-top: 1.3rem;
+  margin-top: 34px;
+  padding-top: 27px;
   border-top: 1px solid var(--creepy-fog);
 }
 
 .daily-results .screen-title {
   margin: 0;
-  font-size: 1.1rem;
 }
 
 .daily-vote-total {
-  margin: 0.4rem 0 1.15rem;
+  margin: 8px 0 24px;
   color: var(--text-dim);
   text-align: center;
 }
@@ -93,10 +92,10 @@
 .daily-result-row {
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
-  margin-top: 0.85rem;
+  gap: 16px;
+  margin-top: 18px;
   color: var(--text-normal);
-  font-size: 0.9rem;
+  font-size: 19px;
   line-height: 1.3;
 }
 
@@ -106,14 +105,14 @@
 }
 
 .daily-result-bar {
-  height: 0.5rem;
+  height: 11px;
   overflow: hidden;
   background: var(--creepy-void);
 }
 
 .daily-result-bar span {
   display: block;
-  min-width: 0.35rem;
+  min-width: 7px;
   height: 100%;
 }
 
@@ -122,7 +121,7 @@
 
 .daily-share-button {
   width: 100%;
-  margin-top: 1.7rem;
+  margin-top: 36px;
 }
 
 .daily-share-copy,
@@ -131,28 +130,29 @@
 .daily-loading,
 .daily-inline-error {
   color: var(--text-dim);
-  font-size: 0.88rem;
+  font-size: 18px;
   line-height: 1.45;
   text-align: center;
 }
 
-.daily-share-copy { margin: 0.5rem 0 0; }
+.daily-share-copy { margin: 11px 0 0; }
 .daily-share-status { color: var(--text-normal); }
-.daily-next-release { margin: 1.25rem auto 0; max-width: 640px; }
-.daily-loading { margin: 2rem auto; }
-.daily-inline-error { margin: 1rem 0 0; color: var(--text-danger); }
+.daily-next-release { margin: 26px auto 0; max-width: 640px; }
+.daily-loading { margin: 42px auto; }
+/* TASK-214: same contrast fix as .daily-kicker above */
+.daily-inline-error { margin: 21px 0 0; color: var(--text-danger-readable); }
 
 .daily-error {
   display: grid;
   max-width: 420px;
-  gap: 1rem;
-  margin: 2rem auto;
+  gap: 21px;
+  margin: 42px auto;
   color: var(--text-normal);
   text-align: center;
 }
 
 @media (max-width: 480px) {
-  .daily-screen { padding: 4.75rem 0.8rem 1.5rem; }
+  .daily-screen { padding: 100px 17px 32px; }
   .daily-card { width: 100%; }
-  .daily-result-row { font-size: 0.84rem; }
+  .daily-result-row { font-size: 18px; }
 }

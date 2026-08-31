@@ -448,7 +448,7 @@ const PartyRoomScreen = () => {
         {isMostDividedSoFar && <p className="party-reveal-badge">{t('party.mostDividedSoFar')}</p>}
         {dimension && <p className="screen-subtitle">{t('party.dimensionTested', { dimension })}</p>}
 
-        {callerTease && <p className="party-reveal-tease">{callerTease}</p>}
+        {callerTease && <p className="tease-text party-reveal-tease">{callerTease}</p>}
 
         <div className="party-reveal-chart-container">
           <ResponsiveContainer width="100%" height={260}>
