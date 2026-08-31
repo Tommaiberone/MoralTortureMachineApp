@@ -135,41 +135,51 @@ jobs:
           choice = "first"
           aggregate_field = "firstVotes" if choice == "first" else "secondVotes"
 
+          import json as _json
+          import decimal as _decimal
+
+          def _default(o):
+              if isinstance(o, _decimal.Decimal):
+                  return str(o)
+              return repr(o)
+
+          transact_items = [
+              {
+                  "Put": {
+                      "TableName": TABLE,
+                      "Item": _dynamodb_item({
+                          "dayKey": "__diag_py__",
+                          "entryKey": entry_key,
+                          "anonymousUserId": "__diag_py__",
+                          "choice": choice,
+                          "dilemmaBaseId": dilemma_id,
+                          "createdAt": now_ms,
+                          "expirationTime": expires_at,
+                      }),
+                      "ConditionExpression": "attribute_not_exists(dayKey) AND attribute_not_exists(entryKey)",
+                  },
+              },
+              {
+                  "Update": {
+                      "TableName": TABLE,
+                      "Key": _dynamodb_item({
+                          "dayKey": "__diag_py__",
+                          "entryKey": "__diag_py_aggregate__",
+                      }),
+                      "UpdateExpression": "SET dilemmaBaseId = :base_id, updatedAt = :now, expirationTime = :expires ADD #votes :increment",
+                      "ExpressionAttributeNames": {"#votes": aggregate_field},
+                      "ExpressionAttributeValues": _dynamodb_item({
+                          ":base_id": dilemma_id,
+                          ":now": now_ms,
+                          ":expires": expires_at,
+                          ":increment": 1,
+                      }),
+                  },
+              },
+          ]
+          print("PAYLOAD:", _json.dumps(transact_items, default=_default, indent=2))
           try:
-              dynamodb.meta.client.transact_write_items(TransactItems=[
-                  {
-                      "Put": {
-                          "TableName": TABLE,
-                          "Item": _dynamodb_item({
-                              "dayKey": "__diag_py__",
-                              "entryKey": entry_key,
-                              "anonymousUserId": "__diag_py__",
-                              "choice": choice,
-                              "dilemmaBaseId": dilemma_id,
-                              "createdAt": now_ms,
-                              "expirationTime": expires_at,
-                          }),
-                          "ConditionExpression": "attribute_not_exists(dayKey) AND attribute_not_exists(entryKey)",
-                      },
-                  },
-                  {
-                      "Update": {
-                          "TableName": TABLE,
-                          "Key": _dynamodb_item({
-                              "dayKey": "__diag_py__",
-                              "entryKey": "__diag_py_aggregate__",
-                          }),
-                          "UpdateExpression": "SET dilemmaBaseId = :base_id, updatedAt = :now, expirationTime = :expires ADD #votes :increment",
-                          "ExpressionAttributeNames": {"#votes": aggregate_field},
-                          "ExpressionAttributeValues": _dynamodb_item({
-                              ":base_id": dilemma_id,
-                              ":now": now_ms,
-                              ":expires": expires_at,
-                              ":increment": 1,
-                          }),
-                      },
-                  },
-              ])
+              dynamodb.meta.client.transact_write_items(TransactItems=transact_items)
               print("SUCCESS: transaction committed")
           except ClientError as error:
               print("FAILED:", error.response.get("Error", {}))
