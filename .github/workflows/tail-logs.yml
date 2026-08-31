@@ -143,7 +143,8 @@ jobs:
       - name: Python/boto3 repro test (exact code path, scratch key)
         if: ${{ github.event.inputs.scan_daily_moral_crime_votes == 'true' }}
         run: |
-          pip install --quiet boto3
+          pip install --quiet boto3==1.35.72
+          python3 -c "import boto3, botocore; print('boto3', boto3.__version__, 'botocore', botocore.__version__)"
           python3 << 'PYEOF'
           import time
           import boto3
@@ -152,6 +153,7 @@ jobs:
 
           TABLE = "prod-moral-torture-machine-daily-moral-crime-votes"
           dynamodb = boto3.resource("dynamodb", region_name="eu-west-1")
+          plain_client = boto3.client("dynamodb", region_name="eu-west-1")
           serializer = TypeSerializer()
 
           def _dynamodb_item(values):
@@ -209,15 +211,27 @@ jobs:
           print("PAYLOAD:", _json.dumps(transact_items, default=_default, indent=2))
           try:
               dynamodb.meta.client.transact_write_items(TransactItems=transact_items)
-              print("SUCCESS: transaction committed")
+              print("SUCCESS (resource.meta.client): transaction committed")
           except ClientError as error:
-              print("FAILED:", error.response.get("Error", {}))
+              print("FAILED (resource.meta.client):", error.response.get("Error", {}))
               print("CancellationReasons:", error.response.get("CancellationReasons"))
           finally:
               table = dynamodb.Table(TABLE)
               table.delete_item(Key={"dayKey": "__diag_py__", "entryKey": entry_key})
               table.delete_item(Key={"dayKey": "__diag_py__", "entryKey": "__diag_py_aggregate__"})
-              print("cleaned up")
+              print("cleaned up 1")
+
+          try:
+              plain_client.transact_write_items(TransactItems=transact_items)
+              print("SUCCESS (plain boto3.client): transaction committed")
+          except ClientError as error:
+              print("FAILED (plain boto3.client):", error.response.get("Error", {}))
+              print("CancellationReasons:", error.response.get("CancellationReasons"))
+          finally:
+              table = dynamodb.Table(TABLE)
+              table.delete_item(Key={"dayKey": "__diag_py__", "entryKey": entry_key})
+              table.delete_item(Key={"dayKey": "__diag_py__", "entryKey": "__diag_py_aggregate__"})
+              print("cleaned up 2")
           PYEOF
       - name: Scan daily_moral_crime_votes (read-only)
         if: ${{ github.event.inputs.scan_daily_moral_crime_votes == 'true' }}
