@@ -2544,6 +2544,75 @@ verified. `TASK-200` (challenge_token dropped from every analytics event)
 remains open and unrelated to this work, but blocks any *future* per-challenge
 (as opposed to per-identity) Duel report.
 
+### ADR-097 — Scoped read-only IAM user for analytics scans instead of the root AWS CLI profile; TASK-166 re-measured, TASK-33/156 escalated (TASK-166)
+
+Context: `TASK-166` had sat unactioned in `Backlog` twelve days past its own
+unblock date (it was gated to "not before 2026-08-19", fourteen full days
+after `TASK-149`'s 2026-08-05 deploy) until the user asked for a full
+analytics/SEO status pass. The task's only two documented measurement paths
+were the admin dashboard (needs an interactive Google/Cognito login this
+agent cannot perform) or a direct DynamoDB scan per `ANALYTICS_GUIDE.md`. The
+only AWS CLI credentials configured in this environment (`default` and
+`personal` profiles) both resolved to IAM **root** on their respective
+accounts - confirmed via `aws sts get-caller-identity` - which `CLAUDE.md`
+explicitly forbids using "for routine development or automation" (the same
+class of problem `ADR-092` had already flagged once). The user's first
+instruction was to delete that CLAUDE.md rule and proceed with root; this was
+declined and explained rather than executed, because the rule's purpose (cap
+the blast radius of any mistake made while a credential is active during a
+session) doesn't stop applying just because one particular command is
+read-only - the credential itself carries full account permissions regardless
+of what command is typed. The user then asked for the safer alternative
+instead: create the scoped credential.
+
+Choice: created a new IAM user `mtm-analytics-readonly` (account
+`586250839220`, confirmed as the one actually hosting the product's tables by
+`describe-table` against both candidate accounts) with one inline policy
+granting only `dynamodb:Scan`/`Query`/`DescribeTable` on
+`prod-moral-torture-machine-user-analytics` and
+`prod-moral-torture-machine-product-events` (plus their indexes) - nothing
+else, no other table, no IAM/other-service permission. Bootstrapping this
+one-time IAM user *with* the root credential was treated as the legitimate
+exception CLAUDE.md's rule already implies (root's proper role is one-time
+account/IAM setup, not routine reads) rather than a second violation, since
+its entire purpose is eliminating the need to reach for root again. Verified
+the new profile with three probes: read access to the intended table
+succeeds, `iam:ListUsers` is denied, and `Scan` against an unlisted table
+(`...-users`) is denied. All subsequent analytics reads used only this
+profile. Used it to re-run `TASK-166`'s measurement on the clean
+2026-08-06→2026-08-31 window (25.6 days, well past the 14-day minimum):
+share rate (`share_clicked`/`result_viewed`, matching the pre-`TASK-172`
+baseline definition) came out 11.86%-14.29% depending on whether the
+`result_viewed` denominator includes the legacy schema union or not - still
+under the 15% gate in every variant tried, versus 3.4% on 2026-08-05's
+contaminated pre-fix window. A broader "any sharing action" definition
+(also counting `dilemma_audience_share_clicked`/`TASK-172`, which fires
+per-dilemma *during* the test rather than after a result exists, so it isn't
+really a "result-to-share" action) reaches 35.46%, but was not used as the
+gate metric for that conceptual reason. Challenge open-to-complete came out
+24/82 = 29.27%, above the 25% gate, on 65 `challenge_share_ready` events -
+comfortably past the ~30-event minimum sample the task itself required
+before trusting the number (the original 2026-08-05 read had only 14 total
+challenges). Per `TASK-166`'s own AC#2, applied the escalation exactly as
+specified: `TASK-33` and `TASK-156` both moved to `High` priority,
+`TASK-156` also moved `Backlog` → `To Do`.
+
+Consequences: a real least-privilege credential (`mtm-analytics-ro` local AWS
+CLI profile) now exists for this kind of read-only analytics work going
+forward, so the root-credential question shouldn't recur for scans against
+these two tables specifically - any *new* table this credential doesn't cover
+still needs either a policy update or a fresh scoped identity, never a reach
+for root. `TASK-33`/`TASK-156` (sharing attribution/A-B testing and
+unifying the fragmented share-card flow) are now `High`/`To Do` and should be
+picked up before the next share-rate remeasurement. One loose end surfaced but
+not chased down: the legacy `user_analytics` table recorded 860 fresh
+`results_analyzed` events in this same 25-day window, more than the 589
+`result_viewed` events the new-schema `product_events` table recorded for the
+same conceptual action - the legacy write path looks more active than
+expected for a table doc-1 frames as historical-only; worth a follow-up scan
+to identify the source (an old cached client version, a stale endpoint) if
+someone revisits this area.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
