@@ -462,7 +462,7 @@ resource "aws_dynamodb_table" "daily_moral_crime_votes" {
     Name        = "Moral Torture Machine Daily Moral Crime Votes"
     Environment = var.environment
     ManagedBy   = "Terraform"
-    Purpose     = "Anonymous Daily participation and aggregate reveal, retained for 90 days"
+    Purpose     = "Anonymous Daily participation and aggregate reveal - retained for 90 days"
   }
 }
 
