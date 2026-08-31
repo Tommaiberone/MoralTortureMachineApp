@@ -31,6 +31,25 @@
      darker theme accents are untouched. */
   --text-danger-readable: #ce7e7e;
 
+  /* TASK-202: neutral, symmetric colors for the two options of a dilemma
+     (choice buttons, reveal/result bars, pie charts, vote text). A genuine
+     ethical dilemma has no right/wrong answer, so the two options must never
+     read as red-vs-green "bad vs good" - only Solo Evaluation, Party Room,
+     Moral Duel, and Daily Moral Crime's actual A/B comparison points use
+     these; unrelated red/green accents elsewhere (errors, "next" buttons,
+     "this is you" highlights) are untouched, per ADR-044's precedent of not
+     redoing the whole theme for one fix. -a is a muted slate/blue-gray, -b a
+     muted bronze/amber - deliberately desaturated so neither reads as a
+     primary hue. -text variants mirror ADR-044's --text-danger-readable
+     technique: brightened until they measure >=4.5:1 (WCAG AA) against every
+     dark background in use (#1a1a1a/#121212/#242424), verified at ~7.9-9.7:1. */
+  --choice-a: #2f3f4f;
+  --choice-a-border: #5a7285;
+  --choice-a-text: #a8bdd0;
+  --choice-b: #4a3a26;
+  --choice-b-border: #8a6f45;
+  --choice-b-text: #d4b483;
+
   /* Glitch/Static effect colors */
   --glitch-1: #3a1a1a;
   --glitch-2: #1a3a1a;

@@ -203,8 +203,8 @@
   transition: all 0.2s;
   text-transform: uppercase;
   box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.5);
-  background-color: var(--creepy-blood);
-  border: 2px solid var(--text-danger);
+  background-color: var(--choice-a);
+  border: 2px solid var(--choice-a-border);
   box-sizing: border-box;
 }
 
@@ -226,8 +226,8 @@
   transition: all 0.2s;
   text-transform: uppercase;
   box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.5);
-  background-color: var(--creepy-charcoal);
-  border: 2px solid var(--creepy-pale-green);
+  background-color: var(--choice-b);
+  border: 2px solid var(--choice-b-border);
   box-sizing: border-box;
 }
 

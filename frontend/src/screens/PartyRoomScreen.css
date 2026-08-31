@@ -146,7 +146,7 @@
 
 .party-reveal-first {
   height: 100%;
-  background-color: var(--creepy-blood);
+  background-color: var(--choice-a);
   transition: width 0.4s ease;
 }
 
@@ -179,11 +179,11 @@
 }
 
 .party-reveal-choice.first {
-  color: var(--text-danger-readable);
+  color: var(--choice-a-text);
 }
 
 .party-reveal-choice.second {
-  color: var(--creepy-pale-green);
+  color: var(--choice-b-text);
 }
 
 .party-award-stage {

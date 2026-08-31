@@ -2330,6 +2330,66 @@ should be treated as a standing reason to route any future local-credential
 AWS write through this same "ask, then prefer CI" pattern rather than
 assuming a scoped profile is available.
 
+### ADR-093 — Neutral shared color tokens for the two dilemma options, extending rather than redoing ADR-044 (TASK-202)
+
+Context: `.btn-yes`/`.btn-no` (shared.css, reused identically by Solo
+Evaluation, Party Room, Daily Moral Crime, and Moral Duel's
+`ChallengeLandingScreen`) painted the first option in `--creepy-blood` (dark
+red) and the second in a charcoal fill with a `--creepy-pale-green` border;
+`EvaluationDilemmasScreen.jsx`'s reveal pie chart hardcoded the same red/
+green pair as bespoke hex (`#7a4a4a`/`#2a3a2a`, not even the named theme
+variables); Party Room's reveal bar/vote-list text and Daily Moral Crime's
+result bars repeated the pattern with their own scattered tokens
+(`--creepy-rust`/`--creepy-sickly-green`, `--text-danger-readable`/
+`--creepy-pale-green`). For a genuine ethical dilemma with no right answer,
+this consistently color-coded one option as "bad" and the other "good."
+Auditing every screen also surfaced a second, unrelated problem in the same
+buttons: `.btn-yes` had a solid, saturated fill while `.btn-no` was a neutral
+button with only a thin colored border, so the first option already carried
+more visual weight than the second regardless of hue - not something the
+original task description called out, but squarely inside its "paritetiche
+per importanza gerarchica" acceptance criterion.
+
+`ADR-044` (`TASK-102/107`) had already touched this exact button pair, but
+only to fix `--text-danger`'s WCAG contrast as a *text* color; it explicitly
+declined a full palette redesign as out of scope for that narrower
+accessibility fix - not as a permanent rejection of one.
+
+Options considered: reuse existing theme variables (e.g. repaint
+`--creepy-blood`/`--creepy-pale-green` in place) - rejected, because those
+variables also drive unrelated UI (`.btn-primary` hover, `progress-dot`,
+error/warning text) that must keep its original meaning, and doing so would
+have been exactly the broad repaint ADR-044 already declined; leave each
+screen's hardcoded/scattered values as-is and just swap hues per call site -
+rejected, defeats the task's own AC3 request for one shared definition
+instead of four independent ones and would drift again the next time a new
+dual-choice surface is added; a full theme redesign - rejected for the same
+reason ADR-044 rejected it (out of scope, not requested).
+
+Choice: added six new tokens to `horrorTheme.css` - `--choice-a`/
+`-border`/`-text` (a desaturated slate blue-gray) and `--choice-b`/`-border`/
+`-text` (a desaturated bronze/amber), deliberately avoiding any single
+dominant R/G/B channel so neither reads as a primary hue the way red/green
+did. The two `-text` variants were hand-computed against the WCAG relative-
+luminance formula to verify >=4.5:1 against all three dark backgrounds in
+use (measured ~7.9-9.7:1, well clear of the ADR-044 floor), and the fill/
+border pairs were tuned to near-identical relative luminance to each other
+(0.047 vs 0.046 for the fills) for genuine visual parity, not just
+distinguishability. Applied only at the six actual dual-choice touch points
+identified above; left untouched every other red/green use that isn't
+comparing the two dilemma options (real error/warning text, the "is-caller"
+list highlight, the "most divided so far" round badge, conventional green
+"next/continue" buttons, and `progress-dot`'s active-vs-completed progress
+indicator) - same non-goal ADR-044 already established, just re-confirmed
+against the current codebase rather than assumed.
+
+Consequences: fixing `.btn-yes`/`.btn-no` in `shared.css` and the DynamoDB-
+adjacent pie/bar spots in three other files covers all four game modes in
+one change, since they share the same CSS classes. Any new dual-choice UI
+added later should reuse `--choice-a`/`--choice-b` rather than reintroducing
+red/green or a fifth set of hardcoded hex values. No AWS/infrastructure
+change; `pnpm lint` and `pnpm build:prod` both clean.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

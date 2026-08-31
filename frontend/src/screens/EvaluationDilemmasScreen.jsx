@@ -320,12 +320,12 @@ const EvaluationDilemmasScreen = () => {
     {
       name: dilemma ? dilemma.firstAnswer : "Option 1",
       value: (dilemma ? dilemma.yesCount : 0) + currentChoice.first,
-      color: "#7a4a4a",
+      color: "var(--choice-a)",
     },
     {
       name: dilemma ? dilemma.secondAnswer : "Option 2",
       value: (dilemma ? dilemma.noCount : 0) + currentChoice.second,
-      color: "#2a3a2a",
+      color: "var(--choice-b)",
     },
   ];
 

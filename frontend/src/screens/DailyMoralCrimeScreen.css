@@ -117,8 +117,8 @@
   height: 100%;
 }
 
-.daily-result-first { background: var(--creepy-rust); }
-.daily-result-second { background: var(--creepy-sickly-green); }
+.daily-result-first { background: var(--choice-a); }
+.daily-result-second { background: var(--choice-b); }
 
 .daily-share-button {
   width: 100%;
