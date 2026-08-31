@@ -2280,6 +2280,56 @@ explicitly runs `populate_dynamodb_multilang.py` against the production
 table (via the `[populate-db]` commit marker or `workflow_dispatch`) -
 future readers should not assume `Done` here means "live in production."
 
+### ADR-092 — Add a non-destructive append-only DynamoDB populate mode; discovered the local AWS CLI profile is a root credential (TASK-201 follow-up)
+
+Context: asked to just "insert the 15 dilemmas manually," the only local AWS
+credential available (`aws --profile personal`) turned out to authenticate as
+the account's root user (`arn:aws:iam::586250839220:root`), which `CLAUDE.md`
+explicitly forbids using "for routine development or automation." A direct
+local write, even a narrowly-scoped one, was therefore not an option
+regardless of how safe the write itself was.
+
+Options considered: run the write anyway since only 15 new items were being
+added (rejected outright - the credential-scope rule in `CLAUDE.md` doesn't
+carve out an exception for "safe" writes, and root credentials are exactly
+what least-privilege IAM is supposed to replace); ask the user to reconfigure
+a non-root profile before proceeding (rejected as the immediate fix - out of
+scope for this task and the user's own AWS account setup to decide, not
+something to change unprompted); trigger the existing CI `populate-dynamodb`
+job as-is, which only does a full clear-then-reload (available, but strictly
+more destructive than the user's own framing of "just insert them"); build a
+non-destructive append-only mode and run it through CI's own scoped
+credentials instead of the local root ones (chosen, and the option the user
+picked directly when asked).
+
+Choice: `backend/scripts/populate_dynamodb_multilang.py` gained an
+`--append-only` flag. In that mode the script skips `clear_dynamodb_table`
+entirely and writes each dilemma with a conditional `put_item`
+(`ConditionExpression='attribute_not_exists(#pk)'` on `_id`), catching
+`ConditionalCheckFailedException` to silently skip any item that already
+exists rather than overwriting it - so it is safe to re-run at any time,
+against a table in any state, without a batch_writer's inherent inability to
+express per-item conditions. `.github/workflows/deploy.yml` gained a
+`populate_dynamodb_mode` (`append`/`full`, default `append`) `workflow_dispatch`
+input and a `[populate-db-append]` commit-message marker, both wired through
+a new "Determine populate mode" step; the pre-existing `[populate-db]` marker
+and a `workflow_dispatch` run without setting the new input keep meaning
+"full" (no silent behavior change to the existing trigger). The existing
+pre-populate `aws dynamodb create-backup` step is left unconditional for
+both modes - cheap insurance either way.
+
+Consequences: TASK-201's 15 dilemmas can now go live via the CI job's own
+`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` secrets (whatever IAM identity
+those represent - not inspected here, but distinct from the local root
+profile) without ever clearing the table, superseding ADR-091's assumption
+that reaching production required the destructive full-reload path. The
+local `personal` AWS CLI profile authenticating as root is a pre-existing
+condition of the user's own AWS account, left unchanged and unaddressed here
+- it was only discovered as a side effect of this task, not fixed, and
+should be treated as a standing reason to route any future local-credential
+AWS write through this same "ask, then prefer CI" pattern rather than
+assuming a scoped profile is available.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

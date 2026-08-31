@@ -13,6 +13,14 @@ on:
         required: false
         default: false
         type: boolean
+      populate_dynamodb_mode:
+        description: 'append: only add dilemmas missing from the table (never touches existing items). full: clear the table and reload everything from the JSON files.'
+        required: false
+        default: 'append'
+        type: choice
+        options:
+          - append
+          - full
       invalidate_cache:
         description: 'Invalidate CloudFront cache'
         required: false
@@ -568,6 +576,7 @@ jobs:
     if: |
       needs.backend-deploy.result == 'success' &&
       (contains(github.event.head_commit.message, '[populate-db]') ||
+       contains(github.event.head_commit.message, '[populate-db-append]') ||
        (github.event_name == 'workflow_dispatch' && github.event.inputs.populate_dynamodb == 'true'))
 
     environment:
@@ -621,12 +630,31 @@ jobs:
           TABLE_NAME="${{ needs.setup.outputs.environment }}-moral-torture-machine-dilemmas"
           aws dynamodb create-backup --table-name $TABLE_NAME --backup-name "backup-$timestamp" --region ${{ env.AWS_REGION }}
           echo "💾 Backup created: backup-$timestamp"
+      - name: Determine populate mode
+        id: populate_mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            MODE="${{ github.event.inputs.populate_dynamodb_mode }}"
+          elif [ "${{ contains(github.event.head_commit.message, '[populate-db-append]') }}" = "true" ]; then
+            MODE="append"
+          else
+            MODE="full"
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "📋 DynamoDB populate mode: $MODE"
       - name: Populate DynamoDB Dilemmas
         working-directory: backend
         run: |
           echo "📊 Populating DynamoDB dilemmas..."
           TABLE_NAME="${{ needs.setup.outputs.environment }}-moral-torture-machine-dilemmas"
-          python3 -u scripts/populate_dynamodb_multilang.py --auto-confirm $TABLE_NAME
+          MODE="${{ steps.populate_mode.outputs.mode }}"
+          if [ "$MODE" = "append" ]; then
+            echo "➕ Append-only: existing dilemmas are never modified or deleted."
+            python3 -u scripts/populate_dynamodb_multilang.py --auto-confirm --append-only $TABLE_NAME
+          else
+            echo "⚠️ Full reload: the table is cleared before reloading."
+            python3 -u scripts/populate_dynamodb_multilang.py --auto-confirm $TABLE_NAME
+          fi
           echo "✅ DynamoDB dilemmas populated!"
       - name: Populate DynamoDB Story Flows
         working-directory: backend
