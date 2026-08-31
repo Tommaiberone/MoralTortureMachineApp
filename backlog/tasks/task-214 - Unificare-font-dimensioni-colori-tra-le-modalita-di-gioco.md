@@ -4,7 +4,7 @@ title: Unificare font/dimensioni/colori tra le modalita di gioco
 status: Done
 assignee: []
 created_date: '2026-08-31 13:17'
-updated_date: '2026-08-31 13:21'
+updated_date: '2026-08-31 13:39'
 labels: []
 dependencies: []
 ordinal: 110000
@@ -26,3 +26,12 @@ Audit di Solo Evaluation, Party Room, Moral Duel e Daily Moral Crime ha trovato 
 - [x] #6 .daily-choice non forza piu' text-transform:none, cosi' le risposte libere sono maiuscole come nelle altre tre modalita
 - [x] #7 pnpm lint e pnpm build:prod passano senza nuovi errori
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-08-31 13:39
+---
+Android version bump per il rilascio di questo fix (CLAUDE.md: web packaged code + user-facing change richiede bump): versionName 1.7.4 -> 1.7.5 (patch, fix compatibile), versionCode 24 -> 25. app_version negli analytics verra' riportato come 1.7.5 tramite VITE_APP_VERSION iniettato da deploy.yml da frontend/package.json (TASK-165).
+---
+<!-- COMMENTS:END -->
