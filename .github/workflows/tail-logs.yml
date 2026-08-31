@@ -16,6 +16,11 @@ on:
           - /aws/lambda/moral-torture-machine-api
           - /aws/lambda/moral-torture-machine-retention-sweep
           - /aws/apigateway/moral-torture-machine-api
+      cleanup_test_daily_votes:
+        description: 'Remove known synthetic/test participant rows from todays daily_moral_crime_votes and rewind the aggregate accordingly (TASK-213 investigation cleanup, safe to run once)'
+        required: false
+        default: false
+        type: boolean
       scan_daily_moral_crime_votes:
         description: 'Also scan the prod-moral-torture-machine-daily-moral-crime-votes table (small, read-only) and print every item'
         required: false
@@ -232,6 +237,46 @@ jobs:
               table.delete_item(Key={"dayKey": "__diag_py__", "entryKey": entry_key})
               table.delete_item(Key={"dayKey": "__diag_py__", "entryKey": "__diag_py_aggregate__"})
               print("cleaned up 2")
+          PYEOF
+      - name: Clean up synthetic test votes from today's aggregate
+        if: ${{ github.event.inputs.cleanup_test_daily_votes == 'true' }}
+        run: |
+          pip install --quiet boto3==1.35.72
+          python3 << 'PYEOF'
+          import boto3
+
+          TABLE = "prod-moral-torture-machine-daily-moral-crime-votes"
+          TEST_PREFIXES = ("test-", "diag-", "verify-fix-")
+
+          dynamodb = boto3.resource("dynamodb", region_name="eu-west-1")
+          client = boto3.client("dynamodb", region_name="eu-west-1")
+          table = dynamodb.Table(TABLE)
+
+          items = table.scan().get("Items", [])
+          removed = {}
+          for item in items:
+              anon_id = item.get("anonymousUserId")
+              if not anon_id or not any(anon_id.startswith(p) for p in TEST_PREFIXES):
+                  continue
+              day_key = item["dayKey"]
+              choice = item["choice"]
+              field = "firstVotes" if choice == "first" else "secondVotes"
+              table.delete_item(Key={"dayKey": day_key, "entryKey": item["entryKey"]})
+              removed[(day_key, field)] = removed.get((day_key, field), 0) + 1
+              print(f"Deleted participant row: {day_key} / {item['entryKey']} (anonymousUserId={anon_id}, choice={choice})")
+
+          for (day_key, field), count in removed.items():
+              client.update_item(
+                  TableName=TABLE,
+                  Key={"dayKey": {"S": day_key}, "entryKey": {"S": "aggregate"}},
+                  UpdateExpression="ADD #f :neg",
+                  ExpressionAttributeNames={"#f": field},
+                  ExpressionAttributeValues={":neg": {"N": str(-count)}},
+              )
+              print(f"Rewound aggregate {day_key}.{field} by {count}")
+
+          if not removed:
+              print("No synthetic test rows found - nothing to clean up.")
           PYEOF
       - name: Scan daily_moral_crime_votes (read-only)
         if: ${{ github.event.inputs.scan_daily_moral_crime_votes == 'true' }}
