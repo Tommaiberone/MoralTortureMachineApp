@@ -73,6 +73,43 @@ jobs:
           echo "--- cleanup ---"
           aws dynamodb delete-item --table-name "$TABLE" \
             --key '{"dayKey":{"S":"__diag__"},"entryKey":{"S":"__diag_aggregate__"}}'
+          echo "--- transact-write-items with ONLY the Update action (single-item transaction) ---"
+          aws dynamodb transact-write-items --transact-items '[{
+            "Update": {
+              "TableName": "'"$TABLE"'",
+              "Key": {"dayKey":{"S":"__diag__"},"entryKey":{"S":"__diag_aggregate__"}},
+              "UpdateExpression": "SET dilemmaBaseId = :base_id, updatedAt = :now, expirationTime = :expires ADD #votes :increment",
+              "ExpressionAttributeNames": {"#votes":"firstVotes"},
+              "ExpressionAttributeValues": {":base_id":{"S":"diag"},":now":{"N":"1"},":expires":{"N":"2"},":increment":{"N":"1"}}
+            }
+          }]'
+          echo "exit code: $?"
+          echo "--- cleanup 2 ---"
+          aws dynamodb delete-item --table-name "$TABLE" \
+            --key '{"dayKey":{"S":"__diag__"},"entryKey":{"S":"__diag_aggregate__"}}'
+          echo "--- transact-write-items with Put + Update together (matches the real code) ---"
+          aws dynamodb transact-write-items --transact-items '[
+            {
+              "Put": {
+                "TableName": "'"$TABLE"'",
+                "Item": {"dayKey":{"S":"__diag__"},"entryKey":{"S":"participant#__diag__"},"anonymousUserId":{"S":"__diag__"},"choice":{"S":"first"},"dilemmaBaseId":{"S":"diag"},"createdAt":{"N":"1"},"expirationTime":{"N":"2"}},
+                "ConditionExpression": "attribute_not_exists(dayKey) AND attribute_not_exists(entryKey)"
+              }
+            },
+            {
+              "Update": {
+                "TableName": "'"$TABLE"'",
+                "Key": {"dayKey":{"S":"__diag__"},"entryKey":{"S":"__diag_aggregate__"}},
+                "UpdateExpression": "SET dilemmaBaseId = :base_id, updatedAt = :now, expirationTime = :expires ADD #votes :increment",
+                "ExpressionAttributeNames": {"#votes":"firstVotes"},
+                "ExpressionAttributeValues": {":base_id":{"S":"diag"},":now":{"N":"1"},":expires":{"N":"2"},":increment":{"N":"1"}}
+              }
+            }
+          ]'
+          echo "exit code: $?"
+          echo "--- cleanup 3 ---"
+          aws dynamodb delete-item --table-name "$TABLE" --key '{"dayKey":{"S":"__diag__"},"entryKey":{"S":"__diag_aggregate__"}}'
+          aws dynamodb delete-item --table-name "$TABLE" --key '{"dayKey":{"S":"__diag__"},"entryKey":{"S":"participant#__diag__"}}'
           set -e
       - name: Scan daily_moral_crime_votes (read-only)
         if: ${{ github.event.inputs.scan_daily_moral_crime_votes == 'true' }}
