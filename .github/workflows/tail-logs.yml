@@ -1,0 +1,54 @@
+# Read-only CloudWatch Logs diagnostic. Manual only - never runs on push.
+# Uses the same scoped deploy AWS credentials as deploy.yml, so this never
+# needs a local AWS credential (see ADR-092: local credentials for this
+# account are root, which CLAUDE.md forbids for routine/automation use).
+name: Tail Backend Logs
+
+on:
+  workflow_dispatch:
+    inputs:
+      log_group:
+        description: 'CloudWatch log group to read'
+        required: false
+        default: '/aws/lambda/moral-torture-machine-api'
+        type: choice
+        options:
+          - /aws/lambda/moral-torture-machine-api
+          - /aws/lambda/moral-torture-machine-retention-sweep
+          - /aws/apigateway/moral-torture-machine-api
+      since:
+        description: 'How far back to look (e.g. 1h, 30m, 2d)'
+        required: false
+        default: '1h'
+      filter_pattern:
+        description: 'CloudWatch Logs filter pattern (plain substring, or a CloudWatch filter expression). Leave empty for everything.'
+        required: false
+        default: ''
+
+env:
+  AWS_REGION: eu-west-1
+
+jobs:
+  tail:
+    name: Tail ${{ github.event.inputs.log_group }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Tail logs
+        run: |
+          LOG_GROUP="${{ github.event.inputs.log_group }}"
+          FILTER="${{ github.event.inputs.filter_pattern }}"
+          echo "📋 Log group: $LOG_GROUP"
+          echo "📋 Since: ${{ github.event.inputs.since }}"
+          echo "📋 Filter: ${FILTER:-<none>}"
+          echo "---"
+          if [ -n "$FILTER" ]; then
+            aws logs tail "$LOG_GROUP" --since "${{ github.event.inputs.since }}" --filter-pattern "$FILTER" --format short
+          else
+            aws logs tail "$LOG_GROUP" --since "${{ github.event.inputs.since }}" --format short
+          fi
