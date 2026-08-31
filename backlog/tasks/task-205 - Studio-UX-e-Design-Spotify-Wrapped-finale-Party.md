@@ -1,10 +1,10 @@
 ---
 id: TASK-205
 title: 'Studio UX e Design: Spotify Wrapped finale Party'
-status: Open Points
+status: Done
 assignee: []
 created_date: '2026-08-31 07:49'
-updated_date: '2026-08-31 09:53'
+updated_date: '2026-08-31 10:04'
 labels:
   - party-room
   - ux
@@ -29,7 +29,7 @@ Lo studio si concentra solo su cio' che non esiste ancora: 1) un flow piu' cinem
 <!-- AC:BEGIN -->
 - [x] #1 Studio di game design e UX completato e presentato, esplicito su cosa e' gia' esistente (baseline TASK-123) e cosa e' nuovo
 - [x] #2 Definizione dell'architettura dati per i tre punti nuovi: flow stories animato, radar + verdetto AI individuale (con fallback se Groq non disponibile), archetipo collettivo di gruppo
-- [ ] #3 Validazione e accettazione dell'utente della proposta prima della scomposizione in card operative
+- [x] #3 Validazione e accettazione dell'utente della proposta prima della scomposizione in card operative
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -37,3 +37,9 @@ Lo studio si concentra solo su cio' che non esiste ancora: 1) un flow piu' cinem
 <!-- SECTION:NOTES:BEGIN -->
 Studio completato e presentato come artifact: https://claude.ai/code/artifact/855d6980-e2fe-4119-8f8b-2934669ac6da (Party Finale Spike). Copre esplicitamente la baseline gia' shippata da TASK-123 (AC1) e definisce l'architettura dati per le 3 proposte genuinamente nuove (AC2): 1) pass cinematografico sul sequencing (solo frontend, nessun dato nuovo, vincolo esplicito ereditato da TASK-123 - nessun timer/auto-advance, solo tap); 2) archetipo collettivo di gruppo (backend quasi gratis: media dei participant_averages_by_index gia' calcolati + riuso diretto di assign_archetype(), nessuna nuova logica AI); 3) radar individuale + verdetto AI personale per partecipante (nuove chiamate Groq per-partecipante con lo stesso pattern cache/conditional-write di _generate_party_group_verdict e del pairInsight Duel, fallback deterministico se Groq non disponibile; nuova esposizione dati - le medie dimensionali del chiamante vengono aggiunte a _party_room_participant_summary() solo quando isCaller e' true, stessa regola gia' in uso per non esporre mai i dati altrui). Le 3 proposte sono ordinate per costo di implementazione crescente e pensate per essere approvate indipendentemente, non in blocco. AC3 resta aperta: in attesa della validazione/accettazione esplicita dell'utente (anche parziale, proposta per proposta) prima di scomporre in card operative.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Proposta accettata dall'utente (2026-08-31, tutte e 3 le proposte approvate: 'Si mi torna tutto, puoi procedere'). Scomposta in 3 card operative indipendenti: TASK-209 (pass cinematografico sul sequencing, solo frontend), TASK-210 (archetipo collettivo di gruppo, backend quasi gratis via riuso di assign_archetype), TASK-211 (radar individuale + verdetto AI personale, la piu' corposa - nuove chiamate Groq per-partecipante e nuova esposizione dati scoped a isCaller). Tutte e 3 in To Do, dipendenti da TASK-123 (baseline) e da questo spike.
+<!-- SECTION:FINAL_SUMMARY:END -->
