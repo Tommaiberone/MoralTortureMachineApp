@@ -644,6 +644,22 @@ artifact rather than trusting a `Done` label alone - the same
 find-and-route, never-modify-product-code principle as
 `ops-alerts-sweep.md`/`app-walkthrough.md`.
 
+`.claude/commands/analytics-optimize.md` (`TASK-223`) is `seo-analytics-
+status.md`'s sibling for product/growth-funnel analytics instead of SEO: it
+reads the real funnel/retention/A-B-test numbers by scanning
+`prod-moral-torture-machine-product-events`/`-user-analytics` through the
+scoped `mtm-analytics-ro` AWS CLI profile (`TASK-166`/ADR-097 - never the
+root `default`/`personal` profiles) and feeding the raw rows into
+`build_analytics_overview` itself rather than reimplementing the
+aggregation, so its numbers always match what an admin would see in the
+dashboard. Unlike the other read-only skills, it has a write mandate beyond
+Backlog.md: given an A/B test where every compared variant has cleared the
+same minimum-sample floor the backend already enforces and a two-proportion
+z-test crosses significance, it can conclude the experiment by hardcoding
+the winning copy and removing the losing variant's code path - but it still
+stops for the user's explicit go-ahead before any push that raises
+`versionCode`, the same standing rule as everywhere else in this repo.
+
 ## Release automation
 
 - `.github/workflows/deploy.yml` builds and signs the release AAB on every push

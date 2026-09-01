@@ -2725,12 +2725,76 @@ converted, conversion rate) instead of four separate ad hoc views. Backend
 test count is 194 (up from 193), `pnpm lint`/`build:prod` pass. Given the
 explicitly-accepted sample-size risk, read the numbers for each of these
 four with real skepticism for a while - the same "insufficient sample"
-discipline `TASK-166` established elsewhere applies here just as much, even
-though these functions do not (yet) implement an explicit minimum-sample
-withholding threshold the way `build_retention_cohorts` does. App version
+discipline `TASK-166` established elsewhere applies here just as much.
+Correction made within this same session, while drafting `ADR-099` below:
+`build_experiment_breakdown` initially shipped *without* the minimum-sample
+withholding threshold `build_retention_cohorts` already had, an inconsistency
+this paragraph originally flagged as a known gap rather than fixing - on
+reflection that was the wrong call given the skepticism this very paragraph
+argues for, so `RETENTION_MIN_COHORT_SAMPLE` (30) now gates
+`build_experiment_breakdown`'s `conversionRatePct`/adds `insufficientSample`
+too, before any of these four experiments' numbers were used for anything.
+App version
 bump still required and still needs the user's explicit go-ahead for the
 `versionCode`-bumping push, same standing rule as every prior release this
 session.
+
+### ADR-100 — analytics-optimize skill: reuse the backend's own aggregation, never root credentials, require significance before concluding an A/B test (TASK-223)
+
+Context: asked for a dedicated skill to read growth analytics and act on the
+results, on the model of the existing read-only `seo-analytics-status.md`
+(`TASK-195`) but with a wider mandate that includes concluding an A/B test.
+Two mistakes from earlier in this same session needed to be encoded as
+explicit, hard-to-miss instructions rather than left to be rediscovered by a
+future run: (1) the only AWS CLI profiles present in this environment
+resolve to IAM root, and using them for a "just this once" read was already
+refused once this session (the user then asked for the CLAUDE.md rule
+against it to be deleted instead of doing the manual IAM setup; that was
+also declined, with the reasoning explained rather than silently followed or
+silently ignored) - the scoped `mtm-analytics-ro` profile created afterward
+is the only credential this skill may use, and existing skills
+(`ops-alerts-sweep.md`, `routine-serale.md`) were found to still use the
+root `personal` profile while writing this one, filed separately as
+`TASK-224` rather than fixed inline (different scope, different required
+permissions per skill, not something to bundle into this task); (2) a first
+attempt at a direct DynamoDB scan returned zero matching rows out of
+thousands because the assumed field name (`eventName`) was wrong (the raw
+item stores it as `actionType`, matching the legacy schema, even in the
+"product" table) - silently wrong data, not an error, which is the worse
+failure mode.
+
+Choice: the skill's very first instructions section exists specifically to
+prevent both from recurring: it names the exact verification command for the
+credential and refuses root outright, and it hands over a working scan
+script that imports and calls `build_analytics_overview` from
+`backend.src.backend_fastapi` directly rather than re-deriving any
+aggregation logic - so this skill's numbers are mechanically guaranteed to
+match what an admin sees in the dashboard, and a future change to the
+aggregation logic (new field, new "active" definition) propagates here
+automatically instead of needing the skill rewritten. For concluding an
+experiment, required an explicit two-proportion z-test (formula given
+inline, since scipy is not installed in the backend venv) crossing the
+conventional 1.96 threshold on top of the backend's existing minimum-sample
+floor, specifically to stop "the bigger number wins" from ever being the
+bar - this repo's growth work has consistently treated small-sample
+percentages with real skepticism (`TASK-166`'s own framing, carried through
+every growth task since), and a copy-experiment-concluding skill is exactly
+where that discipline would quietly erode without an explicit gate.
+Concluding an experiment is scoped to one at a time by default (matching the
+rest of this repo's no-scope-creep-without-asking posture) unless the user
+gives blanket permission in the same request, and still funnels through the
+unconditional versionCode-push confirmation rule - this skill gets no
+special exemption from that just because it is automated.
+
+Consequences: this repo now has two analytics skills with a clear division -
+`seo-analytics-status.md` for organic acquisition (read-only), this one for
+the product funnel/retention/experiments (read, and narrowly, write). Future
+growth tasks (Phase 2's Daily retention loop once `TASK-45` exists, any
+further copy experiment) should be checked with this skill rather than a
+fresh ad hoc scan each time. `TASK-224` (root credentials in two other
+skills) is now tracked but not fixed - a real, if low-urgency, gap this
+session leaves open on purpose rather than silently expanding this task's
+scope to cover it.
 
 ## Consequences
 
