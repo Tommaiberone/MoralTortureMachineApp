@@ -1,13 +1,18 @@
 // screens/PartyRoomHomeScreen.jsx
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
-import { getApiHeaders } from '../utils/session';
+import { getAnonymousUserId, getApiHeaders } from '../utils/session';
 import { trackEvent } from '../utils/analytics';
+import { getExperimentVariant } from '../utils/experiments';
 import './PartyRoomHomeScreen.css';
 
 const API_URL = import.meta.env.VITE_API_URL;
+
+// TASK-222: only the create-room button label is tested, everything else on
+// this screen (title, subtitle, tabs, form) stays the same for both arms.
+const PARTY_CREATE_COPY_VARIANTS = ['baseline', 'dramatic'];
 
 const PartyRoomHomeScreen = () => {
   const navigate = useNavigate();
@@ -17,6 +22,14 @@ const PartyRoomHomeScreen = () => {
   const [joinCode, setJoinCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const partyCreateCopyVariant = getExperimentVariant('party_create_copy', PARTY_CREATE_COPY_VARIANTS, getAnonymousUserId());
+  const viewTracked = useRef(false);
+
+  useEffect(() => {
+    if (viewTracked.current) return;
+    viewTracked.current = true;
+    trackEvent('party_home_viewed', { variant: partyCreateCopyVariant });
+  }, [partyCreateCopyVariant]);
 
   const handleCreate = async (event) => {
     event.preventDefault();
@@ -31,7 +44,7 @@ const PartyRoomHomeScreen = () => {
       });
       if (!response.ok) throw new Error(`create failed: ${response.status}`);
       const data = await response.json();
-      trackEvent('party_room_create_clicked');
+      trackEvent('party_room_create_clicked', { variant: partyCreateCopyVariant });
       navigate(`/party/${data.roomCode}`);
     } catch (fetchError) {
       console.error('Error creating party room:', fetchError);
@@ -83,7 +96,7 @@ const PartyRoomHomeScreen = () => {
             required
           />
           <button type="submit" className="btn-primary" disabled={busy}>
-            {busy ? t('party.creating') : t('party.createButton')}
+            {busy ? t('party.creating') : t(`party.createButton_${partyCreateCopyVariant}`)}
           </button>
         </form>
       ) : (

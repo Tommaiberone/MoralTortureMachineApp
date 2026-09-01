@@ -178,6 +178,10 @@ const AnalyticsAdminScreen = () => {
   const retentionD7 = retentionCohorts.d7 || {};
   const viralCoefficient = Array.isArray(data.viralCoefficient) ? data.viralCoefficient : [];
   const creativeVariants = Array.isArray(data.creativeVariants) ? data.creativeVariants : [];
+  const copyExperiments = data.copyExperiments || {};
+  const copyExperimentRows = Object.entries(copyExperiments).flatMap(([experiment, rows]) => (
+    Array.isArray(rows) ? rows.map((row) => ({ experiment, ...row })) : []
+  ));
 
   return (
     <main className="analytics-admin">
@@ -458,6 +462,45 @@ const AnalyticsAdminScreen = () => {
             </table>
           </div>
         </article>
+      </section>
+      )}
+
+      {activeSection === 'growth' && (
+      <section className="analytics-card" id="panel-growth-experiments">
+        <div className="analytics-section-heading">
+          <div>
+            <h2>{t('analyticsAdmin.copyExperimentsTitle')}</h2>
+            <p>{t('analyticsAdmin.copyExperimentsDescription')}</p>
+          </div>
+        </div>
+        <div className="analytics-table-wrap analytics-table-wrap--stack">
+          <table>
+            <thead>
+              <tr>
+                <th>{t('analyticsAdmin.copyExperiment')}</th>
+                <th>{t('analyticsAdmin.creativeVariant')}</th>
+                <th className="analytics-num">{t('analyticsAdmin.copyExposed')}</th>
+                <th className="analytics-num">{t('analyticsAdmin.copyConverted')}</th>
+                <th className="analytics-num">{t('analyticsAdmin.creativeConversionRate')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {copyExperimentRows.length ? copyExperimentRows.map((row) => (
+                <tr key={`${row.experiment}-${row.variant}`}>
+                  <td data-label={t('analyticsAdmin.copyExperiment')}><code>{row.experiment}</code></td>
+                  <td data-label={t('analyticsAdmin.creativeVariant')}><code>{row.variant}</code></td>
+                  <td className="analytics-num" data-label={t('analyticsAdmin.copyExposed')}>{formatNumber(row.exposed)}</td>
+                  <td className="analytics-num" data-label={t('analyticsAdmin.copyConverted')}>{formatNumber(row.converted)}</td>
+                  <td className="analytics-num" data-label={t('analyticsAdmin.creativeConversionRate')}>
+                    {row.insufficientSample ? t('analyticsAdmin.retentionInsufficientSample') : `${row.conversionRatePct}%`}
+                  </td>
+                </tr>
+              )) : (
+                <tr><td colSpan="5" className="analytics-empty-row">{t('analyticsAdmin.noData')}</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
       )}
 

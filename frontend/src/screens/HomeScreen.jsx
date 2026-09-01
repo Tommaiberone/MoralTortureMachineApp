@@ -6,18 +6,26 @@ import SEO from '../components/SEO';
 import AuthButton from '../components/AuthButton';
 import { combineSchemas, getWebApplicationSchema, getFAQSchema, getHowToSchema } from '../utils/structuredData';
 import { trackEvent } from '../utils/analytics';
+import { getAnonymousUserId } from '../utils/session';
+import { getExperimentVariant } from '../utils/experiments';
 import './HomeScreen.css';
+
+// TASK-220: "hook" is the current dark/dramatic baseline copy; "direct"
+// states plainly what each mode actually involves. Order/layout of the
+// buttons is unchanged - only their own text is tested.
+const HOME_MODE_COPY_VARIANTS = ['hook', 'direct'];
 
 const HomeScreen = () => {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const landingTracked = useRef(false);
+  const homeModeCopyVariant = getExperimentVariant('home_mode_copy', HOME_MODE_COPY_VARIANTS, getAnonymousUserId());
 
   useEffect(() => {
     if (landingTracked.current) return;
     landingTracked.current = true;
-    trackEvent('landing_viewed');
-  }, []);
+    trackEvent('landing_viewed', { variant: homeModeCopyVariant });
+  }, [homeModeCopyVariant]);
 
   // Rich structured data for SEO (combines multiple schemas for rich snippets)
   const structuredData = combineSchemas(
@@ -27,7 +35,7 @@ const HomeScreen = () => {
   );
 
   const handleNavigation = (mode, route) => {
-    trackEvent('mode_selected', { mode });
+    trackEvent('mode_selected', { mode, variant: homeModeCopyVariant });
 
     // Check if tutorial has been completed for this mode
     const tutorialCompleted = localStorage.getItem(`tutorial_completed_${mode}`);
@@ -96,36 +104,36 @@ const HomeScreen = () => {
           className="home-button recommended-button"
           onClick={() => handleNavigation('evaluation', '/evaluation-dilemmas')}
         >
-          <div className="button-text">{t('home.eval_button')}</div>
+          <div className="button-text">{t(`home.eval_button_${homeModeCopyVariant}`)}</div>
           <div className="button-description">
-            {t('home.eval_description')}
+            {t(`home.eval_description_${homeModeCopyVariant}`)}
           </div>
         </button>
 
         <button
           className="home-button daily-button"
           onClick={() => {
-            trackEvent('mode_selected', { mode: 'daily' });
+            trackEvent('mode_selected', { mode: 'daily', variant: homeModeCopyVariant });
             trackEvent('daily_moral_crime_entry_clicked', { surface: 'home' });
             navigate('/daily');
           }}
         >
-          <div className="button-text">{t('home.daily_button')}</div>
+          <div className="button-text">{t(`home.daily_button_${homeModeCopyVariant}`)}</div>
           <div className="button-description">
-            {t('home.daily_description')}
+            {t(`home.daily_description_${homeModeCopyVariant}`)}
           </div>
         </button>
 
         <button
           className="home-button arcade-button"
           onClick={() => {
-            trackEvent('mode_selected', { mode: 'party' });
+            trackEvent('mode_selected', { mode: 'party', variant: homeModeCopyVariant });
             navigate('/party');
           }}
         >
-          <div className="button-text">{t('home.party_button')}</div>
+          <div className="button-text">{t(`home.party_button_${homeModeCopyVariant}`)}</div>
           <div className="button-description">
-            {t('home.party_description')}
+            {t(`home.party_description_${homeModeCopyVariant}`)}
           </div>
         </button>
 

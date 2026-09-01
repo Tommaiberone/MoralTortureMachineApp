@@ -449,6 +449,52 @@ class AnalyticsOverviewTests(unittest.TestCase):
             {"channel": "whatsapp", "shareAttempts": 3, "completedReferrals": 2, "viralCoefficient": round(2 / 3, 3)},
         ])
 
+    def test_copy_experiments_compute_same_identity_exposure_to_conversion(self):
+        now_ms = 1785369600000
+        product_rows = []
+        # "value": 32 shown (>= the 30-sample floor), 8 of them clicked.
+        for index in range(32):
+            product_rows.append({
+                "eventId": str(uuid.uuid4()), "anonymousUserId": f"value-user-{index}", "occurredAt": now_ms - 20000,
+                "actionType": "auth_prompt_shown", "platform": "web",
+                "properties": '{"surface": "results_challenge", "variant": "value"}',
+            })
+            if index < 8:
+                product_rows.append({
+                    "eventId": str(uuid.uuid4()), "anonymousUserId": f"value-user-{index}", "occurredAt": now_ms - 19000,
+                    "actionType": "auth_prompt_clicked", "platform": "web",
+                    "properties": '{"surface": "results_challenge", "variant": "value"}',
+                })
+        # "urgency": only 2 shown, both clicked - below the sample floor, so
+        # the rate must be withheld even though it looks like a clean 100%.
+        for index in range(2):
+            product_rows.append({
+                "eventId": str(uuid.uuid4()), "anonymousUserId": f"urgency-user-{index}", "occurredAt": now_ms - 18000,
+                "actionType": "auth_prompt_shown", "platform": "web",
+                "properties": '{"surface": "challenge_rematch", "variant": "urgency"}',
+            })
+            product_rows.append({
+                "eventId": str(uuid.uuid4()), "anonymousUserId": f"urgency-user-{index}", "occurredAt": now_ms - 17000,
+                "actionType": "auth_prompt_clicked", "platform": "web",
+                "properties": '{"surface": "challenge_rematch", "variant": "urgency"}',
+            })
+
+        overview = build_analytics_overview(
+            legacy_rows=[], product_rows=product_rows, days=7, now_ms=now_ms, platform="web",
+        )
+        auth_prompt_copy = overview["copyExperiments"]["authPromptCopy"]
+
+        self.assertEqual(auth_prompt_copy, [
+            {"variant": "urgency", "exposed": 2, "converted": 2, "conversionRatePct": None, "insufficientSample": True},
+            {"variant": "value", "exposed": 32, "converted": 8, "conversionRatePct": 25.0, "insufficientSample": False},
+        ])
+        # Every registered experiment must be present even with zero data,
+        # never silently missing from the response.
+        self.assertEqual(set(overview["copyExperiments"].keys()), {
+            "authPromptCopy", "homeModeCopy", "challengeButtonCopy", "partyCreateCopy",
+        })
+        self.assertEqual(overview["copyExperiments"]["homeModeCopy"], [])
+
     def test_creative_variant_breakdown_joins_completions_via_utm_content(self):
         now_ms = 1785369600000
         product_rows = [

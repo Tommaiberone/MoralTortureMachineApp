@@ -4068,9 +4068,11 @@ def build_interaction_breakdowns(events: list[dict[str, Any]]) -> dict[str, Any]
     }
 
 
-# TASK-41 AC#4/growth-plan Phase 0: same skeptical-analyst threshold TASK-166
-# established for challenge volume - withhold a rate rather than report a
-# noisy one below this sample size.
+# TASK-41 AC#4/growth-plan Phase 0-1: same skeptical-analyst threshold
+# TASK-166 established for challenge volume - withhold a rate rather than
+# report a noisy one below this sample size. Shared by every experiment/
+# cohort breakdown below (retention, and TASK-219/220/221/222's copy tests),
+# not just retention, despite the name predating those.
 RETENTION_MIN_COHORT_SAMPLE = 30
 
 
@@ -4219,6 +4221,64 @@ def build_creative_variant_breakdown(events: list[dict[str, Any]]) -> list[dict[
     return rows
 
 
+def build_experiment_breakdown(
+    events: list[dict[str, Any]],
+    exposure_event: str,
+    conversion_event: str,
+) -> list[dict[str, Any]]:
+    """Generic same-identity exposure->conversion breakdown by variant
+    (TASK-219/220/221/222): what fraction of identities exposed to each
+    variant (via the `variant` property on `exposure_event`) went on to fire
+    `conversion_event` at all - regardless of what variant, if any, the
+    conversion event itself carries, since the variant that determines the
+    outcome is the one the person was actually shown, not necessarily
+    re-stated later. Unlike build_viral_coefficient/build_creative_variant_
+    breakdown (which join two different people through an anonymous UTM tag
+    because a Duel invite is inherently two-sided), every caller of this
+    function is a single person's own funnel (shown a prompt -> clicked it;
+    viewed the home screen -> picked a mode), so a plain identity-set
+    intersection is enough - no link/token attribution needed at all. Like
+    build_retention_cohorts, withholds the rate (not just rounds it) below
+    RETENTION_MIN_COHORT_SAMPLE identities exposed, rather than report a
+    variant's conversion as a clean-looking number off a handful of people.
+    """
+    exposed_by_variant: dict[str, set[str]] = defaultdict(set)
+    converted_identities: set[str] = set()
+
+    for event in events:
+        if event["eventName"] == exposure_event:
+            variant = str(event["properties"].get("variant") or "unknown")
+            exposed_by_variant[variant].add(event["identity"])
+        elif event["eventName"] == conversion_event:
+            converted_identities.add(event["identity"])
+
+    rows = []
+    for variant in sorted(exposed_by_variant):
+        exposed = exposed_by_variant[variant]
+        converted = len(exposed & converted_identities)
+        trusted = len(exposed) >= RETENTION_MIN_COHORT_SAMPLE
+        rows.append({
+            "variant": variant,
+            "exposed": len(exposed),
+            "converted": converted,
+            "conversionRatePct": round(converted / len(exposed) * 100, 1) if exposed and trusted else None,
+            "insufficientSample": not trusted,
+        })
+    return rows
+
+
+# TASK-219/220/221/222: (experiment name -> exposure event, conversion event)
+# for every same-identity copy experiment build_experiment_breakdown covers.
+# A single registry instead of four near-identical call sites keeps adding a
+# fifth experiment a one-line change.
+COPY_EXPERIMENTS = {
+    "authPromptCopy": ("auth_prompt_shown", "auth_prompt_clicked"),
+    "homeModeCopy": ("landing_viewed", "mode_selected"),
+    "challengeButtonCopy": ("result_viewed", "challenge_share_ready"),
+    "partyCreateCopy": ("party_home_viewed", "party_room_create_clicked"),
+}
+
+
 def build_analytics_overview(
     legacy_rows: list[dict[str, Any]],
     product_rows: list[dict[str, Any]],
@@ -4353,6 +4413,10 @@ def build_analytics_overview(
     retention_cohorts = build_retention_cohorts(events, now_ms)
     viral_coefficient = build_viral_coefficient(events)
     creative_variants = build_creative_variant_breakdown(events)
+    copy_experiments = {
+        name: build_experiment_breakdown(events, exposure_event, conversion_event)
+        for name, (exposure_event, conversion_event) in COPY_EXPERIMENTS.items()
+    }
 
     return {
         "generatedAt": now_ms,
@@ -4392,6 +4456,7 @@ def build_analytics_overview(
         "retentionCohorts": retention_cohorts,
         "viralCoefficient": viral_coefficient,
         "creativeVariants": creative_variants,
+        "copyExperiments": copy_experiments,
         "dataQuality": {
             "exactPlatformCoveragePct": round((exact_events / total_events) * 100, 1) if total_events else 0,
             "anonymousIdentityCoveragePct": round((anonymous_events / total_events) * 100, 1) if total_events else 0,

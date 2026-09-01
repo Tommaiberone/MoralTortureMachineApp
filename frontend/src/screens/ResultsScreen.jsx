@@ -9,8 +9,12 @@ import { trackEvent } from '../utils/analytics';
 import { trackGoogleAnalyticsEvent } from '../utils/googleAnalytics';
 import { shareOrDownloadCard } from '../utils/shareCard';
 import { getShareCreativeVariant, withShareAttribution } from '../utils/attribution';
+import { AUTH_PROMPT_COPY_VARIANTS, getExperimentVariant } from '../utils/experiments';
 import useAuth from '../auth/useAuth';
 import './ResultsScreen.css';
+
+// TASK-221: which invite CTA copy actually gets a challenge created.
+const CHALLENGE_BUTTON_COPY_VARIANTS = ['baseline', 'rival', 'direct'];
 
 const ResultsScreen = () => {
   const location = useLocation();
@@ -52,6 +56,13 @@ const ResultsScreen = () => {
     })
     : t('results.challenge_share_text');
 
+  // TASK-219: same login-prompt copy experiment as ChallengeLandingScreen/
+  // ChallengeCompareScreen, applied here to the results_challenge surface.
+  const authPromptVariant = getExperimentVariant('auth_prompt_copy', AUTH_PROMPT_COPY_VARIANTS, getAnonymousUserId());
+  // TASK-221: only the "Challenge a friend" button label is tested, not the
+  // intro text above it, so the experiment isolates one variable.
+  const challengeButtonVariant = getExperimentVariant('challenge_button_copy', CHALLENGE_BUTTON_COPY_VARIANTS, getAnonymousUserId());
+
   const labels = Object.keys(aggregated);
   const data = labels.map(label => ({
     subject: label,
@@ -64,9 +75,14 @@ const ResultsScreen = () => {
     trackEvent('result_viewed', {
       mode: 'evaluation',
       completed_dilemmas: answers.length,
+      // TASK-221: exposure signal for the challenge-button copy experiment -
+      // this fires slightly before the archetype (and therefore the button
+      // itself) has loaded, so it is a small conservative overcount of
+      // "exposed", not an undercount.
+      variant: challengeButtonVariant,
     });
     trackGoogleAnalyticsEvent('result_viewed');
-  }, [answers, hasResults]);
+  }, [answers, hasResults, challengeButtonVariant]);
 
   useEffect(() => {
     // Block browser back button
@@ -165,7 +181,7 @@ const ResultsScreen = () => {
         // TASK-136: this anon id already has a prior Duel profile, so a
         // further challenge requires an account - a concrete, contextual
         // ask, not a generic error.
-        trackEvent('auth_prompt_shown', { surface: 'results_challenge', object_type: 'result' });
+        trackEvent('auth_prompt_shown', { surface: 'results_challenge', object_type: 'result', variant: authPromptVariant });
         setChallengeLoginRequired(true);
         return;
       }
@@ -289,12 +305,12 @@ const ResultsScreen = () => {
             <p className="results-challenge-intro">{t('results.challenge_intro')}</p>
             {challengeLoginRequired ? (
               <div className="results-challenge-login">
-                <p className="results-challenge-login-text">{t('results.challenge_login_required_text')}</p>
+                <p className="results-challenge-login-text">{t(`results.challenge_login_required_text_${authPromptVariant}`)}</p>
                 <button
                   type="button"
                   className="btn-primary results-challenge-button"
                   onClick={() => {
-                    trackEvent('auth_prompt_clicked', { surface: 'results_challenge', object_type: 'result' });
+                    trackEvent('auth_prompt_clicked', { surface: 'results_challenge', object_type: 'result', variant: authPromptVariant });
                     void auth.login(window.location.pathname);
                   }}
                 >
@@ -307,7 +323,7 @@ const ResultsScreen = () => {
                 onClick={handleChallengeAFriend}
                 disabled={creatingChallenge}
               >
-                {creatingChallenge ? t('results.challenge_creating') : t('results.challenge_button')}
+                {creatingChallenge ? t('results.challenge_creating') : t(`results.challenge_button_${challengeButtonVariant}`)}
               </button>
             ) : (
               <div className="results-challenge-link">

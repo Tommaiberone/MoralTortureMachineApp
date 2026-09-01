@@ -399,6 +399,28 @@ dev table, or `/dev` SSM hierarchy.
   produced no single ready-to-send flow; the older buttons remain as a
   de-emphasized "share another way" row, not removed, and the card's
   accompanying share text now also carries the same UTM tag.
+- Growth plan Phase 1 continued (`TASK-219`/`220`/`221`/`222`, 2026-09-01)
+  added four same-identity copy A/B tests: login-prompt framing across the
+  three hard-gate surfaces (`results_challenge`/`challenge_join`/
+  `challenge_rematch` - the softer, optional `challenge_compare` pair-insight
+  unlock is deliberately excluded, different semantics), home-screen CTA
+  copy, the "Challenge a friend" button label, and the Party Room create
+  button label. `frontend/src/utils/experiments.js`'s `getExperimentVariant`
+  is the shared bucketing function every one of these four uses (namespaced
+  by experiment name so two different experiments never correlate for the
+  same person) - a sibling to, and deliberately not a replacement for,
+  `attribution.js`'s existing `getShareCreativeVariant`, which keeps its own
+  already-live hash format unchanged rather than risk reassigning users
+  already bucketed into the `TASK-33` share-creative experiment. Backend:
+  `build_experiment_breakdown` is one generic exposure->conversion-by-variant
+  function (shown a copy variant -> did that same identity later fire the
+  matching conversion event at all) reused by all four via the
+  `COPY_EXPERIMENTS` registry, simpler than `build_viral_coefficient`/
+  `build_creative_variant_breakdown` because every one of these four is a
+  single person's own funnel, not a two-sided Duel invite needing a
+  cross-identity UTM join. `PartyRoomHomeScreen.jsx` gained its first page-view
+  event (`party_home_viewed`) since it previously tracked nothing until a
+  room was actually created.
 - Abuse monitoring groups events using a server-generated, HMAC-peppered network
   pseudonym where available, falling back to anonymous or session identity. The
   dashboard returns only a short derived mask, behavioral counts, thresholds,

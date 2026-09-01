@@ -7,6 +7,7 @@ import SEO from '../components/SEO';
 import { getAnonymousUserId, getApiHeaders, getAuthenticatedApiHeaders } from '../utils/session';
 import { trackEvent } from '../utils/analytics';
 import { getShareCreativeVariant, withShareAttribution } from '../utils/attribution';
+import { AUTH_PROMPT_COPY_VARIANTS, getExperimentVariant } from '../utils/experiments';
 import useAuth from '../auth/useAuth';
 import './ChallengeLandingScreen.css';
 
@@ -80,6 +81,9 @@ const ChallengeLandingScreen = () => {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const auth = useAuth();
+  // TASK-219: same login-prompt copy experiment as ResultsScreen/
+  // ChallengeCompareScreen, applied here to the challenge_join surface.
+  const authPromptVariant = getExperimentVariant('auth_prompt_copy', AUTH_PROMPT_COPY_VARIANTS, getAnonymousUserId());
   const [step, setStep] = useState(STEP.LOADING);
   const [error, setError] = useState('');
   const [challenge, setChallenge] = useState(null);
@@ -180,7 +184,7 @@ const ChallengeLandingScreen = () => {
       setStep(STEP.ANSWERING);
     } catch (acceptError) {
       if (acceptError.message === 'login_required') {
-        trackEvent('auth_prompt_shown', { surface: 'challenge_join', challenge_token: token });
+        trackEvent('auth_prompt_shown', { surface: 'challenge_join', challenge_token: token, variant: authPromptVariant });
         setStep(STEP.LOGIN_REQUIRED);
         return;
       }
@@ -289,12 +293,12 @@ const ChallengeLandingScreen = () => {
     return (
       <main className="challenge-screen">
         <h1>{t('challenge.login_required_title')}</h1>
-        <p>{t('challenge.login_required_text')}</p>
+        <p>{t(`challenge.login_required_text_${authPromptVariant}`)}</p>
         <button
           type="button"
           className="btn-primary challenge-accept-button"
           onClick={() => {
-            trackEvent('auth_prompt_clicked', { surface: 'challenge_join', challenge_token: token });
+            trackEvent('auth_prompt_clicked', { surface: 'challenge_join', challenge_token: token, variant: authPromptVariant });
             void auth.login(window.location.pathname);
           }}
         >

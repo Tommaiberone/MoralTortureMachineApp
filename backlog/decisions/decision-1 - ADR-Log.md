@@ -2675,6 +2675,63 @@ Play production with no review gate, so that specific push needs the user's
 explicit go-ahead every time, independent of this session's general
 commit/push authorization.
 
+### ADR-099 — Four same-identity copy A/B tests via one generic bucketing utility and one generic backend breakdown (TASK-219/220/221/222)
+
+Context: asked which other spots in the funnel would benefit from A/B
+testing, on top of the just-shipped Duel-invite creative test. Answered with
+five candidates ranked by leverage and instrumentation readiness (login
+prompt, home CTAs, challenge button, Party create flow, Daily notification
+copy - the last blocked on `TASK-45`, which does not exist yet), explicitly
+flagged that testing all of them simultaneously would fragment an already
+thin sample (doc-2's baseline is ~500-800 sessions/month, and `TASK-166` had
+already had to withhold more than one gate as "insufficient data"), and
+recommended sequencing 1-2 at a time. The user chose to proceed with all four
+ready candidates at once anyway, after that tradeoff was made explicit -
+their call to make, not something to keep re-litigating once made.
+
+Choice: rather than writing a fourth (then fifth, sixth...) bespoke
+hash-bucketing function, factored `getExperimentVariant(experimentName,
+variants, anonymousUserId)` into a new `frontend/src/utils/experiments.js`,
+namespaced by experiment name so two concurrent experiments never correlate
+for the same person. `attribution.js`'s existing `getShareCreativeVariant`
+(TASK-33, already live) was deliberately left untouched on its own hash
+rather than migrated onto the new namespaced one, since that would silently
+reassign already-bucketed users to a different arm mid-experiment for zero
+benefit. On the backend, `build_experiment_breakdown(events, exposure_event,
+conversion_event)` is one generic function - did this identity, exposed to
+variant X via a `variant` property on the exposure event, later fire the
+conversion event at all - covering all four via a `COPY_EXPERIMENTS` name ->
+(exposure, conversion) registry; adding a fifth experiment is a one-line
+registry entry now, not a new function. This differs from
+`build_viral_coefficient`/`build_creative_variant_breakdown` (TASK-41/33) on
+purpose: those join two different people (sharer, invitee) through an
+anonymous UTM tag because a Duel invite is inherently two-sided, while all
+four of these are one person's own funnel (shown a prompt -> clicked it;
+viewed home -> picked a mode), so a same-identity set intersection is
+sufficient and needs no link/token attribution at all. `PartyRoomHomeScreen`
+had never tracked a page view before (only the eventual `party_room_create_
+clicked`), so `party_home_viewed` is a genuinely new event, not a reused one.
+Every new test's login-prompt/home/button copy was scoped to vary exactly
+one variable (e.g. only the button label, not the surrounding intro text) so
+a result is attributable to a specific change, not a bundle of them; the
+`challenge_compare` pair-insight-unlock prompt was excluded from the
+login-copy experiment because it is a soft optional upsell, not a hard gate
+like the other three surfaces, and mixing the two would muddy what the
+result even measures.
+
+Consequences: the dashboard's Growth tab now has one combined "copy
+experiments" table across all four tests (experiment, variant, exposed,
+converted, conversion rate) instead of four separate ad hoc views. Backend
+test count is 194 (up from 193), `pnpm lint`/`build:prod` pass. Given the
+explicitly-accepted sample-size risk, read the numbers for each of these
+four with real skepticism for a while - the same "insufficient sample"
+discipline `TASK-166` established elsewhere applies here just as much, even
+though these functions do not (yet) implement an explicit minimum-sample
+withholding threshold the way `build_retention_cohorts` does. App version
+bump still required and still needs the user's explicit go-ahead for the
+`versionCode`-bumping push, same standing rule as every prior release this
+session.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

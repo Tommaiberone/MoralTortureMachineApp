@@ -3,10 +3,11 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import SEO from '../components/SEO';
-import { getApiHeaders, getAuthenticatedApiHeaders } from '../utils/session';
+import { getAnonymousUserId, getApiHeaders, getAuthenticatedApiHeaders } from '../utils/session';
 import { trackEvent } from '../utils/analytics';
 import { shareDuelCard } from '../utils/shareCard';
 import { withShareAttribution } from '../utils/attribution';
+import { AUTH_PROMPT_COPY_VARIANTS, getExperimentVariant } from '../utils/experiments';
 import useAuth from '../auth/useAuth';
 import './ChallengeCompareScreen.css';
 
@@ -15,6 +16,11 @@ const ChallengeCompareScreen = () => {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const auth = useAuth();
+  // TASK-219: same login-prompt copy experiment as ResultsScreen/
+  // ChallengeLandingScreen, applied here to the challenge_rematch surface
+  // (challenge_compare's optional pair-insight unlock prompt is a different,
+  // softer upsell and deliberately excluded from this experiment).
+  const authPromptVariant = getExperimentVariant('auth_prompt_copy', AUTH_PROMPT_COPY_VARIANTS, getAnonymousUserId());
   const [comparison, setComparison] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -81,7 +87,7 @@ const ChallengeCompareScreen = () => {
       if (response.status === 401) {
         // TASK-136: a rematch is always a repeat Duel interaction, so it
         // always requires an account.
-        trackEvent('auth_prompt_shown', { surface: 'challenge_rematch', challenge_token: token });
+        trackEvent('auth_prompt_shown', { surface: 'challenge_rematch', challenge_token: token, variant: authPromptVariant });
         setRematchLoginRequired(true);
         return;
       }
@@ -187,12 +193,12 @@ const ChallengeCompareScreen = () => {
       <div className="compare-actions">
         {rematchLoginRequired ? (
           <div className="compare-login-cta">
-            <p className="compare-login-cta-text">{t('challengeCompare.rematch_login_required_text')}</p>
+            <p className="compare-login-cta-text">{t(`challengeCompare.rematch_login_required_text_${authPromptVariant}`)}</p>
             <button
               type="button"
               className="compare-login-cta-button"
               onClick={() => {
-                trackEvent('auth_prompt_clicked', { surface: 'challenge_rematch', challenge_token: token });
+                trackEvent('auth_prompt_clicked', { surface: 'challenge_rematch', challenge_token: token, variant: authPromptVariant });
                 void auth.login(window.location.pathname);
               }}
             >
