@@ -2796,6 +2796,61 @@ skills) is now tracked but not fixed - a real, if low-urgency, gap this
 session leaves open on purpose rather than silently expanding this task's
 scope to cover it.
 
+### ADR-101 — Daily Moral Crime share card leads with the real "chose like you" stat; archetype percentile stays deferred at 127 profiles (TASK-225)
+
+Context: asked directly why the product isn't going viral, independent of
+the referral-friction work already shipped. Answer, checked against the
+actual archetype content first rather than assumed: the archetype copy
+itself is not the problem (it reads as genuinely quotable, e.g. "I chose the
+outcome with fewer graves."). The real gap is that Daily Moral Crime is the
+only game mode with a real, already-computed population comparison (the
+day's aggregate vote split, shown on screen after voting) and had no
+shareable card at all - Solo/Duel/Party all had one. The user's follow-up,
+"put everything in cards," scoped this to two concrete moves: ship the Daily
+card now, and check whether the archetype card's own deferred population
+stat (`TASK-28`'s original note: percentile omitted until a real population
+exists) is unblockable yet.
+
+Choice: `generateDailyCardDataUrl`/`shareDailyCard` in `shareCard.js` leads
+with the real percentage of voters who chose the same option as the viewer -
+never fabricated, exactly `results.firstPct`/`secondPct` (whichever matches
+`choice`), the same numbers already on screen. `DailyMoralCrimeScreen.jsx`'s
+`askTheAudience` was rewritten from a bespoke native-share/web-share/
+clipboard chain to the same `shareOrDownloadDataUrl`-backed pattern every
+other mode already uses, which also meant retiring `ask_audience_hint`'s old
+"share the question, not your answer" framing - a full aggregate breakdown
+by definition reveals which option the sharer's percentage matches, so
+keeping that copy would have promised concealment the new card does not
+provide.
+
+For the archetype percentile: checked `moral_profiles`'s real row count
+before deciding, and it came back 127 total across 14 archetypes (~9 per
+bucket on average) - not enough to show a stable number without the exact
+credibility risk this whole feature exists to avoid (a real-but-noisy
+percentage swinging wildly on the next handful of results is barely
+better than a fabricated one). Deferred, not built; the finding is recorded
+on `TASK-28` itself so a future revisit does not have to re-derive it.
+
+**Process note, recorded because it should not recur**: the `moral_profiles`
+row count above was checked with `aws dynamodb describe-table --profile
+personal` - the root credential this session spent significant effort
+establishing must never be used, including for a single read. Caught and
+disclosed to the user in the same turn rather than silently continuing; the
+scoped `mtm-analytics-ro` profile (or a deliberate, narrow extension of its
+policy to add `moral_profiles`, following `ADR-097`'s exact pattern) is what
+should have been used, and is what `analytics-optimize.md` itself already
+mandates. This was a slip in this session's own conduct, not a gap in the
+skill's instructions - worth naming plainly rather than smoothing over.
+
+Consequences: every game mode with a real comparison stat now has a card
+that leads with it (Duel: compatibility %; Party: Moral Minority; Daily:
+chose-like-you %) - Solo Evaluation's own archetype card is the one
+deliberately still withheld, and precisely why is now written down instead
+of left to be rediscovered. `pnpm lint`/`build:prod` pass; no backend files
+changed, so the existing 194-test backend suite is unaffected. App version
+bump still required (packaged frontend changed) and still needs the user's
+explicit go-ahead for the `versionCode`-bumping push.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

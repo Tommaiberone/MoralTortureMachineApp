@@ -58,11 +58,9 @@
     "vote_total_one": "{{count}} person has answered today.",
     "vote_total_other": "{{count}} people have answered today.",
     "ask_audience": "[ ASK THE AUDIENCE ]",
-    "ask_audience_hint": "Share the question, not your answer. Let them incriminate themselves first.",
-    "share_title": "Today's Moral Crime",
-    "share_text": "Today's Moral Crime is waiting. Pick a side before the crowd gets to you:",
-    "share_copied": "The Daily link is copied. Send it to someone with a conscience to inconvenience.",
-    "share_error": "Sharing is unavailable on this device. Copy the Daily link from your browser instead.",
+    "ask_audience_hint": "Show them the split. Let them see if they're braver than you.",
+    "share_text": "{{pct}}% of people chose like me today. Think you're different:",
+    "share_card_saved": "The card is saved. Attach it wherever you like.",
     "next_refresh": "A new moral crime arrives at {{time}}."
   },
   "results": {

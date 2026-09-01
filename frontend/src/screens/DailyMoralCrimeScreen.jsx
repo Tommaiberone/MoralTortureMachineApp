@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Capacitor } from '@capacitor/core';
-import { Share } from '@capacitor/share';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 
@@ -8,13 +6,9 @@ import SEO from '../components/SEO';
 import { API_BASE_URL } from '../config/api';
 import { getApiHeaders } from '../utils/session';
 import { trackEvent } from '../utils/analytics';
+import { shareDailyCard } from '../utils/shareCard';
+import { withShareAttribution } from '../utils/attribution';
 import './DailyMoralCrimeScreen.css';
-
-const DAILY_SHARE_PARAMS = {
-  utm_source: 'daily',
-  utm_medium: 'share',
-  utm_campaign: 'ask_the_audience',
-};
 
 const nextRefreshLabel = (isoDate, locale) => {
   if (!isoDate) return '';
@@ -96,35 +90,22 @@ const DailyMoralCrimeScreen = () => {
   };
 
   const askTheAudience = async () => {
-    if (!daily) return;
-    const shareUrl = new URL('/daily', window.location.origin);
-    Object.entries(DAILY_SHARE_PARAMS).forEach(([key, value]) => shareUrl.searchParams.set(key, value));
-    const shareText = t('daily.share_text');
+    if (!daily?.results) return;
+    const agreementPct = daily.choice === 'first' ? daily.results.firstPct : daily.results.secondPct;
+    // TASK-225: the real "chose like you" percentage is the headline of the
+    // card itself; the accompanying text carries the same stat plus a
+    // UTM-tagged link (TASK-33), matching every other game mode's pattern.
+    const taggedUrl = withShareAttribution(new URL('/daily', window.location.origin).toString(), {
+      source: 'share_card',
+      campaign: 'ask_the_audience',
+    });
+    const shareText = `${t('daily.share_text', { pct: agreementPct })}\n\n${taggedUrl}`;
     setShareStatus('');
 
-    try {
-      if (Capacitor.isNativePlatform()) {
-        await Share.share({ title: t('daily.share_title'), text: shareText, url: shareUrl.toString() });
-        trackEvent('daily_moral_crime_audience_shared', { method: 'native' });
-        return;
-      }
-      if (navigator.share) {
-        await navigator.share({ title: t('daily.share_title'), text: shareText, url: shareUrl.toString() });
-        trackEvent('daily_moral_crime_audience_shared', { method: 'web_share' });
-        return;
-      }
-    } catch (shareError) {
-      if (shareError?.name === 'AbortError') return;
-      console.warn('Daily audience share failed; trying clipboard:', shareError);
-    }
-
-    try {
-      await navigator.clipboard.writeText(`${shareText} ${shareUrl}`);
-      setShareStatus(t('daily.share_copied'));
-      trackEvent('daily_moral_crime_audience_shared', { method: 'copy_link' });
-    } catch (clipboardError) {
-      console.warn('Daily audience clipboard fallback failed:', clipboardError);
-      setShareStatus(t('daily.share_error'));
+    const method = await shareDailyCard(daily.dilemma, daily.choice, daily.results, shareText);
+    trackEvent('daily_moral_crime_audience_shared', { method });
+    if (method === 'download') {
+      setShareStatus(t('daily.share_card_saved'));
     }
   };
 

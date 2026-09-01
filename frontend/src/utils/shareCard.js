@@ -364,6 +364,119 @@ export const shareDuelCard = async (comparison, shareText) => {
 };
 
 /**
+ * TASK-225: Daily Moral Crime share card - the one game mode with a real,
+ * already-computed population comparison (today's global aggregate vote
+ * split) that previously had no shareable card at all, only a text-only
+ * native share. Leads with "chose like you" as the headline - the same
+ * you-vs-the-real-crowd hook the Duel compatibility card and Party's Moral
+ * Minority award already use. Never a fabricated number: `results` is the
+ * exact aggregate already shown on screen after voting.
+ * @param {{dilemma: string, firstAnswer: string, secondAnswer: string}} dilemma
+ * @param {'first'|'second'} choice
+ * @param {{firstPct: number, secondPct: number, totalVotes: number}} results
+ */
+export const generateDailyCardDataUrl = (dilemma, choice, results) => {
+  const width = 1080;
+  const height = 1920;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  const margin = width * 0.1;
+  const maxWidth = width - margin * 2;
+  const accent = '#8B0000';
+
+  const gradient = ctx.createLinearGradient(0, 0, 0, height);
+  gradient.addColorStop(0, '#0a0a0a');
+  gradient.addColorStop(0.5, '#151515');
+  gradient.addColorStop(1, '#0a0a0a');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = width * 0.012;
+  ctx.strokeRect(ctx.lineWidth / 2, ctx.lineWidth / 2, width - ctx.lineWidth, height - ctx.lineWidth);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#888888';
+  ctx.font = `${width * 0.024}px ${FONT_FAMILY}`;
+  ctx.fillText('MORAL TORTURE MACHINE', width / 2, height * 0.08);
+
+  ctx.fillStyle = '#f2f2f2';
+  ctx.font = `bold ${width * 0.045}px ${FONT_FAMILY}`;
+  ctx.fillText('DAILY MORAL CRIME', width / 2, height * 0.14);
+
+  const question = fitText(ctx, dilemma.dilemma, {
+    maxWidth, maxLines: 4, startSize: width * 0.03, minSize: width * 0.02,
+  });
+  ctx.fillStyle = '#cccccc';
+  let y = height * 0.2;
+  const questionLineHeight = question.fontSize * 1.4;
+  for (const line of question.lines) {
+    ctx.font = `${question.fontSize}px ${FONT_FAMILY}`;
+    ctx.fillText(line, width / 2, y);
+    y += questionLineHeight;
+  }
+
+  // Headline: the real share of voters who chose the same option as the
+  // viewer - the entire reason this card is worth posting.
+  const agreementPct = choice === 'first' ? results.firstPct : results.secondPct;
+  const headlineY = Math.max(y + width * 0.05, height * 0.42);
+  ctx.fillStyle = '#888888';
+  ctx.font = `${width * 0.026}px ${FONT_FAMILY}`;
+  ctx.fillText('CHOSE LIKE YOU', width / 2, headlineY);
+  ctx.fillStyle = accent;
+  ctx.font = `bold ${width * 0.16}px ${FONT_FAMILY}`;
+  ctx.fillText(`${agreementPct}%`, width / 2, headlineY + width * 0.15);
+
+  // Full breakdown, both options - same visual language (colors) as the
+  // on-screen result bars (--choice-a/--choice-b in horrorTheme.css).
+  const rows = [
+    { text: dilemma.firstAnswer, pct: results.firstPct, color: '#2f3f4f' },
+    { text: dilemma.secondAnswer, pct: results.secondPct, color: '#4a3a26' },
+  ];
+  const barWidth = maxWidth;
+  const barHeight = width * 0.045;
+  let rowY = headlineY + width * 0.24;
+  for (const row of rows) {
+    const label = fitText(ctx, row.text, {
+      maxWidth, maxLines: 1, startSize: width * 0.026, minSize: width * 0.02,
+    });
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#cccccc';
+    ctx.font = `${label.fontSize}px ${FONT_FAMILY}`;
+    ctx.fillText(label.lines[0] || '', margin, rowY);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#f2f2f2';
+    ctx.font = `bold ${width * 0.03}px ${FONT_FAMILY}`;
+    ctx.fillText(`${row.pct}%`, margin + barWidth, rowY);
+
+    const barY = rowY + width * 0.018;
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(margin, barY, barWidth, barHeight);
+    ctx.fillStyle = row.color;
+    ctx.fillRect(margin, barY, Math.max(width * 0.01, barWidth * (row.pct / 100)), barHeight);
+
+    rowY += width * 0.11;
+  }
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#888888';
+  ctx.font = `${width * 0.024}px ${FONT_FAMILY}`;
+  ctx.fillText(`${results.totalVotes} VOTES TODAY`, width / 2, rowY + width * 0.02);
+
+  ctx.fillStyle = accent;
+  ctx.font = `${width * 0.03}px ${FONT_FAMILY}`;
+  ctx.fillText(DEEP_LINK_LABEL, width / 2, height * 0.96);
+
+  return canvas.toDataURL('image/png');
+};
+
+export const shareDailyCard = async (dilemma, choice, results, shareText) => {
+  const dataUrl = generateDailyCardDataUrl(dilemma, choice, results);
+  return shareOrDownloadDataUrl(dataUrl, 'moral-torture-machine-daily.png', shareText);
+};
+
+/**
  * TASK-48: Party Room recap card - closest pair, moral minority (when the
  * group is big enough to have one) and the most-divided dilemma, all
  * computed deterministically server-side (party_awards.py); this only

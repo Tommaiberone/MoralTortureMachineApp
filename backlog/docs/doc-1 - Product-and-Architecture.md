@@ -541,7 +541,20 @@ dev table, or `/dev` SSM hierarchy.
   Stories-sized card for the Moral Duel comparison itself (both archetypes,
   overall compatibility %, most aligned/divergent dimension) rendered from
   `GET /challenges/{token}/compare`'s response only - never raw per-dilemma
-  answers, same constraint as the JSON response itself.
+  answers, same constraint as the JSON response itself. `generateDailyCardDataUrl`/
+  `shareDailyCard` (`TASK-225`) is the Daily Moral Crime card: previously the
+  only game mode with a real, already-computed population comparison (the
+  day's aggregate vote split) but no shareable card at all, only a text-only
+  native share. Its headline is the real share of voters who chose the same
+  option as the viewer (`results.firstPct`/`secondPct`, whichever matches
+  `choice` - never fabricated, the same numbers already shown on screen
+  after voting), the same you-vs-the-real-crowd hook the Duel compatibility
+  card and Party's Moral Minority award already use. The archetype card's
+  own population percentile ("X% share your archetype") stays deferred per
+  `TASK-28`'s original note: `moral_profiles` had 127 rows total (2026-09-01
+  check, ~9 per archetype across 14 buckets) - not enough for a stable
+  percentage without risking a real-but-noisy number, so this is parked
+  until the population is meaningfully larger, not built prematurely.
 - Avoid SMS. Use FCM only after an explicit opt-in value moment.
 - Reassess Cognito at 8,000 MAU and before exceeding the 10,000 MAU free tier.
 - Every new variable-cost service needs an owner, budget alarm, and fallback.
