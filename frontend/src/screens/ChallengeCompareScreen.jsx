@@ -6,6 +6,7 @@ import SEO from '../components/SEO';
 import { getApiHeaders, getAuthenticatedApiHeaders } from '../utils/session';
 import { trackEvent } from '../utils/analytics';
 import { shareDuelCard } from '../utils/shareCard';
+import { withShareAttribution } from '../utils/attribution';
 import useAuth from '../auth/useAuth';
 import './ChallengeCompareScreen.css';
 
@@ -172,7 +173,9 @@ const ChallengeCompareScreen = () => {
           type="button"
           className="compare-card-download-button"
           onClick={async () => {
-            const method = await shareDuelCard(comparison, t('challengeCompare.share_card_text'));
+            const taggedUrl = withShareAttribution(window.location.origin, { source: 'share_card', campaign: 'duel_compare' });
+            const shareText = `${t('challengeCompare.share_card_text')}\n\n${taggedUrl}`;
+            const method = await shareDuelCard(comparison, shareText);
             trackEvent('share_card_downloaded', { format: 'duel', method });
           }}
         >
@@ -208,7 +211,8 @@ const ChallengeCompareScreen = () => {
               className="btn-primary"
               onClick={() => {
                 trackEvent('share_clicked', { channel: 'whatsapp', object_type: 'rematch' });
-                window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(rematchUrl)}`);
+                const taggedUrl = withShareAttribution(rematchUrl, { source: 'whatsapp', campaign: 'duel_rematch' });
+                window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(taggedUrl)}`);
               }}
             >
               {t('challengeCompare.share_rematch')}

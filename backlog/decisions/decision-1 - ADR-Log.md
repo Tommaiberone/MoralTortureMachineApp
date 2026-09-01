@@ -2613,6 +2613,68 @@ expected for a table doc-1 frames as historical-only; worth a follow-up scan
 to identify the source (an old cached client version, a stale endpoint) if
 someone revisits this area.
 
+### ADR-098 — Growth plan Phase 0/1: cohort retention, per-channel/per-variant viral coefficient via UTM tagging, and a unified primary share action (TASK-41/33/156)
+
+Context: asked for an expert growth-hacker read on the accumulated analytics
+(SEO near-zero, `TASK-166`'s share rate/open-to-complete numbers, Party/Duel
+funnels) and a concrete plan to make the product spread. The honest
+diagnosis: the referral conversion half of the loop already works
+(open-to-complete 29.27%, above gate) but the initiation half does not
+(share rate 11.86-14.29%, below the 15% gate) and there is no compounding
+return-visit loop, giving an estimated K-factor around 0.04-0.05 - nowhere
+close to self-sustaining virality. The plan sequenced Phase 0 (instrument
+what growth actually depends on - cohort retention, real per-channel viral
+coefficient) before Phase 1 (fix the share-rate bottleneck directly), both
+approved by the user with "usa il 100% del tuo cervello."
+
+Choice: built `TASK-41`'s two AC-required numbers -
+`build_retention_cohorts` (D1/D7, pooled not per-day given traffic volume,
+withheld below a 30-identity sample) and `build_viral_coefficient`
+(completed referrals per share attempt, by channel). The per-channel
+requirement turned out to depend on attribution that didn't exist yet for
+the Duel loop specifically: `challenge_token` is deliberately excluded from
+analytics (`TASK-200`, same treatment as `room_code`/`public_id`), so
+per-channel/per-variant attribution needed a non-identifying join key
+instead. Discovered that one already existed and was silently unused: the
+`utm` field has been captured client-side and written to DynamoDB since
+Daily Moral Crime's "Ask the Audience" share, but nothing on the read side
+ever parsed it back out - a dead, one-directional pipe. Extended
+`normalize_analytics_event` to read it, then built `TASK-33` on top: every
+outbound Duel share link (`ResultsScreen.jsx`, `ChallengeLandingScreen.jsx`,
+`ChallengeCompareScreen.jsx`) now carries `utm_source`/`utm_medium`/
+`utm_campaign` (channel/creative attribution, `attribution.js`'s
+`withShareAttribution`) and `utm_content` (a creative variant - `archetype`,
+`radar`, or `provocative` framing for the invite, deterministically bucketed
+per sharer's `anonymousUserId` via `getShareCreativeVariant` so the same
+person keeps seeing/sending the same one). `build_creative_variant_breakdown`
+exposes conversion per variant the same way `build_viral_coefficient` does
+per channel. For `TASK-156`, replaced ResultsScreen's five equal-weight,
+partially-broken share buttons (WhatsApp/Facebook text-only that couldn't
+carry the image; two separate "download" buttons with no send action) with
+one primary action - the stories-format share card, which already opened the
+native share sheet with the image attached where supported
+(`shareOrDownloadCard`, pre-existing) - keeping the rest as a smaller,
+de-emphasized "share another way" row rather than deleting any of them.
+
+Consequences: the dashboard's new Growth tab can now show which channel and
+which invite framing actually converts, not just how often a share button
+was clicked - the two numbers a grow­th-hacking iteration loop needs to know
+what to change next. All three tasks' new backend functions are covered by
+unit tests (193 backend tests total, up from 189), and `pnpm lint`/
+`build:prod` pass. This is the second time an accidentally-unused,
+already-implemented mechanism turned out to be the missing piece for a
+growth task in one day (UTM capture here; the Daily-only dedicated dashboard
+gap in `ADR-096`) - worth remembering that "build it" is sometimes actually
+"wire up what already exists" once the codebase gets audited properly. No
+version-numbers were fabricated for the "radar" creative variant copy
+(CLAUDE.md/`shareCard.js` explicitly ban invented percentiles); it hooks the
+six-dimension test itself as the curiosity driver instead of a fake stat.
+App version bump required before this ships to Android (packaged frontend
+code changed); per `CLAUDE.md` a `versionCode` bump auto-publishes to Google
+Play production with no review gate, so that specific push needs the user's
+explicit go-ahead every time, independent of this session's general
+commit/push authorization.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

@@ -365,6 +365,40 @@ dev table, or `/dev` SSM hierarchy.
   and identity, not by joining on the token), so it is unaffected, but a
   future per-challenge (rather than per-identity) Duel report would need
   TASK-200 resolved first.
+- Growth plan Phase 0/1 (`TASK-41`/`33`/`156`, 2026-09-01) added
+  `retentionCohorts` (`build_retention_cohorts`): pooled D1/D7 retention, an
+  identity being "active" defined as at least one analytics event on a given
+  UTC calendar day (matching the daily trend's own per-day user count),
+  cohort day being the identity's earliest event within the caller's already
+  period/platform-filtered window (left-censored at the window start,
+  documented in the response rather than hidden), and a rate withheld below
+  30 identities in the cohort rather than shown noisy - the same
+  skeptical-analyst sample floor `TASK-166` established for challenge volume.
+  `viralCoefficient` (`build_viral_coefficient`) is completed Duel referrals
+  per share attempt, broken down by channel. Both this and the sibling
+  `creativeVariants` (`build_creative_variant_breakdown`, per-variant
+  conversion) are joined to the *recipient's* side purely through the
+  anonymous `utm_source`/`utm_content` tag the *sharer's* link carried
+  (`frontend/src/utils/attribution.js`'s `withShareAttribution`), read back
+  via `_parse_utm` in `normalize_analytics_event` - a field that had been
+  written to DynamoDB since Daily Moral Crime's "Ask the Audience" share
+  (`DAILY_SHARE_PARAMS`) but that nothing on the read/dashboard side had ever
+  parsed back out until now. This deliberately avoids `challenge_token`
+  (`TASK-200`, kept excluded, same treatment as `room_code`/`public_id`) as
+  the join key. `getShareCreativeVariant` in `attribution.js` deterministically
+  buckets a sharer's own `anonymousUserId` into one of three Duel-invite
+  creative variants (`archetype`/`radar`/`provocative`) so the same person
+  always sees and sends the same framing across sessions; every outbound Duel
+  share link (`ResultsScreen.jsx`, `ChallengeLandingScreen.jsx`,
+  `ChallengeCompareScreen.jsx`) now carries this tag. Separately,
+  `ResultsScreen.jsx`'s generic result-share section (`TASK-156`) now leads
+  with one primary action - the stories-format share card via
+  `shareOrDownloadCard`, which already opened the native share sheet with the
+  image attached where supported - instead of several equal-weight buttons
+  (WhatsApp/Facebook text-only, two separate card-download buttons) that
+  produced no single ready-to-send flow; the older buttons remain as a
+  de-emphasized "share another way" row, not removed, and the card's
+  accompanying share text now also carries the same UTM tag.
 - Abuse monitoring groups events using a server-generated, HMAC-peppered network
   pseudonym where available, falling back to anonymous or session identity. The
   dashboard returns only a short derived mask, behavioral counts, thresholds,

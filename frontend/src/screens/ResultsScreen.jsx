@@ -3,11 +3,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend } from 'recharts';
 import { useTranslation } from 'react-i18next';
-import { getApiHeaders, getAuthenticatedApiHeaders } from '../utils/session';
+import { getAnonymousUserId, getApiHeaders, getAuthenticatedApiHeaders } from '../utils/session';
 import SEO from '../components/SEO';
 import { trackEvent } from '../utils/analytics';
 import { trackGoogleAnalyticsEvent } from '../utils/googleAnalytics';
 import { shareOrDownloadCard } from '../utils/shareCard';
+import { getShareCreativeVariant, withShareAttribution } from '../utils/attribution';
 import useAuth from '../auth/useAuth';
 import './ResultsScreen.css';
 
@@ -38,6 +39,18 @@ const ResultsScreen = () => {
   const archetypeShareLine = archetype
     ? `${archetype.visual?.emoji || ''} ${archetype.name}: "${archetype.sharePhrase}"\n\n`
     : '';
+
+  // TASK-33: which invite creative this visitor sends is A/B tested,
+  // persistently bucketed by their own anonymous identity (see
+  // getShareCreativeVariant), and tagged as utm_content on the link so
+  // TASK-41's dashboard can show completion rate per variant.
+  const shareCreativeVariant = getShareCreativeVariant(getAnonymousUserId());
+  const challengeShareText = archetype
+    ? t(`results.challenge_share_text_${shareCreativeVariant}`, {
+      archetypeName: archetype.name,
+      sharePhrase: archetype.sharePhrase,
+    })
+    : t('results.challenge_share_text');
 
   const labels = Object.keys(aggregated);
   const data = labels.map(label => ({
@@ -159,7 +172,11 @@ const ResultsScreen = () => {
       if (!challengeResponse.ok) throw new Error(`challenge creation failed: ${challengeResponse.status}`);
       const challenge = await challengeResponse.json();
 
-      trackEvent('challenge_share_ready', { object_type: 'result', challenge_token: challenge.challengeToken });
+      trackEvent('challenge_share_ready', {
+        object_type: 'result',
+        challenge_token: challenge.challengeToken,
+        variant: shareCreativeVariant,
+      });
       setChallengeUrl(`${window.location.origin}/challenge/${challenge.challengeToken}`);
     } catch (error) {
       console.error('Error creating challenge:', error);
@@ -305,8 +322,9 @@ const ResultsScreen = () => {
                   <button
                     className="results-share-button whatsapp"
                     onClick={() => {
-                      trackEvent('share_clicked', { channel: 'whatsapp', object_type: 'challenge' });
-                      const message = `${t('results.challenge_share_text')}\n\n${challengeUrl}`;
+                      trackEvent('share_clicked', { channel: 'whatsapp', object_type: 'challenge', variant: shareCreativeVariant });
+                      const taggedUrl = withShareAttribution(challengeUrl, { source: 'whatsapp', campaign: 'duel_challenge', content: shareCreativeVariant });
+                      const message = `${challengeShareText}\n\n${taggedUrl}`;
                       window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`);
                     }}
                   >
@@ -315,8 +333,9 @@ const ResultsScreen = () => {
                   <button
                     className="results-share-button card-download"
                     onClick={() => {
-                      trackEvent('share_clicked', { channel: 'copy_link', object_type: 'challenge' });
-                      navigator.clipboard.writeText(challengeUrl);
+                      trackEvent('share_clicked', { channel: 'copy_link', object_type: 'challenge', variant: shareCreativeVariant });
+                      const taggedUrl = withShareAttribution(challengeUrl, { source: 'copy_link', campaign: 'duel_challenge', content: shareCreativeVariant });
+                      navigator.clipboard.writeText(taggedUrl);
                       alert(t('results.challenge_link_copied'));
                     }}
                   >
@@ -331,15 +350,30 @@ const ResultsScreen = () => {
 
         <div className="results-share-container">
           <h2 className="results-share-title">{t('results.share_title')}</h2>
-          <div className="results-share-buttons">
+          {archetype && (
+            <button
+              type="button"
+              className="btn-primary results-share-primary-button"
+              onClick={async () => {
+                const taggedUrl = withShareAttribution(window.location.origin, { source: 'share_card', campaign: 'result_share' });
+                const shareText = `${t('results.share_text')}\n\n${taggedUrl}`;
+                const method = await shareOrDownloadCard(archetype, 'stories', shareText, data);
+                trackEvent('share_card_downloaded', { format: 'stories', method });
+              }}
+            >
+              {t('results.share_primary_button')}
+            </button>
+          )}
+          <p className="results-share-more-label">{t('results.share_more_ways')}</p>
+          <div className="results-share-buttons results-share-buttons--secondary">
             <button
               className="results-share-button whatsapp"
               onClick={() => {
                 trackEvent('share_clicked', { channel: 'whatsapp', object_type: 'result' });
                 const shareText = t('results.share_text');
                 const shareChallenge = t('results.share_challenge');
-                const url = window.location.origin;
-                const message = `${shareText}\n\n${archetypeShareLine}${aiAnalysis}\n\n${shareChallenge} ${url}`;
+                const taggedUrl = withShareAttribution(window.location.origin, { source: 'whatsapp', campaign: 'result_share' });
+                const message = `${shareText}\n\n${archetypeShareLine}${aiAnalysis}\n\n${shareChallenge} ${taggedUrl}`;
                 window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`);
               }}
             >
@@ -351,36 +385,27 @@ const ResultsScreen = () => {
                 trackEvent('share_clicked', { channel: 'facebook', object_type: 'result' });
                 const shareText = t('results.share_text');
                 const shareChallenge = t('results.share_challenge');
-                const url = window.location.origin;
-                const message = `${shareText}\n\n${archetypeShareLine}${aiAnalysis}\n\n${shareChallenge} ${url}`;
+                const taggedUrl = withShareAttribution(window.location.origin, { source: 'facebook', campaign: 'result_share' });
+                const message = `${shareText}\n\n${archetypeShareLine}${aiAnalysis}\n\n${shareChallenge} ${taggedUrl}`;
                 navigator.clipboard.writeText(message);
                 alert(t('results.facebook_share_alert'));
-                window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`);
+                window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(taggedUrl)}`);
               }}
             >
               {t('results.facebook')}
             </button>
             {archetype && (
-              <>
-                <button
-                  className="results-share-button card-download"
-                  onClick={async () => {
-                    const method = await shareOrDownloadCard(archetype, 'stories', t('results.share_text'), data);
-                    trackEvent('share_card_downloaded', { format: 'stories', method });
-                  }}
-                >
-                  {t('results.download_card_stories')}
-                </button>
-                <button
-                  className="results-share-button card-download"
-                  onClick={async () => {
-                    const method = await shareOrDownloadCard(archetype, 'square', t('results.share_text'), data);
-                    trackEvent('share_card_downloaded', { format: 'square', method });
-                  }}
-                >
-                  {t('results.download_card_square')}
-                </button>
-              </>
+              <button
+                className="results-share-button card-download"
+                onClick={async () => {
+                  const taggedUrl = withShareAttribution(window.location.origin, { source: 'share_card', campaign: 'result_share' });
+                  const shareText = `${t('results.share_text')}\n\n${taggedUrl}`;
+                  const method = await shareOrDownloadCard(archetype, 'square', shareText, data);
+                  trackEvent('share_card_downloaded', { format: 'square', method });
+                }}
+              >
+                {t('results.download_card_square')}
+              </button>
             )}
           </div>
         </div>

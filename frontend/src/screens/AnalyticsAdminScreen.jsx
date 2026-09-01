@@ -173,6 +173,12 @@ const AnalyticsAdminScreen = () => {
   const shareClickedBreakdown = Array.isArray(interactionBreakdowns.shareClicked) ? interactionBreakdowns.shareClicked : [];
   const authPromptCtr = Array.isArray(interactionBreakdowns.authPromptCtr) ? interactionBreakdowns.authPromptCtr : [];
 
+  const retentionCohorts = data.retentionCohorts || {};
+  const retentionD1 = retentionCohorts.d1 || {};
+  const retentionD7 = retentionCohorts.d7 || {};
+  const viralCoefficient = Array.isArray(data.viralCoefficient) ? data.viralCoefficient : [];
+  const creativeVariants = Array.isArray(data.creativeVariants) ? data.creativeVariants : [];
+
   return (
     <main className="analytics-admin">
       <aside className="analytics-sidebar">
@@ -186,6 +192,7 @@ const AnalyticsAdminScreen = () => {
         <nav className="analytics-sidebar-nav" role="tablist" aria-label={t('analyticsAdmin.title')} aria-orientation="vertical">
           {[
             ['abuse', '⌁', t('analyticsAdmin.abuseTitle')],
+            ['growth', '↗', t('analyticsAdmin.growthTitle')],
             ['daily', '◉', t('analyticsAdmin.dailyTitle')],
             ['party', '◈', t('analyticsAdmin.partyTitle')],
             ['duel', '⚔', t('analyticsAdmin.duelTitle')],
@@ -354,6 +361,103 @@ const AnalyticsAdminScreen = () => {
             </tbody>
           </table>
         </div>
+      </section>
+      )}
+
+      {activeSection === 'growth' && (
+      <section className="analytics-grid analytics-grid--three" id="panel-growth" role="tabpanel" aria-labelledby="tab-growth">
+        <article className="analytics-card">
+          <div className="analytics-section-heading">
+            <div>
+              <h2>{t('analyticsAdmin.retentionTitle')}</h2>
+              <p>{t('analyticsAdmin.retentionDescription')}</p>
+            </div>
+          </div>
+          <p className="analytics-card-copy analytics-daily-scope">{t('analyticsAdmin.retentionScope')}</p>
+          <section className="analytics-kpis analytics-retention-kpis" aria-label={t('analyticsAdmin.retentionTitle')}>
+            {[['retentionD1', retentionD1], ['retentionD7', retentionD7]].map(([label, stat]) => (
+              <article className="analytics-card analytics-kpi" key={label}>
+                <span>{t(`analyticsAdmin.${label}`)}</span>
+                <strong>
+                  {stat.insufficientSample ? t('analyticsAdmin.retentionInsufficientSample') : `${stat.retentionPct}%`}
+                </strong>
+                <small className="analytics-cell-note">
+                  {t('analyticsAdmin.retentionCohortSize', { count: stat.cohortSize || 0 })}
+                </small>
+              </article>
+            ))}
+          </section>
+        </article>
+
+        <article className="analytics-card">
+          <div className="analytics-section-heading">
+            <div>
+              <h2>{t('analyticsAdmin.viralCoefficientTitle')}</h2>
+              <p>{t('analyticsAdmin.viralCoefficientDescription')}</p>
+            </div>
+          </div>
+          <div className="analytics-table-wrap analytics-table-wrap--stack">
+            <table>
+              <thead>
+                <tr>
+                  <th>{t('analyticsAdmin.viralChannel')}</th>
+                  <th className="analytics-num">{t('analyticsAdmin.viralShareAttempts')}</th>
+                  <th className="analytics-num">{t('analyticsAdmin.viralCompletedReferrals')}</th>
+                  <th className="analytics-num">{t('analyticsAdmin.viralCoefficient')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {viralCoefficient.length ? viralCoefficient.map((row) => (
+                  <tr key={row.channel}>
+                    <td data-label={t('analyticsAdmin.viralChannel')}><code>{row.channel}</code></td>
+                    <td className="analytics-num" data-label={t('analyticsAdmin.viralShareAttempts')}>{formatNumber(row.shareAttempts)}</td>
+                    <td className="analytics-num" data-label={t('analyticsAdmin.viralCompletedReferrals')}>{formatNumber(row.completedReferrals)}</td>
+                    <td className="analytics-num" data-label={t('analyticsAdmin.viralCoefficient')}>
+                      {row.viralCoefficient === null ? '—' : row.viralCoefficient}
+                    </td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan="4" className="analytics-empty-row">{t('analyticsAdmin.noData')}</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article className="analytics-card">
+          <div className="analytics-section-heading">
+            <div>
+              <h2>{t('analyticsAdmin.creativeVariantsTitle')}</h2>
+              <p>{t('analyticsAdmin.creativeVariantsDescription')}</p>
+            </div>
+          </div>
+          <div className="analytics-table-wrap analytics-table-wrap--stack">
+            <table>
+              <thead>
+                <tr>
+                  <th>{t('analyticsAdmin.creativeVariant')}</th>
+                  <th className="analytics-num">{t('analyticsAdmin.viralShareAttempts')}</th>
+                  <th className="analytics-num">{t('analyticsAdmin.viralCompletedReferrals')}</th>
+                  <th className="analytics-num">{t('analyticsAdmin.creativeConversionRate')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {creativeVariants.length ? creativeVariants.map((row) => (
+                  <tr key={row.variant}>
+                    <td data-label={t('analyticsAdmin.creativeVariant')}><code>{row.variant}</code></td>
+                    <td className="analytics-num" data-label={t('analyticsAdmin.viralShareAttempts')}>{formatNumber(row.shareAttempts)}</td>
+                    <td className="analytics-num" data-label={t('analyticsAdmin.viralCompletedReferrals')}>{formatNumber(row.completedReferrals)}</td>
+                    <td className="analytics-num" data-label={t('analyticsAdmin.creativeConversionRate')}>
+                      {row.conversionRatePct === null ? '—' : `${row.conversionRatePct}%`}
+                    </td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan="4" className="analytics-empty-row">{t('analyticsAdmin.noData')}</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </article>
       </section>
       )}
 

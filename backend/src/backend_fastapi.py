@@ -3654,6 +3654,31 @@ def _parse_event_properties(value: Any) -> dict[str, Any]:
             )
     return safe_properties
 
+# TASK-33/41: the `utm` field has been written to DynamoDB (AnalyticsEvent.utm,
+# already restricted to the five standard keys and validated against
+# _ATTRIBUTION_VALUE_PATTERN at ingest) since UTM capture was first added for
+# Daily Moral Crime's "Ask the Audience" share, but nothing ever read it back
+# out for the dashboard - discovered while building TASK-41's per-channel
+# viral coefficient. Only utm_source is surfaced today (the one TASK-41
+# needs); the parser stays generic so a future consumer of
+# utm_medium/campaign/content/term does not need another pass over the data.
+_ALLOWED_UTM_KEYS = {"utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"}
+
+
+def _parse_utm(value: Any) -> dict[str, str]:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, json.JSONDecodeError):
+            return {}
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: str(item)[:120]
+        for key, item in value.items()
+        if key in _ALLOWED_UTM_KEYS and isinstance(item, str) and item
+    }
+
 def normalize_analytics_event(item: dict[str, Any], source: str) -> dict[str, Any]:
     """Normalize both DynamoDB event generations into one dashboard contract."""
     is_product_event = source == "product"
@@ -3708,6 +3733,7 @@ def normalize_analytics_event(item: dict[str, Any], source: str) -> dict[str, An
         "properties": _parse_event_properties(
             item.get("properties") if is_product_event else item.get("actionData")
         ),
+        "utm": _parse_utm(item.get("utm")),
     }
 
 def _scan_all_rows(dynamodb_table) -> list[dict[str, Any]]:
@@ -4042,6 +4068,157 @@ def build_interaction_breakdowns(events: list[dict[str, Any]]) -> dict[str, Any]
     }
 
 
+# TASK-41 AC#4/growth-plan Phase 0: same skeptical-analyst threshold TASK-166
+# established for challenge volume - withhold a rate rather than report a
+# noisy one below this sample size.
+RETENTION_MIN_COHORT_SAMPLE = 30
+
+
+def build_retention_cohorts(
+    events: list[dict[str, Any]],
+    now_ms: int,
+) -> dict[str, Any]:
+    """D1/D7 cohort retention (TASK-41 AC#1).
+
+    Active-user definition (documented, per AC#1): an identity that fired at
+    least one analytics event on a given UTC calendar day - the same
+    definition the existing daily trend already uses for its per-day user
+    counts. Cohort day = the identity's earliest event within the caller's
+    already period/platform-filtered `events` list (AC#3: exact and inferred
+    platform never mix here because this function never re-scans raw rows -
+    it only ever sees what build_analytics_overview already filtered to the
+    caller's selected platform). An identity active before the window start
+    is left-censored into the first day it appears in this window, which
+    understates true tenure for cohorts near the window's start - documented
+    in the response (`windowLeftCensored`) rather than silently assumed away.
+    D1/D7 are pooled across all eligible cohort days, not shown per day,
+    because per-day cohorts at this traffic volume are single-digit samples;
+    only cohorts old enough for the D1/D7 checkpoint to already have
+    happened count, and the rate is withheld below RETENTION_MIN_COHORT_SAMPLE
+    identities rather than reported noisy.
+    """
+    identity_active_days: dict[str, set] = defaultdict(set)
+    for event in events:
+        day = datetime.fromtimestamp(event["occurredAt"] / 1000, tz=timezone.utc).date()
+        identity_active_days[event["identity"]].add(day)
+
+    active_user_definition = (
+        "An identity with at least one analytics event on a given UTC calendar day."
+    )
+
+    def _empty_rate() -> dict[str, Any]:
+        return {"cohortSize": 0, "retainedCount": 0, "retentionPct": None, "insufficientSample": True}
+
+    if not identity_active_days:
+        return {
+            "activeUserDefinition": active_user_definition,
+            "windowLeftCensored": True,
+            "d1": _empty_rate(),
+            "d7": _empty_rate(),
+        }
+
+    last_available_day = datetime.fromtimestamp(now_ms / 1000, tz=timezone.utc).date()
+    cohort_day_of = {identity: min(active_days) for identity, active_days in identity_active_days.items()}
+
+    d1_cohort = d1_retained = d7_cohort = d7_retained = 0
+    for identity, cohort_day in cohort_day_of.items():
+        d1_checkpoint = cohort_day + timedelta(days=1)
+        if d1_checkpoint <= last_available_day:
+            d1_cohort += 1
+            if d1_checkpoint in identity_active_days[identity]:
+                d1_retained += 1
+        d7_checkpoint = cohort_day + timedelta(days=7)
+        if d7_checkpoint <= last_available_day:
+            d7_cohort += 1
+            if d7_checkpoint in identity_active_days[identity]:
+                d7_retained += 1
+
+    def _rate(retained: int, cohort: int) -> dict[str, Any]:
+        return {
+            "cohortSize": cohort,
+            "retainedCount": retained,
+            "retentionPct": (
+                round(retained / cohort * 100, 1) if cohort >= RETENTION_MIN_COHORT_SAMPLE else None
+            ),
+            "insufficientSample": cohort < RETENTION_MIN_COHORT_SAMPLE,
+        }
+
+    return {
+        "activeUserDefinition": active_user_definition,
+        "windowLeftCensored": True,
+        "d1": _rate(d1_retained, d1_cohort),
+        "d7": _rate(d7_retained, d7_cohort),
+    }
+
+
+def build_viral_coefficient(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Per-channel viral coefficient proxy (TASK-41 AC#2): completed Duel
+    referrals per share attempt, by channel. Joined through the anonymous
+    utm_source tag TASK-33 puts on every outbound Duel share link (read back
+    via the recipient's own event once they land on the tagged URL), not
+    challenge_token - TASK-200 documents that token as deliberately excluded
+    from analytics, the same treatment as room_code/public_id, so this
+    intentionally does not depend on it.
+    """
+    share_attempts_by_channel: Counter = Counter()
+    completions_by_channel: dict[str, set[str]] = defaultdict(set)
+
+    for event in events:
+        if event["eventName"] == "share_clicked":
+            channel = str(event["properties"].get("channel") or "unknown")
+            share_attempts_by_channel[channel] += 1
+        elif event["eventName"] == "challenge_completed_client":
+            channel = event["utm"].get("utm_source") or "untagged"
+            completions_by_channel[channel].add(event["identity"])
+
+    channels = sorted(set(share_attempts_by_channel) | set(completions_by_channel))
+    rows = []
+    for channel in channels:
+        attempts = share_attempts_by_channel.get(channel, 0)
+        completions = len(completions_by_channel.get(channel, set()))
+        rows.append({
+            "channel": channel,
+            "shareAttempts": attempts,
+            "completedReferrals": completions,
+            "viralCoefficient": round(completions / attempts, 3) if attempts else None,
+        })
+    return rows
+
+
+def build_creative_variant_breakdown(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Conversion by share-creative variant (TASK-33 AC#3: "la conversione
+    downstream e' visibile in analytics"). Attempts come from
+    challenge_share_ready's own `variant` property (set once, at creation,
+    regardless of which channel the creator later shares through);
+    completions are joined via the anonymous `utm_content` tag every variant
+    of the invite link carries (TASK-33), the same no-identifying-token
+    pattern build_viral_coefficient uses for channel.
+    """
+    attempts_by_variant: Counter = Counter()
+    completions_by_variant: dict[str, set[str]] = defaultdict(set)
+
+    for event in events:
+        if event["eventName"] == "challenge_share_ready":
+            variant = str(event["properties"].get("variant") or "unknown")
+            attempts_by_variant[variant] += 1
+        elif event["eventName"] == "challenge_completed_client":
+            variant = event["utm"].get("utm_content") or "untagged"
+            completions_by_variant[variant].add(event["identity"])
+
+    variants = sorted(set(attempts_by_variant) | set(completions_by_variant))
+    rows = []
+    for variant in variants:
+        attempts = attempts_by_variant.get(variant, 0)
+        completions = len(completions_by_variant.get(variant, set()))
+        rows.append({
+            "variant": variant,
+            "shareAttempts": attempts,
+            "completedReferrals": completions,
+            "conversionRatePct": round(completions / attempts * 100, 1) if attempts else None,
+        })
+    return rows
+
+
 def build_analytics_overview(
     legacy_rows: list[dict[str, Any]],
     product_rows: list[dict[str, Any]],
@@ -4173,6 +4350,9 @@ def build_analytics_overview(
     party_room = build_party_room_analytics(events)
     moral_duel = build_moral_duel_analytics(events)
     interaction_breakdowns = build_interaction_breakdowns(events)
+    retention_cohorts = build_retention_cohorts(events, now_ms)
+    viral_coefficient = build_viral_coefficient(events)
+    creative_variants = build_creative_variant_breakdown(events)
 
     return {
         "generatedAt": now_ms,
@@ -4209,6 +4389,9 @@ def build_analytics_overview(
         "partyRoom": party_room,
         "moralDuel": moral_duel,
         "interactionBreakdowns": interaction_breakdowns,
+        "retentionCohorts": retention_cohorts,
+        "viralCoefficient": viral_coefficient,
+        "creativeVariants": creative_variants,
         "dataQuality": {
             "exactPlatformCoveragePct": round((exact_events / total_events) * 100, 1) if total_events else 0,
             "anonymousIdentityCoveragePct": round((anonymous_events / total_events) * 100, 1) if total_events else 0,

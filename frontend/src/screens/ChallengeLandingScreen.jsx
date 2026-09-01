@@ -4,8 +4,9 @@ import { useTranslation } from 'react-i18next';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
 
 import SEO from '../components/SEO';
-import { getApiHeaders, getAuthenticatedApiHeaders } from '../utils/session';
+import { getAnonymousUserId, getApiHeaders, getAuthenticatedApiHeaders } from '../utils/session';
 import { trackEvent } from '../utils/analytics';
+import { getShareCreativeVariant, withShareAttribution } from '../utils/attribution';
 import useAuth from '../auth/useAuth';
 import './ChallengeLandingScreen.css';
 
@@ -306,6 +307,14 @@ const ChallengeLandingScreen = () => {
 
   if (step === STEP.TEASER) {
     const shareUrl = `${window.location.origin}/challenge/${token}`;
+    // TASK-33: same deterministic per-sharer variant as ResultsScreen, so a
+    // creator revisiting their own challenge link keeps seeing/sending the
+    // same creative they were originally bucketed into.
+    const shareCreativeVariant = getShareCreativeVariant(getAnonymousUserId());
+    const challengeShareText = t(`challenge.share_text_${shareCreativeVariant}`, {
+      archetypeName: challenge.creatorArchetype.name,
+      sharePhrase: challenge.creatorArchetype.sharePhrase,
+    });
     return (
       <main className="challenge-screen">
         <SEO title="Moral Duel Challenge" description={t('challenge.seo_description')} url={`/challenge/${token}`} noindex />
@@ -330,8 +339,10 @@ const ChallengeLandingScreen = () => {
                 type="button"
                 className="btn-primary"
                 onClick={() => {
-                  trackEvent('share_clicked', { channel: 'whatsapp', object_type: 'challenge' });
-                  window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareUrl)}`);
+                  trackEvent('share_clicked', { channel: 'whatsapp', object_type: 'challenge', variant: shareCreativeVariant });
+                  const taggedUrl = withShareAttribution(shareUrl, { source: 'whatsapp', campaign: 'duel_challenge', content: shareCreativeVariant });
+                  const message = `${challengeShareText}\n\n${taggedUrl}`;
+                  window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`);
                 }}
               >
                 {t('challenge.whatsapp')}
@@ -340,8 +351,9 @@ const ChallengeLandingScreen = () => {
                 type="button"
                 className="btn-primary"
                 onClick={() => {
-                  trackEvent('share_clicked', { channel: 'copy_link', object_type: 'challenge' });
-                  navigator.clipboard.writeText(shareUrl);
+                  trackEvent('share_clicked', { channel: 'copy_link', object_type: 'challenge', variant: shareCreativeVariant });
+                  const taggedUrl = withShareAttribution(shareUrl, { source: 'copy_link', campaign: 'duel_challenge', content: shareCreativeVariant });
+                  navigator.clipboard.writeText(taggedUrl);
                   alert(t('challenge.link_copied'));
                 }}
               >

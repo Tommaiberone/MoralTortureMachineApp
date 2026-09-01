@@ -370,6 +370,15 @@
 .analytics-kpis { margin-bottom: 1.75rem; }
 
 .analytics-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+/* TASK-41: two-tile retention grid nested inside a card, not the page-level
+   four-tile summary band - narrower and with no extra bottom margin of its
+   own since the card already provides spacing. */
+.analytics-retention-kpis {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: none;
+  margin: 0.85rem 0 0;
+}
 .analytics-grid--wide { grid-template-columns: minmax(0, 1.45fr) minmax(22rem, 0.8fr); }
 .analytics-grid--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .analytics-grid--two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -867,4 +876,5 @@
   .analytics-abuse-kpis > div:last-child { border-bottom: 0; }
   .analytics-header-actions { display: grid; }
   .analytics-platform-totals { grid-template-columns: 1fr; }
+  .analytics-retention-kpis { grid-template-columns: 1fr; }
 }

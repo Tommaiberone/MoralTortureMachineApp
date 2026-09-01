@@ -3,7 +3,7 @@ import os
 import time
 import unittest
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch
 
 from fastapi import HTTPException
@@ -412,6 +412,154 @@ class AnalyticsOverviewTests(unittest.TestCase):
         self.assertEqual(breakdowns["authPromptCtr"], [
             {"surface": "results_challenge", "shown": 3, "clicked": 1, "clickThroughPct": 33.3},
         ])
+
+    def test_viral_coefficient_joins_completions_to_channel_via_utm_not_token(self):
+        now_ms = 1785369600000
+        product_rows = [
+            # 3 whatsapp share attempts, 2 copy_link attempts.
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "sharer-1", "occurredAt": now_ms - 9000,
+             "actionType": "share_clicked", "platform": "web", "properties": '{"channel": "whatsapp"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "sharer-2", "occurredAt": now_ms - 8000,
+             "actionType": "share_clicked", "platform": "web", "properties": '{"channel": "whatsapp"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "sharer-3", "occurredAt": now_ms - 7000,
+             "actionType": "share_clicked", "platform": "web", "properties": '{"channel": "whatsapp"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "sharer-4", "occurredAt": now_ms - 6000,
+             "actionType": "share_clicked", "platform": "web", "properties": '{"channel": "copy_link"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "sharer-5", "occurredAt": now_ms - 5000,
+             "actionType": "share_clicked", "platform": "web", "properties": '{"channel": "copy_link"}'},
+            # 2 completions arrived via a whatsapp-tagged link, 0 via copy_link,
+            # 1 with no utm at all (must land in "untagged", never dropped).
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "invitee-1", "occurredAt": now_ms - 4000,
+             "actionType": "challenge_completed_client", "platform": "web",
+             "utm": '{"utm_source": "whatsapp", "utm_medium": "share", "utm_campaign": "duel_challenge"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "invitee-2", "occurredAt": now_ms - 3000,
+             "actionType": "challenge_completed_client", "platform": "web",
+             "utm": '{"utm_source": "whatsapp", "utm_medium": "share", "utm_campaign": "duel_challenge"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "invitee-3", "occurredAt": now_ms - 2000,
+             "actionType": "challenge_completed_client", "platform": "web"},
+        ]
+
+        overview = build_analytics_overview(
+            legacy_rows=[], product_rows=product_rows, days=7, now_ms=now_ms, platform="web",
+        )
+
+        self.assertEqual(overview["viralCoefficient"], [
+            {"channel": "copy_link", "shareAttempts": 2, "completedReferrals": 0, "viralCoefficient": 0.0},
+            {"channel": "untagged", "shareAttempts": 0, "completedReferrals": 1, "viralCoefficient": None},
+            {"channel": "whatsapp", "shareAttempts": 3, "completedReferrals": 2, "viralCoefficient": round(2 / 3, 3)},
+        ])
+
+    def test_creative_variant_breakdown_joins_completions_via_utm_content(self):
+        now_ms = 1785369600000
+        product_rows = [
+            # 3 "archetype" invites created, 2 "provocative".
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "sharer-1", "occurredAt": now_ms - 9000,
+             "actionType": "challenge_share_ready", "platform": "web",
+             "properties": '{"object_type": "result", "variant": "archetype"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "sharer-2", "occurredAt": now_ms - 8000,
+             "actionType": "challenge_share_ready", "platform": "web",
+             "properties": '{"object_type": "result", "variant": "archetype"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "sharer-3", "occurredAt": now_ms - 7000,
+             "actionType": "challenge_share_ready", "platform": "web",
+             "properties": '{"object_type": "result", "variant": "archetype"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "sharer-4", "occurredAt": now_ms - 6000,
+             "actionType": "challenge_share_ready", "platform": "web",
+             "properties": '{"object_type": "result", "variant": "provocative"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "sharer-5", "occurredAt": now_ms - 5000,
+             "actionType": "challenge_share_ready", "platform": "web",
+             "properties": '{"object_type": "result", "variant": "provocative"}'},
+            # 1 completion tagged archetype, 2 tagged provocative, 1 with no tag at all.
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "invitee-1", "occurredAt": now_ms - 4000,
+             "actionType": "challenge_completed_client", "platform": "web",
+             "utm": '{"utm_source": "whatsapp", "utm_content": "archetype"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "invitee-2", "occurredAt": now_ms - 3000,
+             "actionType": "challenge_completed_client", "platform": "web",
+             "utm": '{"utm_source": "whatsapp", "utm_content": "provocative"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "invitee-3", "occurredAt": now_ms - 2000,
+             "actionType": "challenge_completed_client", "platform": "web",
+             "utm": '{"utm_source": "whatsapp", "utm_content": "provocative"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "invitee-4", "occurredAt": now_ms - 1000,
+             "actionType": "challenge_completed_client", "platform": "web"},
+        ]
+
+        overview = build_analytics_overview(
+            legacy_rows=[], product_rows=product_rows, days=7, now_ms=now_ms, platform="web",
+        )
+
+        self.assertEqual(overview["creativeVariants"], [
+            {"variant": "archetype", "shareAttempts": 3, "completedReferrals": 1, "conversionRatePct": round(1 / 3 * 100, 1)},
+            {"variant": "provocative", "shareAttempts": 2, "completedReferrals": 2, "conversionRatePct": 100.0},
+            {"variant": "untagged", "shareAttempts": 0, "completedReferrals": 1, "conversionRatePct": None},
+        ])
+
+    def test_retention_cohorts_pool_d1_d7_across_a_documented_active_definition(self):
+        day0 = datetime(2026, 8, 1, 12, 0, 0, tzinfo=timezone.utc)
+        day0_ms = int(day0.timestamp() * 1000)
+        day1_ms = int((day0 + timedelta(days=1)).timestamp() * 1000)
+        day7_ms = int((day0 + timedelta(days=7)).timestamp() * 1000)
+        now_ms = int((day0 + timedelta(days=10)).timestamp() * 1000)
+
+        product_rows = []
+        for index in range(40):
+            product_rows.append({
+                "eventId": str(uuid.uuid4()), "anonymousUserId": f"cohort-user-{index}",
+                "occurredAt": day0_ms, "actionType": "landing_viewed", "platform": "web", "properties": "{}",
+            })
+            if index < 24:  # 24/40 return the next day
+                product_rows.append({
+                    "eventId": str(uuid.uuid4()), "anonymousUserId": f"cohort-user-{index}",
+                    "occurredAt": day1_ms, "actionType": "landing_viewed", "platform": "web", "properties": "{}",
+                })
+            if index < 12:  # 12/40 return a week later
+                product_rows.append({
+                    "eventId": str(uuid.uuid4()), "anonymousUserId": f"cohort-user-{index}",
+                    "occurredAt": day7_ms, "actionType": "landing_viewed", "platform": "web", "properties": "{}",
+                })
+
+        overview = build_analytics_overview(
+            legacy_rows=[], product_rows=product_rows, days=14, now_ms=now_ms, platform="web",
+        )
+        retention = overview["retentionCohorts"]
+
+        self.assertEqual(
+            retention["activeUserDefinition"],
+            "An identity with at least one analytics event on a given UTC calendar day.",
+        )
+        self.assertTrue(retention["windowLeftCensored"])
+        self.assertEqual(retention["d1"], {
+            "cohortSize": 40, "retainedCount": 24, "retentionPct": 60.0, "insufficientSample": False,
+        })
+        self.assertEqual(retention["d7"], {
+            "cohortSize": 40, "retainedCount": 12, "retentionPct": 30.0, "insufficientSample": False,
+        })
+
+    def test_retention_cohorts_withholds_rate_below_minimum_sample(self):
+        day0 = datetime(2026, 8, 1, 12, 0, 0, tzinfo=timezone.utc)
+        day0_ms = int(day0.timestamp() * 1000)
+        day1_ms = int((day0 + timedelta(days=1)).timestamp() * 1000)
+        now_ms = int((day0 + timedelta(days=10)).timestamp() * 1000)
+
+        product_rows = []
+        for index in range(10):  # below RETENTION_MIN_COHORT_SAMPLE (30)
+            product_rows.append({
+                "eventId": str(uuid.uuid4()), "anonymousUserId": f"small-cohort-{index}",
+                "occurredAt": day0_ms, "actionType": "landing_viewed", "platform": "web", "properties": "{}",
+            })
+            if index < 5:
+                product_rows.append({
+                    "eventId": str(uuid.uuid4()), "anonymousUserId": f"small-cohort-{index}",
+                    "occurredAt": day1_ms, "actionType": "landing_viewed", "platform": "web", "properties": "{}",
+                })
+
+        overview = build_analytics_overview(
+            legacy_rows=[], product_rows=product_rows, days=14, now_ms=now_ms, platform="web",
+        )
+        d1 = overview["retentionCohorts"]["d1"]
+
+        self.assertEqual(d1["cohortSize"], 10)
+        self.assertEqual(d1["retainedCount"], 5)
+        self.assertIsNone(d1["retentionPct"])
+        self.assertTrue(d1["insufficientSample"])
 
     def test_flags_rapid_replay_without_exposing_source_identity(self):
         now_ms = 1785369600000
