@@ -1179,6 +1179,12 @@ class AnalyticsEvent(BaseModel):
     @field_validator("properties")
     @classmethod
     def validate_properties(cls, value: dict[str, Any]) -> dict[str, Any]:
+        # TASK-200: "token" here also (deliberately) catches challenge_token,
+        # not just auth/access/jwt tokens - a Duel invite token is a
+        # shareable-but-non-enumerable identifier, same privacy class as
+        # room_code/public_id in _IDENTIFYING_ANALYTICS_PROPERTY_KEYS above,
+        # so it must never appear in analytics properties either. Decided
+        # 2026-09-02: stays excluded, not promoted to an allowed key.
         forbidden_tokens = {"email", "password", "token", "secret", "ip", "analysis"}
         forbidden_keys = {
             "dilemma_text",

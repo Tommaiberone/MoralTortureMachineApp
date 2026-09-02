@@ -1,9 +1,10 @@
 ---
 id: TASK-207
 title: Migrate deploy.yml's r0adkll/upload-google-play 'track' input to 'tracks'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-31 09:04'
+updated_date: '2026-09-01 15:54'
 labels:
   - ci
   - tech-debt

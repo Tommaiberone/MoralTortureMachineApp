@@ -151,30 +151,6 @@ resource "aws_dynamodb_table" "product_events" {
   }
 }
 
-# DynamoDB Table for Story Flows
-resource "aws_dynamodb_table" "story_flows" {
-  name         = "${var.environment}-${var.stack_name}-story-flows"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "_id"
-
-  attribute {
-    name = "_id"
-    type = "S"
-  }
-
-  # Enable Point-in-Time Recovery for automatic backups
-  point_in_time_recovery {
-    enabled = true
-  }
-
-  tags = {
-    Name        = "Moral Torture Machine Story Flows"
-    Environment = var.environment
-    ManagedBy   = "Terraform"
-    Purpose     = "Story mode with branching dilemma flows"
-  }
-}
-
 # DynamoDB Table for authenticated Users, keyed by immutable Cognito sub.
 # TASK-12: unlike the legacy PAY_PER_REQUEST tables (audited exception pending
 # TASK-88), this new low-traffic table uses provisioned capacity within the
@@ -741,7 +717,6 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           "${aws_dynamodb_table.user_analytics.arn}/index/*",
           aws_dynamodb_table.product_events.arn,
           "${aws_dynamodb_table.product_events.arn}/index/*",
-          aws_dynamodb_table.story_flows.arn,
           aws_dynamodb_table.users.arn,
           aws_dynamodb_table.moral_profiles.arn,
           "${aws_dynamodb_table.moral_profiles.arn}/index/*",
@@ -762,7 +737,6 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           aws_dynamodb_table.dilemmas.arn,
           aws_dynamodb_table.user_analytics.arn,
           aws_dynamodb_table.product_events.arn,
-          aws_dynamodb_table.story_flows.arn,
           aws_dynamodb_table.users.arn,
           aws_dynamodb_table.moral_profiles.arn,
           aws_dynamodb_table.challenges.arn,
@@ -921,7 +895,6 @@ resource "aws_lambda_function" "api" {
     variables = {
       DYNAMODB_TABLE                            = aws_dynamodb_table.dilemmas.name
       ANALYTICS_TABLE                           = aws_dynamodb_table.user_analytics.name
-      STORY_FLOWS_TABLE                         = aws_dynamodb_table.story_flows.name
       PRODUCT_EVENTS_TABLE                      = aws_dynamodb_table.product_events.name
       USERS_TABLE                               = aws_dynamodb_table.users.name
       MORAL_PROFILES_TABLE                      = aws_dynamodb_table.moral_profiles.name
@@ -990,7 +963,6 @@ resource "aws_lambda_function" "retention_sweep" {
     variables = {
       DYNAMODB_TABLE                          = aws_dynamodb_table.dilemmas.name
       ANALYTICS_TABLE                         = aws_dynamodb_table.user_analytics.name
-      STORY_FLOWS_TABLE                       = aws_dynamodb_table.story_flows.name
       PRODUCT_EVENTS_TABLE                    = aws_dynamodb_table.product_events.name
       USERS_TABLE                             = aws_dynamodb_table.users.name
       MORAL_PROFILES_TABLE                    = aws_dynamodb_table.moral_profiles.name

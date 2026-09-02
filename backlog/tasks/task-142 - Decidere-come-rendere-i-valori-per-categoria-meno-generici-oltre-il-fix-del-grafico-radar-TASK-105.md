@@ -3,10 +3,10 @@ id: TASK-142
 title: >-
   Decidere come rendere i valori per categoria meno generici oltre il fix del
   grafico radar (TASK-105)
-status: Open Points
+status: Done
 assignee: []
 created_date: '2026-08-05 08:53'
-updated_date: '2026-08-05 08:53'
+updated_date: '2026-09-02 08:19'
 labels:
   - growth
   - product
@@ -25,6 +25,12 @@ Seguito di TASK-105. Oltre al bug del grafico radar (gia' corretto: dominio fiss
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Decisa la direzione: (a) ridurre/ridisegnare le dimensioni mostrate ai 2-3 fattori latenti reali, (b) ampliare/ribilanciare il pool di dilemmi per ridurre la correlazione tra dimensioni, (c) mostrare il punteggio come percentile rispetto alla popolazione invece che media assoluta, o (d) nessuna azione per ora
-- [ ] #2 Se la scelta tocca dimensioni/pesi/centroidi degli archetipi, concordato il bump di versione dell'archetype engine (ADR-025) prima dell'implementazione
+- [x] #1 Decisa la direzione: (a) ridurre/ridisegnare le dimensioni mostrate ai 2-3 fattori latenti reali, (b) ampliare/ribilanciare il pool di dilemmi per ridurre la correlazione tra dimensioni, (c) mostrare il punteggio come percentile rispetto alla popolazione invece che media assoluta, o (d) nessuna azione per ora
+- [x] #2 Se la scelta tocca dimensioni/pesi/centroidi degli archetipi, concordato il bump di versione dell'archetype engine (ADR-025) prima dell'implementazione
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Decisione utente 2026-09-02: opzione (b), ampliare/ribilanciare il pool di dilemmi per ridurre la correlazione tra dimensioni, invece di ridisegnare le dimensioni mostrate o passare a un punteggio percentile. Nota: il pool e' gia' cresciuto da 17 a 44 dilemmi dal momento in cui questo task e' stato scritto (TASK-201, 2026-08-31), quindi il lavoro di implementazione deve prima ri-misurare la correlazione tra le 6 dimensioni sui 44 dilemmi attuali (alcuni dei 27 aggiunti potrebbero gia' rompere parzialmente il pattern 'opzione dura vs protettiva' che causava la correlazione 0.65-0.86 originale) prima di scrivere altri contenuti mirati. AC#2 (bump di archetypesVersion, ADR-025): non deciso qui - dipende da quanto la ricalibrazione sposta le distribuzioni per-dimensione rispetto ai centroidi esistenti, da valutare quando l'implementazione ha numeri concreti. Creato TASK-228 come task di implementazione separato in To Do.
+<!-- SECTION:NOTES:END -->

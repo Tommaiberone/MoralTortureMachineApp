@@ -11,6 +11,12 @@ const SCHEMA_VERSION = 1;
 const MAX_QUEUE_SIZE = 100;
 const BATCH_SIZE = 25;
 const FLUSH_INTERVAL_MS = 5000;
+// TASK-200: the `token` match here also (deliberately) catches
+// challenge_token, not just auth/access/jwt tokens - a Duel invite token is
+// a shareable-but-non-enumerable identifier, same privacy class as
+// room_code/public_id below, so it must never appear in analytics
+// properties either. Decided 2026-09-02: stays excluded, not promoted to an
+// allowed key.
 const FORBIDDEN_PROPERTY_KEYS = /(^|_)(email|password|token|secret|ip|analysis|dilemma_text|answer_text)($|_)/i;
 const IDENTIFYING_PROPERTY_KEYS = new Set([
   'anonymous_user_id',

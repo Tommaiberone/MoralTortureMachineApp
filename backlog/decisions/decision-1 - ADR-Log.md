@@ -2851,6 +2851,100 @@ changed, so the existing 194-test backend suite is unaffected. App version
 bump still required (packaged frontend changed) and still needs the user's
 explicit go-ahead for the `versionCode`-bumping push.
 
+### ADR-102 — TASK-88 closed with a measured no-migration decision; two zero-traffic tables deleted instead of migrated; scoped `mtm-ops-readonly` IAM user replaces root for MTM-wide reads (TASK-88/90)
+
+Context: resumed a joint Open Points review (previous session) at `TASK-88`
+(HIGH, open since 2026-07-29: whether to migrate the remaining
+`PAY_PER_REQUEST` tables to provisioned capacity within DynamoDB's always-free
+25 RCU/25 WCU allowance). Its own AC#1 required real measured peaks, which the
+existing scoped credential (`mtm-analytics-ro`, `ADR-097`) could not provide -
+it only grants `dynamodb:Scan/Query/DescribeTable` on two tables, not
+CloudWatch. The user's explicit instruction was "you do have CloudWatch
+access" and, when that also proved false, "create, with the root credential,
+a non-root profile with permissions on everything related to mtm" - a
+deliberate widening from `ADR-097`'s narrow one-table-at-a-time pattern to one
+standing credential for the product's ordinary read/observability needs
+(CloudWatch, DynamoDB, Logs, Lambda, API Gateway, S3, CloudFront), still
+built the same way (root used once, for bootstrap only) and still excluding
+IAM, write actions, and the two SSM SecureString secrets (Groq key, Cognito
+client secret) - reading those isn't an "MTM read" need this credential
+exists for, and doing so would conflict with CLAUDE.md's secret-handling rule
+regardless of the broader mandate.
+
+Choice: created IAM user `mtm-ops-readonly` (account `586250839220`) with a
+customer-managed policy (inline exceeded the 2048-byte limit) granting
+read-only actions scoped to `prod-moral-torture-machine-*` ARNs where AWS
+supports resource-level scoping (DynamoDB, Logs, Lambda, S3), and
+account-wide for the two services that don't (`cloudwatch:Get*/List*/
+Describe*`, `cloudfront:Get*/List*` - both APIs lack per-resource IAM
+conditions). Verified with the same probe pattern as `ADR-097`: reads succeed
+(`CloudWatch ListMetrics`, `DynamoDB DescribeTable`), `iam:ListUsers` is
+denied. Used it to pull 14-day CloudWatch peaks for the four tables `TASK-88`
+was actually about: `dilemmas` ~6-8 RCU/~2 WCU (61 items, near-static
+content); `story-flows` traffic was not separately queried once its deletion
+was decided (see below); `user-analytics`/`product-events` ~128 RCU in short
+bursts - `describe-table` and `list-metrics` on `dilemmas` alone are cheap,
+but the 128 RCU figure is inflated by this session's and `analytics-optimize`/
+`ops-alerts-sweep`'s own full-table Scans, not purely organic traffic.
+
+Decision on `TASK-88`: no migration for any of the three still-`PAY_PER_REQUEST`
+tables. The shared free floor already sits at 21/25 RCU-WCU (`ADR-085`);
+`dilemmas` already costs ~USD 0 on-demand at this traffic (no saving from
+migrating), while `user-analytics`/`product-events` would need burst capacity
+well past the ~4/4 remaining headroom to avoid throttling their own
+consumers - including this repo's own ops/analytics tooling, which would be a
+self-inflicted outage. Formalized as an accepted Free Tier exception rather
+than a paid provisioned upgrade.
+
+While reviewing the same account's DynamoDB inventory (a full `list-tables`
+under root, one-time, to check for anything else orphaned - confirmed no
+other MTM table exists beyond the twelve in Terraform state plus the two
+tables handled below; the account also hosts an unrelated `ai-autofiller`
+project's dev/prod tables, untouched, and two still-live Terraform lock
+tables, also untouched), the user chose to delete rather than migrate the two
+tables with substantively zero real traffic instead of leaving them as a
+`TASK-88` on-demand exception:
+
+- `prod-moral-torture-machine-story-flows` (2 items): dormant Story Mode's
+  last remaining artifact. `TASK-185` (2026-08-10) had already stripped every
+  code path referencing it and explicitly deferred the table itself as "a
+  distinct, heavier decision" for later - this is that later decision. Exported
+  both items to a local file first, then removed the Terraform resource, its
+  two IAM policy `Resource` entries, and its `STORY_FLOWS_TABLE` env var on
+  both Lambda functions, ran `terraform state rm` locally (state-only, needs
+  no secret variables, unlike `plan`/`apply`), then deleted the live table.
+  `TASK-52` (Backlog, "revive Story Mode as premium content") was already
+  effectively superseded by `TASK-185`'s "remove now, don't wait for TASK-52"
+  call in August; this closes the loop that decision left open.
+- `moral-torture-machine-dilemmas` (34 items, no environment prefix): the
+  exact table `TASK-90` already tracked - confirmed via grep unused by any
+  production workflow (`deploy.yml` only ever resolves the prefixed name),
+  referenced only by local-fallback defaults and historical docs. Exported
+  first. The delete-table call itself was blocked by Claude Code's own
+  permission classifier after the story-flows deletion; rather than retry or
+  work around it, this was handed back to the user, who ran it themselves.
+  Confirmed gone via `DescribeTable` returning `ResourceNotFoundException`.
+
+Consequences: `TASK-88` and `TASK-90` both closed Done. `doc-1`'s cost-audit
+table updated (three `PAY_PER_REQUEST` tables now, not four; PITR list no
+longer includes story-flows; legacy-table row marked resolved). No Terraform
+`apply` was run locally for the IAM/Lambda-env cleanup that remains in
+`main.tf` (removing the dangling `STORY_FLOWS_TABLE` env var and the two now-
+harmless-but-stale IAM `Resource` ARNs) - deliberately: the root profile has
+none of the required secret variables (`google_oauth_client_secret`,
+`groq_api_key`) locally, and guessing placeholder values for a `plan`/`apply`
+risks Terraform detecting a diff on `aws_ssm_parameter.groq_api_key` or the
+Cognito app client (both are genuine upstream dependencies of the edited
+resources) and overwriting the real secrets in production. That reconciliation
+is safe and automatic on the next ordinary push, since `deploy.yml` runs
+`terraform apply -auto-approve` in CI with the real secrets from GitHub
+Actions - config is already correct locally, only the actual AWS reconcile is
+deferred to that channel. `mtm-ops-readonly` is now this session's default
+credential for MTM-scoped AWS reads going forward, superseding root for that
+purpose the same way `mtm-analytics-ro` did for two-table analytics scans;
+`TASK-224` (root still used by `ops-alerts-sweep.md`/`routine-serale.md`)
+remains open and could now be pointed at this broader credential instead.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

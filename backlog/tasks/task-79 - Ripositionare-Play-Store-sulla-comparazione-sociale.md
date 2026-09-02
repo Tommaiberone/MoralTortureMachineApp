@@ -4,6 +4,7 @@ title: Ripositionare Play Store sulla comparazione sociale
 status: Backlog
 assignee: []
 created_date: '2026-07-29 11:29'
+updated_date: '2026-09-02 07:34'
 labels:
   - m11-growth
   - android
@@ -11,7 +12,6 @@ labels:
   - content
 dependencies:
   - TASK-39
-  - TASK-70
 documentation:
   - backlog/docs/doc-2
 priority: medium
