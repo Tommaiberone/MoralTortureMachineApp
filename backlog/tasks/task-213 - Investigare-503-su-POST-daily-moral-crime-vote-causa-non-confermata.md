@@ -1,9 +1,10 @@
 ---
 id: TASK-213
 title: Investigare 503 su POST /daily-moral-crime/vote (causa non confermata)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-31 10:17'
+updated_date: '2026-09-02 12:39'
 labels:
   - backend
   - daily-moral-crime
@@ -21,7 +22,13 @@ Segnalato dall'utente in produzione subito dopo il fix di TASK-208: POST /daily-
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Causa esatta confermata leggendo i CloudWatch logs (ora piu' dettagliati grazie a TASK-208) o l'email ops_alerts alla prossima occorrenza
-- [ ] #2 Se la causa e' throughput insufficiente, capacita' della tabella daily_moral_crime_votes aumentata in modo proporzionato (rimane comunque nel Free Tier condiviso, verificare il monte RCU/WCU condiviso attuale prima di alzare)
-- [ ] #3 Verificato che un voto reale (utente di test) ora va a buon fine senza 503
+- [x] #1 Causa esatta confermata leggendo i CloudWatch logs (ora piu' dettagliati grazie a TASK-208) o l'email ops_alerts alla prossima occorrenza
+- [x] #2 Se la causa e' throughput insufficiente, capacita' della tabella daily_moral_crime_votes aumentata in modo proporzionato (rimane comunque nel Free Tier condiviso, verificare il monte RCU/WCU condiviso attuale prima di alzare)
+- [x] #3 Verificato che un voto reale (utente di test) ora va a buon fine senza 503
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Risolto - gia' corretto in produzione, mai chiuso nel backlog. Trovato durante /ops-alerts-sweep (2026-09-02): il commit edc2288 (2026-09-01... in realta' 2026-08-31 12:52 CEST) 'fix: [regression] Daily Moral Crime vote transaction (TASK-213), root cause found' aveva gia' identificato e corretto la causa reale, diversa dall'ipotesi di throttling: non era ProvisionedThroughputExceededException ma ValidationException 'Incorrect operand type for operator or function; operator: ADD, operand type: MAP' - vote_daily_moral_crime usava dynamodb.meta.client.transact_write_items(), il cui event handler di auto-serializzazione ri-serializzava una seconda volta i valori gia' costruiti a mano da _dynamodb_item(), trasformando {'N':'1'} in {'M':{'N':{'S':'1'}}}. Ogni singolo voto falliva al 100% da quando la feature era diventata raggiungibile (TASK-206). Fix: usare dynamodb_client (client boto3 grezzo, mai toccato da un resource) invece di dynamodb.meta.client. Confermato via CloudWatch logs (profilo mtm-ops-readonly, TASK-224/ADR-102): tutti e 7 gli alert 503 nella tabella ops_error_alerts risalgono a prima delle 10:52 UTC del 2026-08-31 (ultimo alle 10:37:50Z), zero occorrenze dopo il fix; primo voto riuscito post-fix osservato alle 13:09:35Z (POST /daily-moral-crime/vote -> 200). Le 7 righe corrispondenti sono state eliminate dalla tabella ops_error_alerts durante lo stesso sweep.
+<!-- SECTION:NOTES:END -->

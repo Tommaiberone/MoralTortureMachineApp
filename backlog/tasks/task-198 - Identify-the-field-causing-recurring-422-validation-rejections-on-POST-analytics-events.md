@@ -3,10 +3,10 @@ id: TASK-198
 title: >-
   Identify the field causing recurring 422 validation rejections on POST
   /analytics/events
-status: Blocked
+status: Done
 assignee: []
 created_date: '2026-08-24 15:38'
-updated_date: '2026-08-25 11:18'
+updated_date: '2026-09-02 12:39'
 labels:
   - bug
   - frontend
@@ -26,16 +26,12 @@ TASK-174 (Done) stopped the client from retrying/blocking its queue on a 422, bu
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 A privacy-safe way to identify which field(s) actually fail validation is implemented or proposed (e.g. logging only the Pydantic error type/field path, never the value or full body)
-- [ ] #2 Root cause of at least the dominant failure mode is identified from real data
-- [ ] #3 Decision recorded on whether the identified cause warrants a client-side or schema fix, or is accepted as expected loss
+- [x] #2 Root cause of at least the dominant failure mode is identified from real data
+- [x] #3 Decision recorded on whether the identified cause warrants a client-side or schema fix, or is accepted as expected loss
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Deeper pass (2026-08-25) ruled out several candidates (challenge_token, PII-like patterns, eventName, language - see prior notes) and identified occurredAt clock skew as the most plausible remaining candidate, but could not confirm further from code alone.
-
-IMPLEMENTED for AC#1: added @app.exception_handler(RequestValidationError) in backend_fastapi.py, registered right after the notify_ops_of_errors middleware. Logs only error["loc"] (which field) and error["type"] (which constraint), never error["msg"]/error["input"] which can echo the rejected value back - keeps the no-request-body-logging privacy rule intact. Returns the exact same {"detail": exc.errors()} / 422 shape FastAPI's default handler already produced, so no existing client behavior changes. This also corrects a latent inaccuracy in notify_ops_of_errors' generic alert detail ("See CloudWatch logs for the request detail") - for a 422 specifically, there was previously nothing in CloudWatch to see; there is now. Tests: ValidationExceptionHandlerTests in test_ops_error_notifications.py, asserting the log line contains only loc/type (never a planted msg/input value) and that the response body/status still match FastAPI's default shape. Full backend suite: 184/184 passing. See ADR-089.
-
-AC#2/#3 cannot be completed yet - they require an actual production 422 to hit this new logging and a CloudWatch check afterward, which hasn't happened since this deployed. Status set to Blocked (external impediment: waiting on the next real occurrence) rather than Done, per CLAUDE.md's rule against closing a task on narrower criteria than it actually promises. Re-open/continue once a real log line is available - check CloudWatch for "Validation error on POST /analytics/events" and update this task with the actual loc/type found.
+Risolto 2026-09-02 durante /ops-alerts-sweep, usando il nuovo profilo read-only mtm-ops-readonly (ADR-102) per leggere CloudWatch Logs - non era possibile prima (TASK-224 non era ancora risolto). Aggregati tutti i log 'Validation error on ...' dal deploy del logging (2026-08-25 11:20 UTC, commit 3595e55) a oggi: 78 righe, 113 (loc, type) totali su piu' eventi per batch. Causa dominante (AC#2): campo 'referrer', type 'value_error' - 90/113 occorrenze (~80%). Causa secondaria: campo 'timeZone', type 'string_pattern_mismatch' - 23/113 (~20%). Per 'referrer': il frontend (analytics.js getAttribution) gia' estrae solo new URL(document.referrer).origin prima di inviarlo, quindi in un browser desktop/web normale il valore dovrebbe gia' rispettare il validator backend (solo scheme http/https, nessun path/query/params/fragment/credenziali). L'ipotesi piu' plausibile e' un document.referrer con scheme non-http(s) (es. un referrer di tipo app/intent) osservato nel contesto Android WebView - lo scheme verrebbe scartato subito dal validator (parsed.scheme not in {'http','https'}). Per 'timeZone': il pattern ^[A-Za-z0-9_+/-]+$ non ammette ':' - alcuni WebView/versioni Android piu' vecchie possono restituire un fuso orario in stile offset (es. 'GMT+03:00') invece di un nome IANA. In nessun caso il valore rifiutato e' leggibile dai log (mai loggato per privacy, come da design AC#1) - l'ipotesi resta la spiegazione piu' plausibile dal codice, non confermata byte-per-byte. Decisione (AC#3): la causa giustifica un fix lato schema, non e' una perdita accettata - referrer e timeZone sono dati di attribuzione opzionali e a bassa importanza, ma oggi un singolo valore malformato in un evento fa fallire la validazione dell'INTERO batch Pydantic (fino a 25 eventi), scartandone anche di validi. Il fix corretto e' rendere questi due campi 'fail-soft' (normalizzati a None se non validi invece di rigettare l'intera richiesta), non rigettarli. Aperto TASK-230 in To Do per l'implementazione (fuori dal mandato di sola lettura di /ops-alerts-sweep). Le 133 righe (422, /analytics/events) restano nella tabella ops_error_alerts: la causa e' identificata ma non ancora corretta in codice, quindi non soddisfa il criterio di eliminazione dello sweep.
 <!-- SECTION:NOTES:END -->

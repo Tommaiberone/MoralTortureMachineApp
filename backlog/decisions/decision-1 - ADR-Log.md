@@ -2990,6 +2990,61 @@ exactly two resources). Any *new* skill needing AWS access should reach for
 one of these three first and only mint a new scoped credential if none of
 them actually covers the need - never root.
 
+### ADR-104 — /ops-alerts-sweep run closes two already-fixed-but-never-closed tasks and finds TASK-198's real root cause (TASK-198/213)
+
+Context: first `/ops-alerts-sweep` run using the new `mtm-ops-alerts-writer`
+credential (`ADR-103`) instead of root. 169 rows in `ops_error_alerts`,
+grouped into four `(statusCode, pathSignature)` buckets.
+
+Findings, most valuable first: `503 /daily-moral-crime/vote` (7 rows, all
+2026-08-31) turned out to already be fixed - commit `edc2288` (2026-08-31
+12:52 CEST) had found and fixed the real cause (a double-serialization bug
+sending `transact_write_items` through `dynamodb.meta.client`, not the
+throttling `TASK-213` itself had guessed at) hours after the last
+occurrence, but the task was never moved to Done. `404 /party-rooms/
+{room_code}` (22 rows) is `TASK-199`'s already-fixed account-deletion-
+cascade 404-burst pattern (that specific mechanism now returns 410, not
+404, since `ADR-088`); the 3 post-fix rows are isolated singles, consistent
+with ordinary TTL/bad-code 404s, not a live bug. `409 /challenges/{token}/
+join` (7 rows) is documented expected business logic ("already has a
+different invitee"). All three groups deleted (36 rows) per the sweep's own
+criteria - root cause resolved in code, or expected/documented outcome.
+
+`422 /analytics/events` (133 rows, the large majority) was `TASK-198`
+itself, Blocked since 2026-08-25 waiting for a real occurrence to hit its
+own new diagnostic logging. Reading `mtm-ops-readonly`'s CloudWatch Logs
+access (only usable for this because `TASK-224`/`ADR-103` had just replaced
+root) surfaced 78 log lines / 113 (loc, type) pairs since the logging
+shipped: `referrer` `value_error` dominates at ~80%, `timeZone`
+`string_pattern_mismatch` trails at ~20% - not the candidates `TASK-198`'s
+own description had guessed at (`eventName`, `eventId`, `occurredAt`, utm
+keys, schema version). Both are plausibly explained from code alone (the
+frontend already sends `referrer` as an origin-only string, so a non-http(s)
+scheme from an Android WebView context is the likeliest survivor; `timeZone`
+possibly an offset-style string like `GMT+03:00` rather than an IANA name on
+some Android WebViews) but not confirmable further without logging the
+rejected value itself, which the privacy design correctly refuses to do.
+
+Decision: this warrants an actual fix, not an accepted loss - because
+Pydantic validates the whole `events` list as one model, one malformed
+`referrer`/`timeZone` in a batch of up to 25 currently drops every other,
+otherwise-valid event in that same batch, not just the offending one. Filed
+`TASK-230` (Backlog) to make both fields fail-soft (normalize to `None`
+instead of rejecting the request) rather than fixing it from inside this
+skill run, which is deliberately read-only/decide-only by its own written
+constraint ("mai per intervenire"). The 133 rows stay in the table - the
+cause is identified but not yet fixed in code, so the sweep's own deletion
+criteria don't apply yet.
+
+Consequences: `TASK-198` and `TASK-213` closed Done (found already-resolved
+or newly-resolved respectively); `ops_error_alerts` now holds only the one
+genuinely still-open group. This is the first real evidence that a
+`/ops-alerts-sweep` pass can find a fix that already shipped outside the
+task-tracking loop entirely (`edc2288` was a direct commit, not run through
+`backlog task edit ... Done`) - worth remembering that "study the cause"
+includes checking whether it's already gone before assuming a live alert
+means a live problem.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
