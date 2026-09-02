@@ -3042,6 +3042,39 @@ genuinely still-open group. This is the first real evidence that a
 `/ops-alerts-sweep` pass can find a fix that already shipped outside the
 task-tracking loop entirely (`edc2288` was a direct commit, not run through
 `backlog task edit ... Done`) - worth remembering that "study the cause"
+
+### ADR-105 — Analytics referrer/timeZone validation fails soft instead of dropping the whole batch (TASK-230)
+
+Context: `TASK-230` (filed by `ADR-104`, same session) asked to implement
+the fix `TASK-198` had only diagnosed - `referrer` `value_error` (~80% of
+`POST /analytics/events` 422s) and `timeZone` `string_pattern_mismatch`
+(~20%) were each a `field_validator`/Field-level `pattern=` failure on one
+event inside `AnalyticsBatchRequest.events`, and Pydantic validates that
+list as a single model: one bad `referrer` or `timeZone` anywhere in a
+batch of up to 25 events failed the whole request, discarding every other,
+otherwise-valid event alongside it.
+
+Choice: removed the Field-level `pattern`/`max_length` constraints from
+`timeZone` (they fail before a `field_validator` can even run) and moved
+all checking into `validate_referrer` (existing) and a new
+`validate_time_zone`, both now normalizing an invalid value to `None`
+instead of raising - a `logger.info` records that a value was dropped and
+why in one word ("exceeded max length" / "not an http(s) origin" /
+"invalid format"), never the value itself, consistent with `TASK-198`'s own
+no-raw-value-logging rule. Both fields are optional attribution context,
+not core product data, so losing one malformed value is strictly better
+than losing the batch. Updated the two existing tests that expected a
+`ValidationError` to instead expect `None`, and added a mixed-batch test
+proving one bad `referrer` and one bad `timeZone` no longer touch the third,
+valid event in the same batch. Full backend suite: 195/195.
+
+Consequences: this is a strictly more permissive change to an existing
+schema (no field removed, no new required field, no client contract
+change) - no `versionCode` bump or Android-rebuild warning applies. Once
+deployed, `422 /analytics/events` alerts driven by these two fields should
+stop appearing in `ops_error_alerts` going forward; a future
+`/ops-alerts-sweep` run can confirm and clear the 133 rows `ADR-104` left
+in place pending this fix.
 includes checking whether it's already gone before assuming a live alert
 means a live problem.
 

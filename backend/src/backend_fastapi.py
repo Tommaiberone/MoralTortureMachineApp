@@ -1105,6 +1105,7 @@ class DailyMoralCrimeVoteRequest(BaseModel):
 _EMAIL_LIKE_PATTERN = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
 _JWT_LIKE_PATTERN = re.compile(r'^[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}$')
 _ATTRIBUTION_VALUE_PATTERN = re.compile(r'^[A-Za-z0-9._+-]{1,120}$')
+_TIME_ZONE_PATTERN = re.compile(r'^[A-Za-z0-9_+/-]+$')
 _IDENTIFYING_ANALYTICS_PROPERTY_KEYS = {
     "anonymous_user_id",
     "install_id",
@@ -1132,12 +1133,14 @@ class AnalyticsEvent(BaseModel):
     platform: str = Field(default="unknown", pattern=r'^(web|android|ios|unknown)$')
     appVersion: str = Field(default="unknown", min_length=1, max_length=32)
     language: str = Field(default="en", min_length=2, max_length=10, pattern=r'^[a-zA-Z]+$')
-    timeZone: str | None = Field(
-        default=None,
-        max_length=64,
-        pattern=r'^[A-Za-z0-9_+/-]+$',
-    )
-    referrer: str | None = Field(default=None, max_length=500)
+    # TASK-230: no Field-level pattern/max_length for timeZone/referrer - a
+    # Field-level constraint failure on one event still fails the whole
+    # `events` list as a single Pydantic model, dropping every other valid
+    # event in the same batch (up to 25) along with it. Both fields are
+    # optional attribution data, so an invalid value is normalized to None
+    # by the field_validators below instead.
+    timeZone: str | None = Field(default=None)
+    referrer: str | None = Field(default=None)
     utm: dict[str, str] = Field(default_factory=dict)
     properties: dict[str, Any] = Field(default_factory=dict)
 
@@ -1159,9 +1162,19 @@ class AnalyticsEvent(BaseModel):
     @field_validator("referrer")
     @classmethod
     def validate_referrer(cls, value: str | None) -> str | None:
-        """Keep attribution at origin granularity, never a link path/query."""
+        """Keep attribution at origin granularity, never a link path/query.
+
+        TASK-230: normalizes an invalid referrer to None instead of raising -
+        found via /ops-alerts-sweep (TASK-198) that this was, by far, the
+        dominant cause of POST /analytics/events 422s (~80%), most likely a
+        non-http(s) document.referrer scheme in an Android WebView context.
+        Referrer is optional attribution data; losing one malformed value is
+        far better than dropping the whole batch it arrived in."""
         if value is None:
             return value
+        if len(value) > 500:
+            logger.info("Dropped analytics referrer: exceeded max length")
+            return None
         parsed = urlparse(value)
         if (
             parsed.scheme not in {"http", "https"}
@@ -1173,8 +1186,25 @@ class AnalyticsEvent(BaseModel):
             or parsed.username
             or parsed.password
         ):
-            raise ValueError("Referrer must be an origin without a path or query")
+            logger.info("Dropped analytics referrer: not an http(s) origin")
+            return None
         return f"{parsed.scheme}://{parsed.netloc}"
+
+    @field_validator("timeZone")
+    @classmethod
+    def validate_time_zone(cls, value: str | None) -> str | None:
+        """TASK-230: normalizes an invalid timeZone to None instead of
+        rejecting the request - found via /ops-alerts-sweep (TASK-198) as
+        the second most common POST /analytics/events 422 cause (~20%),
+        most likely an offset-style string (e.g. 'GMT+03:00') rather than an
+        IANA zone name on some Android WebViews. Optional attribution data;
+        same fail-soft treatment as referrer above, for the same reason."""
+        if value is None:
+            return value
+        if len(value) > 64 or not _TIME_ZONE_PATTERN.fullmatch(value):
+            logger.info("Dropped analytics timeZone: invalid format")
+            return None
+        return value
 
     @field_validator("properties")
     @classmethod

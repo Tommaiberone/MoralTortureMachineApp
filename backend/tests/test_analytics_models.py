@@ -63,9 +63,16 @@ class AnalyticsModelTests(unittest.TestCase):
         self.assertEqual(event.properties["planned_dilemmas"], 7)
         self.assertEqual(event.timeZone, "Europe/Rome")
 
-    def test_rejects_invalid_time_zone(self):
-        with self.assertRaises(ValidationError):
-            AnalyticsEvent(**valid_event(timeZone="Europe Rome!"))
+    def test_normalizes_invalid_time_zone_to_none(self):
+        # TASK-230: an invalid timeZone (e.g. an offset-style string instead
+        # of an IANA name) no longer fails the whole request - it silently
+        # becomes None, since it's optional attribution data and previously
+        # dropped the entire batch of up to 25 events along with it.
+        event = AnalyticsEvent(**valid_event(timeZone="Europe Rome!"))
+        self.assertIsNone(event.timeZone)
+
+        event = AnalyticsEvent(**valid_event(timeZone="GMT+03:00"))
+        self.assertIsNone(event.timeZone)
 
     def test_legacy_events_use_the_selected_client_language_and_timezone(self):
         analytics_table = Mock()
@@ -99,8 +106,15 @@ class AnalyticsModelTests(unittest.TestCase):
         event = AnalyticsEvent(**valid_event(referrer="https://example.com"))
         self.assertEqual(event.referrer, "https://example.com")
 
-        with self.assertRaises(ValidationError):
-            AnalyticsEvent(**valid_event(referrer="https://example.com/challenge/private-token"))
+        # TASK-230: a referrer with a path/query/non-http(s) scheme no longer
+        # fails the whole request - it silently becomes None instead, since
+        # it's optional attribution data and previously dropped the entire
+        # batch of up to 25 events along with it.
+        event = AnalyticsEvent(**valid_event(referrer="https://example.com/challenge/private-token"))
+        self.assertIsNone(event.referrer)
+
+        event = AnalyticsEvent(**valid_event(referrer="android-app://com.example.app"))
+        self.assertIsNone(event.referrer)
 
     def test_rejects_unsafe_utm_value(self):
         with self.assertRaises(ValidationError):
@@ -139,6 +153,21 @@ class AnalyticsModelTests(unittest.TestCase):
         batch = AnalyticsBatchRequest(events=[valid_event() for _ in range(25)])
 
         self.assertEqual(len(batch.events), 25)
+
+    def test_malformed_referrer_or_timezone_no_longer_drops_the_whole_batch(self):
+        # TASK-230: before this fix, either bad field on a single event
+        # raised ValidationError for the whole AnalyticsBatchRequest,
+        # discarding every other, otherwise-valid event in the same batch.
+        batch = AnalyticsBatchRequest(events=[
+            valid_event(),
+            valid_event(referrer="https://example.com/some/path"),
+            valid_event(timeZone="GMT+03:00"),
+        ])
+
+        self.assertEqual(len(batch.events), 3)
+        self.assertEqual(batch.events[0].timeZone, "Europe/Rome")
+        self.assertIsNone(batch.events[1].referrer)
+        self.assertIsNone(batch.events[2].timeZone)
 
 
 class AnalyticsOverviewTests(unittest.TestCase):
