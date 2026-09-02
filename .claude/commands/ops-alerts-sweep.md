@@ -19,10 +19,14 @@ prodotto/costo/sicurezza restano validi).
 Nome tabella: `prod-moral-torture-machine-ops-error-alerts` (verifica sempre
 con `terraform output` o leggendo `aws_dynamodb_table.ops_error_alerts.name`
 in `backend/terraform/main.tf` se il naming e' cambiato). Usa il profilo AWS
-CLI `personal`, coerente con `routine-serale.md`:
+CLI scoped `mtm-ops-alerts-writer` (TASK-224, 2026-09-02) - non `personal`,
+che e' una credenziale root e CLAUDE.md ne vieta l'uso per automazione di
+routine. Il profilo ha solo `dynamodb:Scan/DeleteItem/DescribeTable` su
+questa tabella e `sns:Publish` sul topic ops_alerts (vedi routine-serale.md),
+nient'altro:
 
 ```bash
-aws --profile personal dynamodb scan \
+aws --profile mtm-ops-alerts-writer dynamodb scan \
   --table-name prod-moral-torture-machine-ops-error-alerts \
   --output json
 ```
@@ -79,7 +83,7 @@ Per ogni gruppo eliminato usa `aws dynamodb delete-item` sulla singola
 volumi attesi):
 
 ```bash
-aws --profile personal dynamodb delete-item \
+aws --profile mtm-ops-alerts-writer dynamodb delete-item \
   --table-name prod-moral-torture-machine-ops-error-alerts \
   --key '{"alertId": {"S": "<alertId>"}}'
 ```

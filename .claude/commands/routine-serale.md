@@ -106,11 +106,14 @@ la routine serale. Resta un'eccezione, sempre con conferma esplicita:
    backend/frontend da sola. Non eseguire `terraform apply` localmente, e
    non triggerare un `workflow_dispatch` di pubblicazione Play Store
    esplicita senza che sia stato chiesto.
-4. Dopo il push: manda il recap con:
-   `aws --profile personal sns publish --topic-arn <arn di aws_sns_topic.ops_alerts, da backend/terraform/observability.tf> --subject "Routine serale - <data>" --message "<recap>"`
+4. Dopo il push: manda il recap con il profilo AWS CLI scoped
+   `mtm-ops-alerts-writer` (TASK-224, 2026-09-02) - non `personal`, che è una
+   credenziale root e CLAUDE.md ne vieta l'uso per automazione di routine:
+   `aws --profile mtm-ops-alerts-writer sns publish --topic-arn <arn di aws_sns_topic.ops_alerts, da backend/terraform/observability.tf> --subject "Routine serale - <data>" --message "<recap>"`
    Riusa il topic SNS operativo già esistente (già iscritto all'email
    dell'owner): non creare un nuovo topic, una nuova subscription o un nuovo
-   servizio di invio email.
+   servizio di invio email. Il profilo ha permesso solo su questo topic
+   specifico (`sns:Publish`), nient'altro.
 5. Il recap deve elencare: task completati (uno per riga, con cosa è
    cambiato), task lasciati in coda perché richiedono l'utente (con il
    motivo), eventuali nuovi task creati durante il lavoro.
