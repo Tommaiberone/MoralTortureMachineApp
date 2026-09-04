@@ -664,10 +664,17 @@ resource "aws_cognito_user_pool_client" "android" {
   }
 }
 
+# managed_login_version = 1 (Classic Hosted UI). Version 2 (Managed Login)
+# requires a branding style to be assigned to every app client via the
+# aws_cognito_managed_login_branding resource, or /login returns 403 "Login
+# pages unavailable" - that resource only exists from AWS provider >= 6.12
+# (we pin ~> 5.0) and has a known multi-client bug below 6.13. We don't use
+# any custom branding, so Classic Hosted UI gives the same Google + email/
+# password login page without the provider bump.
 resource "aws_cognito_user_pool_domain" "auth" {
   domain                = "moral-torture-machine-${data.aws_caller_identity.current.account_id}"
   user_pool_id          = aws_cognito_user_pool.users.id
-  managed_login_version = 2
+  managed_login_version = 1
 }
 
 resource "aws_cognito_user_group" "admins" {

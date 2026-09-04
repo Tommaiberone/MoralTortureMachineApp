@@ -3519,6 +3519,55 @@ decision, not a revert of dead code. No live browser check performed
 per `CLAUDE.md`'s no-Playwright rule - the icon's visual alignment next to
 the button text is worth a manual look.
 
+### ADR-115 — [regression] Cognito Hosted UI `/login` returned 403 for every client because Managed Login v2 had no branding style; reverted to Classic Hosted UI (TASK-263)
+
+Context: the user reported a 403 on the Cognito Hosted UI `/login` URL for
+the web app client. Fetching that exact URL directly returned Cognito's own
+error page, `"Login pages unavailable - Please contact an administrator"`.
+`aws_cognito_user_pool_domain.auth` (`main.tf`) has `managed_login_version =
+2` ("Managed Login", AWS's newer branded hosted-UI experience), but neither
+`aws_cognito_user_pool_client.web` nor `.android` had a branding style
+assigned - confirmed against AWS docs/re:Post: an app client's Managed
+Login pages are non-functional until a style exists for it. This predates
+`ADR-113`/`TASK-227`: the user pool and domain were created on 2026-07-29
+already with `managed_login_version = 2`, so Google login was almost
+certainly broken via Hosted UI from the start, not broken by the
+email+password change - `ADR-113` itself flagged that no live login check
+was performed after that deploy, which is why this went uncaught.
+
+Decision: reverted `managed_login_version` from `2` to `1` (Classic Hosted
+UI) instead of assigning a branding style. The style-assignment fix needs
+the `aws_cognito_managed_login_branding` Terraform resource, which only
+exists from `hashicorp/aws` provider `>= 6.12` (this repo pins `~> 5.0`,
+installed `5.100.0`) and additionally has a known bug below `6.13` when a
+user pool has more than one app client (we have two: web, android). Bumping
+a major provider version across a 1000+ line `main.tf` to fix a login page's
+default look, for a product that uses no custom branding assets (no logo,
+no custom CSS/copy) is a materially larger and riskier change than the
+problem warrants. Classic Hosted UI needs no branding resource at all and
+renders the same functional page for this app - the email/password form and
+"Sign in with Google" button together on one screen, per `ADR-113`'s
+description of that same no-`identity_provider`-param page - so it restores
+identical behavior to what `ADR-113` intended, just under the older,
+unbranded UI implementation.
+
+Consequences: `terraform validate` passes after the change (pre-existing,
+unrelated `lambda_function.zip`-not-found errors remain, since that artifact
+is only built in CI). A local `terraform plan` could not be run - the root
+module requires `google_oauth_client_id`/`google_oauth_client_secret`,
+which live only in CI secrets, not locally, and are not something to type
+in by hand. `aws_cognito_user_pool_domain.auth`'s `managed_login_version` is
+a plain in-place-updatable attribute for a Cognito prefix domain (not the
+custom-domain case covered by a separate known provider bug), so the actual
+apply is expected as an in-place update, not a resource replacement; this
+will only be confirmed once CI's `terraform apply -auto-approve` runs on
+push to `main`, per this repo's standing commit/push authorization. No
+Android rebuild is needed - the app only opens the browser to this same
+domain/URL shape; nothing in the client-side OAuth contract changes.
+Post-deploy, `TASK-263`'s AC2 (a real `GET /login` returning 200) still
+needs a manual check, the same gap `ADR-113` left open for the Google/email
+login flows themselves.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
