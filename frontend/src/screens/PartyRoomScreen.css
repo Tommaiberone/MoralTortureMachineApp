@@ -228,7 +228,20 @@
   align-items: center;
 }
 
-/* TASK-209: stories-style final recap - segmented progress bar + tap-to-advance slides. */
+/* Keeps the final recap's title visible while scrolling through a tall
+   slide (award text, radar chart, ...) instead of it scrolling out of view -
+   only "sticks" once a slide is actually tall enough to scroll, has no
+   effect while the screen's content still fits (same look as before). */
+.party-recap-sticky-title {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  width: 100%;
+  padding: 12px 0;
+  background-color: var(--creepy-void);
+}
+
+/* TASK-209: stories-style final recap - segmented progress bar + slide transitions. */
 .party-stories-progress {
   display: flex;
   gap: 4px;
@@ -252,7 +265,6 @@
   flex-direction: column;
   align-items: center;
   width: 100%;
-  cursor: pointer;
 }
 
 @keyframes party-stories-slide-in-forward {
@@ -285,6 +297,14 @@
   animation: party-stories-slide-in-backward 0.35s ease-out;
 }
 
-.party-stories-hint {
-  margin-top: 20px;
+.party-stories-nav {
+  width: 90%;
+  max-width: 420px;
+  margin-top: 24px;
+}
+
+.party-stories-nav .btn-primary,
+.party-stories-nav .btn-secondary {
+  flex: 1;
+  width: auto;
 }

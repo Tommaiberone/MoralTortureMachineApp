@@ -298,12 +298,16 @@ dev table, or `/dev` SSM hierarchy.
   stage between the individual-archetypes list and the AI verdict. Since
   `TASK-209`, that same stage sequence (`PartyRoomScreen.jsx`, `room.status
   === 'completed'`) renders as full-bleed "stories"-style slides with a
-  segmented progress bar and a CSS slide-in transition on every stage
-  change, advanced only by an explicit tap/click on the slide (right side
-  forward, left side back via `handleStoriesTap`'s clientX check) - inherits
-  `TASK-123`'s no-timer/no-auto-advance constraint unchanged, just reskins
-  the same data. A tap landing on a real control (the `actions` stage's
-  Rematch/Share/Home) is left alone rather than also treated as navigation.
+  segmented progress bar (`.party-recap-sticky-title` pins the "[ THE
+  MACHINE'S VERDICT ]" heading to the top of the screen while a tall slide
+  scrolls) and a CSS slide-in transition on every stage change. Advancement
+  was originally a tap zone on the slide itself (right side forward, left
+  side back); the user found that unintuitive on 2026-09-04 and it was
+  replaced with explicit Back/Next buttons at the bottom (`advanceStage`,
+  Back disabled at the first stage, Next hidden on the final `actions`
+  stage since that stage's own Rematch/Share/Home buttons follow) - still
+  inherits `TASK-123`'s no-timer/no-auto-advance constraint either way, just
+  reskins the same underlying stage data.
   Since `TASK-211`, `_party_room_participant_summary()` additionally attaches
   `averages` (the caller's own six dimension averages) and `personalVerdict`
   to a completed room's participant entry, but strictly only when that entry

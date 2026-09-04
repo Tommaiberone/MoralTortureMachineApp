@@ -568,26 +568,18 @@ const PartyRoomScreen = () => {
     // full-bleed slide transitions plus a segmented top progress bar,
     // replacing the old static swap + bottom "Continue" button. Explicit
     // constraint inherited from TASK-123 (the user already rejected
-    // countdown/suspense there): advancement is tap/click only, never a
-    // timer - a tap just moves one stage instead of auto-advancing.
+    // countdown/suspense there): advancement is never a timer, only an
+    // explicit action - originally a tap-zone on the slide, now (per user
+    // feedback: the left/right swipe wasn't intuitive) classic back/next
+    // buttons at the bottom instead.
     const advanceStage = (delta) => {
       setRevealDirection(delta > 0 ? 'forward' : 'backward');
       setRevealStage((value) => Math.max(0, Math.min(stages.length - 1, value + delta)));
     };
-    // Right side of the slide advances, left side goes back - classic
-    // stories UX. A tap that lands on a real control (the actions stage's
-    // Rematch/Share/Home buttons/link) is left alone so it keeps working
-    // instead of also being swallowed as a stage-navigation tap.
-    const handleStoriesTap = (event) => {
-      if (event.target.closest('button, a, input, label')) return;
-      const rect = event.currentTarget.getBoundingClientRect();
-      const isRightSide = event.clientX - rect.left > rect.width / 2;
-      advanceStage(isRightSide ? 1 : -1);
-    };
 
     return (
       <main className="screen-container party-room-screen">
-        <h1 className="screen-title-large">{t('party.completedTitle')}</h1>
+        <h1 className="screen-title-large party-recap-sticky-title">{t('party.completedTitle')}</h1>
 
         <div
           className="party-stories-progress"
@@ -604,7 +596,6 @@ const PartyRoomScreen = () => {
         <div
           key={stage}
           className={`party-stories-slide party-stories-slide-${revealDirection}`}
-          onClick={handleStoriesTap}
         >
           {stage === 'archetypes' && (
             <ul className="party-results-list">
@@ -696,9 +687,21 @@ const PartyRoomScreen = () => {
           )}
         </div>
 
-        {stage !== 'actions' && (
-          <p className="screen-subtitle party-stories-hint">{t('party.storiesTapHint')}</p>
-        )}
+        <div className="button-row party-stories-nav">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => advanceStage(-1)}
+            disabled={revealStage === 0}
+          >
+            {t('party.storiesBackButton')}
+          </button>
+          {stage !== 'actions' && (
+            <button type="button" className="btn-primary" onClick={() => advanceStage(1)}>
+              {t('party.storiesNextButton')}
+            </button>
+          )}
+        </div>
       </main>
     );
   }

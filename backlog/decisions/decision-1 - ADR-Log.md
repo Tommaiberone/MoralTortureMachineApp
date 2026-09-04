@@ -3243,6 +3243,50 @@ verdict, the room's explicit collective archetype, the existing group AI
 verdict, and up to 5 awards, all inside a stories-style tap-through flow
 instead of the original single static button-advanced sequence.
 
+### ADR-110 — Party Room recap: swap tap-zone navigation for explicit Back/Next buttons, pin the recap title (TASK-209 follow-up)
+
+Context: immediately after `TASK-209` shipped (`ADR-108`) the user reviewed
+it live and gave two concrete corrections: the left/right tap-to-navigate
+zones on the stories-style slide were not intuitive ("non mi convince... il
+modo di swipare"), and the static `[ EVERYONE'S ARCHETYPE ]` heading should
+stay pinned at the top of the screen while scrolling through a slide,
+renamed to `[ THE MACHINE'S VERDICT ]`.
+
+Decision: removed `handleStoriesTap` and the slide's `onClick` entirely -
+`advanceStage` is now called directly from two classic buttons
+(`.button-row.party-stories-nav`, reusing the existing shared `.button-row`
+flex layout rather than inventing a new one) pinned below the slide: `◀
+Back` (`.btn-secondary`, disabled at `revealStage === 0`) and `Next ▶`
+(`.btn-primary`, hidden on the final `actions` stage since that stage
+already has its own Rematch/Share/Home buttons). The segmented progress bar
+and the CSS slide-in transition from `TASK-209` are unchanged - only the
+advance mechanism changed, per the user's specific complaint. The heading
+gained `.party-recap-sticky-title` (`position: sticky; top: 0`), which only
+visibly "sticks" once a slide is tall enough to scroll - a short slide still
+renders exactly as before, so this is a no-op on the common case and a fix
+only for the tall ones (the personal radar/verdict slide, a long award
+line). `party.completedTitle` copy changed from "[ EVERYONE'S ARCHETYPE ]"
+to "[ THE MACHINE'S VERDICT ]" per the user's explicit wording.
+
+Consequences: removed the now-dead `handleStoriesTap` and
+`party.storiesTapHint`/`.party-stories-hint`, added
+`party.storiesBackButton`/`storiesNextButton`. `pnpm lint`/`pnpm build:prod`
+both pass; no live browser check performed per `CLAUDE.md`'s no-Playwright
+rule - the user should confirm the sticky title and button feel on a real
+device. This is a presentation-only correction on top of `TASK-209`, filed
+directly under it rather than as a new task since it was the same session's
+immediate live-review feedback on work not yet used by anyone else. Caught
+in the same pass: the entire `TASK-209`/`210`/`211` change set (this
+session's prior commit) had gone out without the mandatory app-version
+bump, since it touches packaged frontend code (`PartyRoomScreen.jsx`/`.css`,
+`shareCard.js`) the same way `TASK-225` correctly did - bumped app version
+1.10.0/versionCode 29 -> 1.11.0/versionCode 30 (minor, new features, no
+breaking change) to cover the whole unreleased set in one bump, recorded on
+`TASK-209`. Per `CLAUDE.md`/`ADR-017`, a `versionCode` raise auto-publishes
+to Google Play production with no human review gate, so this push needs the
+user's explicit confirmation before it goes out, on top of the general
+commit/push authorization.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
