@@ -3287,6 +3287,57 @@ to Google Play production with no human review gate, so this push needs the
 user's explicit confirmation before it goes out, on top of the general
 commit/push authorization.
 
+### ADR-111 — Share cards get a "dossier" redesign: shared canvas kit, lazy web fonts, content-fitted card heights (TASK-233)
+
+Context: the user judged all 4 share cards "brutte" (2026-09-05) and asked
+for a drastic visual improvement using real graphic-design judgment, then
+approved a direction pitched as an HTML/CSS mockup (the "Verdict Cards"
+Artifact): a case-file look pairing a distressed-typewriter display face
+with a clean data monospace, per-archetype color as glow instead of a flat
+border, and procedural film grain - see `TASK-233` for the full task
+record. The user also asked to eventually carry the same style into the
+live recap screens (`TASK-234`-`237`, Backlog, sequenced after this one).
+
+Decision: rewrote `shareCard.js` around a shared drawing kit
+(`drawDossierFrame`/`Header`/`FooterSeal`/`Glow`/`Stamp`/`StatBar`/`Grain`)
+reused by all 4 `generate*CardDataUrl` functions, replacing ~15-20 lines of
+near-identical background/border/header/footer boilerplate each function
+used to duplicate. Special Elite (display) + JetBrains Mono (data) are
+loaded lazily via a dynamically injected Google Fonts `<link>` +
+`document.fonts.load()`, raced against a 1.5s timeout - sharing must never
+depend on an external network call, so on failure/timeout every `ctx.font`
+string's own `'Courier New'` fallback still renders correctly. This makes
+all 4 generator functions (and their `share*Card` wrappers) `async`; the
+confirmed-dead `downloadShareCard` export (zero callers in `frontend/src`)
+was deleted rather than also made async for no reason.
+
+Two real bugs surfaced and were fixed during the same session, both before
+and after publishing: the mockup's dimension-bar row (label beside a fixed-
+width track column) let a long label collide with its own bar - the user
+caught this live ("le barre rosse coprono le scritte") - fixed by always
+drawing label+value first and the track strictly below at a y computed
+from the label's actual (possibly wrapped) height, so overlap is
+structurally impossible; and, caught in my own review pass of the ported
+canvas code afterward, the Duel card's per-column glow was drawn *after*
+the "You"/"Them" label (painting back over already-drawn text) and 3 of
+the 4 cards kept the old flat 1920 stories height despite their new,
+shorter content, leaving 600+px of dead canvas above the footer - fixed
+with corrected draw order and content-fitted heights (Duel/Daily use
+shorter fixed constants; Party computes its own height from the actual
+award-row count and group-archetype presence before creating the canvas,
+since a room's award count genuinely varies 0-5). Solo Archetype's
+`'stories'` format deliberately keeps the exact native 1080x1920
+Stories resolution as the one exception, since it is the only card
+actually posted to a Stories placement.
+
+Consequences: `pnpm lint`/`pnpm build:prod` pass; canvas output cannot be
+visually tested in this environment (no Playwright per `CLAUDE.md`), so
+this shipped on code review plus the pre-validated HTML/CSS mockup rather
+than a rendered-PNG check - worth a manual look before wider use. Filed
+`TASK-234`-`237` (Backlog) to carry the same visual system into the live
+Solo/Duel/Party/Daily recap screens, sequenced after this card work per the
+user's explicit ordering.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

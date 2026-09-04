@@ -592,6 +592,38 @@ dev table, or `/dev` SSM hierarchy.
   check, ~9 per archetype across 14 buckets) - not enough for a stable
   percentage without risking a real-but-noisy number, so this is parked
   until the population is meaningfully larger, not built prematurely.
+  Since `TASK-233`, all 4 cards share one "dossier" visual system built from
+  a small set of reused canvas helpers in `shareCard.js`
+  (`drawDossierFrame`/`drawDossierHeader`/`drawFooterSeal`/`drawGlow`/
+  `drawStamp`/`drawStatBar`/`drawGrain`) instead of each function
+  duplicating its own background/border/header/footer: a distressed-
+  typewriter display face (Special Elite) for headlines/stamps paired with
+  a data monospace (JetBrains Mono) for labels/numbers, the archetype's own
+  color as a radial glow instead of a flat border, procedural film grain
+  (no image asset), and rotated "stamped" headline text. Both fonts are
+  loaded lazily (only when a card is actually generated, via a dynamically
+  injected Google Fonts `<link>` + `document.fonts.load()`, raced against a
+  1.5s timeout) so sharing never depends on that external call succeeding -
+  on failure/timeout every `ctx.font` string's own `'Courier New'` fallback
+  still renders correctly, the same font every card used before this
+  redesign. All 4 `generate*CardDataUrl` functions (and their 4
+  `share*Card`/`shareOrDownloadCard` wrappers) are `async` because of this.
+  Stat bars (dimension bars, the Daily choice breakdown) always draw the
+  label/value line first and the filled track strictly below it at a y
+  computed from the label's own (possibly wrapped) rendered height, so a
+  bar can never visually overlap its own label - a `label | track | value`
+  single-row grid layout tried first did exactly that, one of the design
+  iteration's caught bugs. Card heights are fitted to their own content
+  (`generateDuelCardDataUrl`/`generateDailyCardDataUrl` use fixed shorter
+  constants; `generatePartyRecapCardDataUrl` computes its height from the
+  actual award-row count and whether a group archetype block renders,
+  before creating the canvas) rather than the original flat 1920 stories
+  height, which left 600+px of empty canvas above the footer on every card
+  except the Solo Archetype one. The Solo Archetype card's `'stories'`
+  format is the one deliberate exception, kept at the exact native
+  1080x1920 Instagram/WhatsApp Stories resolution (accepting some empty
+  space) since it is the one card actually posted to a Stories placement,
+  where landing on the native resolution avoids letterboxing.
 - Avoid SMS. Use FCM only after an explicit opt-in value moment.
 - Reassess Cognito at 8,000 MAU and before exceeding the 10,000 MAU free tier.
 - Every new variable-cost service needs an owner, budget alarm, and fallback.
