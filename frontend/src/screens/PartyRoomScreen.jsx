@@ -2,7 +2,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
+import {
+  PieChart, Pie, Cell, ResponsiveContainer, Legend,
+  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+} from 'recharts';
 import QRCode from 'qrcode';
 
 import { getApiHeaders } from '../utils/session';
@@ -91,6 +94,9 @@ const PartyRoomScreen = () => {
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [revealHistory, setRevealHistory] = useState({});
   const [revealStage, setRevealStage] = useState(0);
+  // TASK-209: which way the final recap's last stage change went, purely to
+  // pick a slide-in-from-left vs slide-in-from-right transition class.
+  const [revealDirection, setRevealDirection] = useState('forward');
   const [pollFailureCount, setPollFailureCount] = useState(0);
   const pollTracked = useRef(false);
   // A 404/410 is terminal (the room is gone and will never come back) - the
@@ -501,6 +507,10 @@ const PartyRoomScreen = () => {
   if (room.status === 'completed') {
     const awards = room.awards || {};
     const nameOf = (index) => room.participants[index]?.displayName;
+    // TASK-211: averages/personalVerdict only ever appear on the caller's
+    // own entry (backend-enforced - see _party_room_participant_summary),
+    // so this is the one participant object anyone but them can never see.
+    const callerSummary = room.participants.find((p) => p.isCaller);
 
     const awardCards = [];
     if (awards.closestPair) {
@@ -542,63 +552,152 @@ const PartyRoomScreen = () => {
     }
 
     // TASK-123 AC5: sequenced instead of dumped on screen at once - archetypes,
-    // then the AI verdict, then one award at a time, then the actions.
-    const stages = ['archetypes', ...(room.groupVerdict ? ['verdict'] : []), ...awardCards.map((card) => card.key), 'actions'];
+    // then the group's own archetype (TASK-210), then the AI verdict, then
+    // one award at a time, then the actions.
+    const stages = [
+      'archetypes',
+      ...(callerSummary?.averages ? ['yours'] : []),
+      ...(room.groupArchetype ? ['groupArchetype'] : []),
+      ...(room.groupVerdict ? ['verdict'] : []),
+      ...awardCards.map((card) => card.key),
+      'actions',
+    ];
     const stage = stages[Math.min(revealStage, stages.length - 1)];
-    const isLastStage = revealStage >= stages.length - 1;
+
+    // TASK-209: cinematic "stories"-style pass on the same stage sequence -
+    // full-bleed slide transitions plus a segmented top progress bar,
+    // replacing the old static swap + bottom "Continue" button. Explicit
+    // constraint inherited from TASK-123 (the user already rejected
+    // countdown/suspense there): advancement is tap/click only, never a
+    // timer - a tap just moves one stage instead of auto-advancing.
+    const advanceStage = (delta) => {
+      setRevealDirection(delta > 0 ? 'forward' : 'backward');
+      setRevealStage((value) => Math.max(0, Math.min(stages.length - 1, value + delta)));
+    };
+    // Right side of the slide advances, left side goes back - classic
+    // stories UX. A tap that lands on a real control (the actions stage's
+    // Rematch/Share/Home buttons/link) is left alone so it keeps working
+    // instead of also being swallowed as a stage-navigation tap.
+    const handleStoriesTap = (event) => {
+      if (event.target.closest('button, a, input, label')) return;
+      const rect = event.currentTarget.getBoundingClientRect();
+      const isRightSide = event.clientX - rect.left > rect.width / 2;
+      advanceStage(isRightSide ? 1 : -1);
+    };
 
     return (
       <main className="screen-container party-room-screen">
         <h1 className="screen-title-large">{t('party.completedTitle')}</h1>
 
-        {stage === 'archetypes' && (
-          <ul className="party-results-list">
-            {room.participants.map((participant, index) => (
-              <li
-                key={index}
-                className={participant.isCaller ? 'is-caller' : ''}
-                style={{ borderLeftColor: participant.archetype?.visual?.color }}
+        <div
+          className="party-stories-progress"
+          role="progressbar"
+          aria-valuenow={revealStage + 1}
+          aria-valuemin={1}
+          aria-valuemax={stages.length}
+        >
+          {stages.map((_, index) => (
+            <span key={index} className={`party-stories-segment${index <= revealStage ? ' is-filled' : ''}`} />
+          ))}
+        </div>
+
+        <div
+          key={stage}
+          className={`party-stories-slide party-stories-slide-${revealDirection}`}
+          onClick={handleStoriesTap}
+        >
+          {stage === 'archetypes' && (
+            <ul className="party-results-list">
+              {room.participants.map((participant, index) => (
+                <li
+                  key={index}
+                  className={participant.isCaller ? 'is-caller' : ''}
+                  style={{ borderLeftColor: participant.archetype?.visual?.color }}
+                >
+                  <span className="party-results-emoji">{participant.archetype?.visual?.emoji}</span>
+                  <span className="party-results-name">{participant.displayName}</span>
+                  <span className="party-results-archetype">{participant.archetype?.name}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {stage === 'yours' && callerSummary?.averages && (
+            <div className="party-personal-radar">
+              <h2 className="screen-title">{t('party.yoursTitle')}</h2>
+              <p className="screen-subtitle">{t('party.yoursIntro')}</p>
+              <div className="party-personal-radar-container">
+                <ResponsiveContainer width="100%" height={260}>
+                  <RadarChart data={DIMENSIONS.map((dimension) => ({
+                    subject: dimension, value: callerSummary.averages[dimension] ?? 0,
+                  }))}
+                  >
+                    <PolarGrid />
+                    <PolarAngleAxis dataKey="subject" tick={{ fontSize: 11 }} />
+                    <PolarRadiusAxis angle={90} domain={[0, 1]} tick={{ fontSize: 9 }} />
+                    <Radar
+                      name={t('results.moral_profile')}
+                      dataKey="value"
+                      stroke="var(--horror-crimson)"
+                      fill="var(--horror-blood-red)"
+                      fillOpacity={0.8}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+              {callerSummary.personalVerdict && (
+                <p className="text-box-default">{callerSummary.personalVerdict}</p>
+              )}
+            </div>
+          )}
+
+          {stage === 'groupArchetype' && room.groupArchetype && (
+            <div className="card-default party-group-archetype" style={{ borderColor: room.groupArchetype.visual?.color }}>
+              <p className="screen-subtitle">{t('party.groupArchetypeIntro')}</p>
+              <p className="party-group-archetype-emoji">{room.groupArchetype.visual?.emoji}</p>
+              <h2 className="screen-title">{room.groupArchetype.name}</h2>
+              <p className="party-group-archetype-description">{room.groupArchetype.description}</p>
+              <p>
+                <strong>{t('results.archetype_strength')}:</strong> {room.groupArchetype.strength}
+              </p>
+              <p>
+                <strong>{t('results.archetype_blind_spot')}:</strong> {room.groupArchetype.blindSpot}
+              </p>
+            </div>
+          )}
+
+          {stage === 'verdict' && (
+            <p className="text-box-default">{room.groupVerdict}</p>
+          )}
+
+          {awardCards.map((card) => stage === card.key && (
+            <p key={card.key} className="text-box-default party-award-stage">{card.text}</p>
+          ))}
+
+          {stage === 'actions' && (
+            <div className="party-final-actions">
+              <button type="button" className="btn-primary" onClick={handleRematch} disabled={rematching}>
+                {rematching ? t('party.rematching') : t('party.rematchButton')}
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={async () => {
+                  const method = await sharePartyRecapCard(
+                    awards, room.participants, t('party.recapShareText'), room.groupArchetype,
+                  );
+                  trackEvent('party_room_recap_shared', { room_code: roomCode, method });
+                }}
               >
-                <span className="party-results-emoji">{participant.archetype?.visual?.emoji}</span>
-                <span className="party-results-name">{participant.displayName}</span>
-                <span className="party-results-archetype">{participant.archetype?.name}</span>
-              </li>
-            ))}
-          </ul>
-        )}
+                {t('party.shareRecapButton')}
+              </button>
+              <p><a href="/">← {t('common.backToHome')}</a></p>
+            </div>
+          )}
+        </div>
 
-        {stage === 'verdict' && (
-          <p className="text-box-default">{room.groupVerdict}</p>
-        )}
-
-        {awardCards.map((card) => stage === card.key && (
-          <p key={card.key} className="text-box-default party-award-stage">{card.text}</p>
-        ))}
-
-        {stage === 'actions' ? (
-          <div className="party-final-actions">
-            <button type="button" className="btn-primary" onClick={handleRematch} disabled={rematching}>
-              {rematching ? t('party.rematching') : t('party.rematchButton')}
-            </button>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={async () => {
-                const method = await sharePartyRecapCard(awards, room.participants, t('party.recapShareText'));
-                trackEvent('party_room_recap_shared', { room_code: roomCode, method });
-              }}
-            >
-              {t('party.shareRecapButton')}
-            </button>
-            <p><a href="/">← {t('common.backToHome')}</a></p>
-          </div>
-        ) : (
-          <button type="button" className="btn-primary" onClick={() => setRevealStage((value) => value + 1)}>
-            {t('party.continueButton')}
-          </button>
-        )}
-        {!isLastStage && (
-          <p className="screen-subtitle">{t('party.roundProgress', { current: revealStage + 1, total: stages.length })}</p>
+        {stage !== 'actions' && (
+          <p className="screen-subtitle party-stories-hint">{t('party.storiesTapHint')}</p>
         )}
       </main>
     );

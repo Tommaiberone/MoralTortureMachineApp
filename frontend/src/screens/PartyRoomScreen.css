@@ -190,6 +190,35 @@
   font-size: 19px;
 }
 
+.party-personal-radar {
+  width: 90%;
+  max-width: 420px;
+  text-align: center;
+}
+
+.party-personal-radar-container {
+  width: 100%;
+  margin: 8px 0;
+}
+
+.party-group-archetype {
+  width: 90%;
+  max-width: 420px;
+  text-align: center;
+}
+
+.party-group-archetype-emoji {
+  font-size: 44px;
+  margin: 0 0 8px;
+}
+
+.party-group-archetype-description {
+  color: var(--text-normal);
+  font-family: 'Courier New', Courier, monospace;
+  line-height: 1.6;
+  margin: 14px 0;
+}
+
 .party-final-actions {
   display: flex;
   flex-direction: column;
@@ -197,4 +226,65 @@
   width: 90%;
   max-width: 420px;
   align-items: center;
+}
+
+/* TASK-209: stories-style final recap - segmented progress bar + tap-to-advance slides. */
+.party-stories-progress {
+  display: flex;
+  gap: 4px;
+  width: 90%;
+  max-width: 420px;
+  margin: 4px 0 20px;
+}
+
+.party-stories-segment {
+  flex: 1;
+  height: 3px;
+  background-color: var(--creepy-fog);
+}
+
+.party-stories-segment.is-filled {
+  background-color: var(--text-danger-readable);
+}
+
+.party-stories-slide {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  cursor: pointer;
+}
+
+@keyframes party-stories-slide-in-forward {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes party-stories-slide-in-backward {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.party-stories-slide-forward {
+  animation: party-stories-slide-in-forward 0.35s ease-out;
+}
+
+.party-stories-slide-backward {
+  animation: party-stories-slide-in-backward 0.35s ease-out;
+}
+
+.party-stories-hint {
+  margin-top: 20px;
 }

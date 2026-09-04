@@ -484,19 +484,25 @@ export const shareDailyCard = async (dilemma, choice, results, shareText) => {
  * server round trip.
  * @param {{closestPair: object|null, moralMinority: object|null, mostControversialDilemma: object|null}} awards
  * @param {{displayName: string}[]} participants
+ * @param {{name: string, visual: {emoji: string, color: string}}|null} [groupArchetype]
+ *   TASK-210: the room's own archetype (mean of every participant's averages
+ *   through the same deterministic assign_archetype() used per individual) -
+ *   its visual identity leads the card and sets the accent color, same as the
+ *   solo share card does with an individual archetype.
  */
-export const generatePartyRecapCardDataUrl = (awards, participants) => {
+export const generatePartyRecapCardDataUrl = (awards, participants, groupArchetype = null) => {
   const width = 1080;
   // TASK-123: up to 5 award sections now (was 3) - taller canvas so a big
-  // group with every award computed still has room to breathe.
-  const height = 1700;
+  // group with every award computed still has room to breathe. TASK-210:
+  // +80 for the group archetype block below the title.
+  const height = 1780;
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
   const margin = width * 0.1;
   const maxWidth = width - margin * 2;
-  const accent = '#8B0000';
+  const accent = groupArchetype?.visual?.color || '#8B0000';
 
   const gradient = ctx.createLinearGradient(0, 0, 0, height);
   gradient.addColorStop(0, '#0a0a0a');
@@ -515,13 +521,30 @@ export const generatePartyRecapCardDataUrl = (awards, participants) => {
 
   ctx.fillStyle = '#f2f2f2';
   ctx.font = `bold ${width * 0.06}px ${FONT_FAMILY}`;
-  ctx.fillText('PARTY RESULTS', width / 2, height * 0.15);
+  ctx.fillText('PARTY RESULTS', width / 2, height * 0.13);
+
+  let y = height * 0.13;
+  if (groupArchetype) {
+    y += width * 0.1;
+    ctx.font = `${width * 0.065}px ${FONT_FAMILY}`;
+    ctx.fillText(groupArchetype.visual?.emoji || '', width / 2, y);
+
+    y += width * 0.06;
+    const groupName = fitText(ctx, groupArchetype.name, {
+      maxWidth, maxLines: 1, startSize: width * 0.038, minSize: width * 0.024, weight: 'bold',
+    });
+    ctx.fillStyle = accent;
+    ctx.font = `bold ${groupName.fontSize}px ${FONT_FAMILY}`;
+    ctx.fillText(groupName.lines[0] || groupArchetype.name, width / 2, y);
+    y += groupName.fontSize * 1.3;
+  } else {
+    y += width * 0.06;
+  }
 
   ctx.fillStyle = '#888888';
   ctx.font = `${width * 0.028}px ${FONT_FAMILY}`;
-  ctx.fillText(`${participants.length} PLAYERS JUDGED`, width / 2, height * 0.19);
-
-  let y = height * 0.28;
+  ctx.fillText(`${participants.length} PLAYERS JUDGED`, width / 2, y);
+  y += height * 0.09;
   const nameOf = (index) => participants[index]?.displayName || '?';
 
   const drawSection = (label, lines) => {
@@ -575,7 +598,7 @@ export const generatePartyRecapCardDataUrl = (awards, participants) => {
   return canvas.toDataURL('image/png');
 };
 
-export const sharePartyRecapCard = async (awards, participants, shareText) => {
-  const dataUrl = generatePartyRecapCardDataUrl(awards, participants);
+export const sharePartyRecapCard = async (awards, participants, shareText, groupArchetype = null) => {
+  const dataUrl = generatePartyRecapCardDataUrl(awards, participants, groupArchetype);
   return shareOrDownloadDataUrl(dataUrl, 'moral-torture-machine-party-recap.png', shareText);
 };

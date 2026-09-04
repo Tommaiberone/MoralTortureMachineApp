@@ -380,6 +380,31 @@ class PartyRoomTestCase(unittest.TestCase):
         self.assertIsInstance(state["groupVerdict"], str)
         self.assertTrue(state["groupVerdict"])
 
+    def test_completed_room_includes_group_archetype(self):
+        # TASK-210: an explicit archetype for the room as a whole, computed
+        # from the mean of every participant's own dimension averages through
+        # the same deterministic assign_archetype() used per individual.
+        room = self._create_room(count=backend_module.PARTY_ROOM_MIN_DILEMMAS)
+        self.rooms._items[(room["roomCode"],)]["dilemmaBaseIds"] = \
+            self.rooms._items[(room["roomCode"],)]["dilemmaBaseIds"][:1]
+        self._join(room["roomCode"], "guest-1")
+        self._start(room["roomCode"])
+        self._vote(room["roomCode"], "host-1", "first", {"Empathy": 0.9})
+        self._vote(room["roomCode"], "guest-1", "second", {"Empathy": 0.1})
+        self.rooms._items[(room["roomCode"],)]["phaseEndsAt"] = 0
+
+        state = self._get_state(room["roomCode"], "host-1")
+        self.assertEqual(state["status"], "completed")
+        group_archetype = state["groupArchetype"]
+        self.assertIsNotNone(group_archetype)
+        for field in ("archetypeId", "archetypesVersion", "name", "description", "strength", "blindSpot", "visual"):
+            self.assertIn(field, group_archetype)
+
+        # Same shape/value as feeding assign_archetype() the mean of both
+        # participants' own averages directly (0.9 and 0.1 -> 0.5).
+        expected = backend_module.assign_archetype({"Empathy": 0.5}, language="en")
+        self.assertEqual(group_archetype["archetypeId"], expected["archetypeId"])
+
     def test_group_verdict_is_generated_once_and_cached(self):
         room = self._create_room(count=backend_module.PARTY_ROOM_MIN_DILEMMAS)
         self.rooms._items[(room["roomCode"],)]["dilemmaBaseIds"] = \
@@ -394,6 +419,57 @@ class PartyRoomTestCase(unittest.TestCase):
         second = self._get_state(room["roomCode"], "host-1")
         self.assertEqual(first["groupVerdict"], second["groupVerdict"])
         self.assertEqual(self.rooms._items[(room["roomCode"],)]["groupVerdict"], first["groupVerdict"])
+
+    def test_caller_entry_includes_own_averages_never_others(self):
+        # TASK-211 AC1: the six dimension averages (and the personal AI
+        # verdict) must appear only on the caller's own entry, never on any
+        # other participant's - checked from both participants' points of
+        # view in the same completed room.
+        room = self._create_room(count=backend_module.PARTY_ROOM_MIN_DILEMMAS)
+        self.rooms._items[(room["roomCode"],)]["dilemmaBaseIds"] = \
+            self.rooms._items[(room["roomCode"],)]["dilemmaBaseIds"][:1]
+        self._join(room["roomCode"], "guest-1")
+        self._start(room["roomCode"])
+        self._vote(room["roomCode"], "host-1", "first", {"Empathy": 0.9})
+        self._vote(room["roomCode"], "guest-1", "second", {"Empathy": 0.1})
+        self.rooms._items[(room["roomCode"],)]["phaseEndsAt"] = 0
+
+        host_view = self._get_state(room["roomCode"], "host-1")
+        host_self = next(p for p in host_view["participants"] if p["isCaller"])
+        host_other = next(p for p in host_view["participants"] if not p["isCaller"])
+        self.assertIn("averages", host_self)
+        self.assertIn("personalVerdict", host_self)
+        self.assertEqual(host_self["averages"], {"Empathy": 0.9})
+        self.assertNotIn("averages", host_other)
+        self.assertNotIn("personalVerdict", host_other)
+
+        guest_view = self._get_state(room["roomCode"], "guest-1")
+        guest_self = next(p for p in guest_view["participants"] if p["isCaller"])
+        guest_other = next(p for p in guest_view["participants"] if not p["isCaller"])
+        self.assertIn("averages", guest_self)
+        self.assertEqual(guest_self["averages"], {"Empathy": 0.1})
+        self.assertNotIn("averages", guest_other)
+        self.assertNotIn("personalVerdict", guest_other)
+
+    def test_personal_verdict_generated_once_and_cached(self):
+        room = self._create_room(count=backend_module.PARTY_ROOM_MIN_DILEMMAS)
+        self.rooms._items[(room["roomCode"],)]["dilemmaBaseIds"] = \
+            self.rooms._items[(room["roomCode"],)]["dilemmaBaseIds"][:1]
+        self._join(room["roomCode"], "guest-1")
+        self._start(room["roomCode"])
+        self._vote(room["roomCode"], "host-1", "first")
+        self._vote(room["roomCode"], "guest-1", "second")
+        self.rooms._items[(room["roomCode"],)]["phaseEndsAt"] = 0
+
+        first = self._get_state(room["roomCode"], "host-1")
+        second = self._get_state(room["roomCode"], "host-1")
+        first_self = next(p for p in first["participants"] if p["isCaller"])
+        second_self = next(p for p in second["participants"] if p["isCaller"])
+        self.assertEqual(first_self["personalVerdict"], second_self["personalVerdict"])
+        self.assertEqual(
+            self.participants._items[(room["roomCode"], "host-1")]["personalVerdict"],
+            first_self["personalVerdict"],
+        )
 
     def test_participant_summary_never_includes_raw_ids(self):
         room = self._create_room()

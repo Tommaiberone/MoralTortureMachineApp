@@ -3078,6 +3078,171 @@ in place pending this fix.
 includes checking whether it's already gone before assuming a live alert
 means a live problem.
 
+### ADR-106 — First `analytics-optimize` run: gates re-checked, all four new copy experiments still pre-significance (TASK-223)
+
+Context: first live run of `analytics-optimize` (TASK-223), 2026-09-03, via a
+direct read-only scan of both DynamoDB analytics tables through the scoped
+`mtm-analytics-readonly` profile (never root), reusing `build_analytics_overview`
+unmodified rather than reimplementing the aggregation. 30-day window
+(2026-08-04/2026-09-03): 22,969 events, 938 active identities.
+
+Findings: short-test completion 535/664 = 80.6% (gate >=60%, superato,
+consistent with `TASK-166`'s prior reading). Result-to-share
+(`result_viewed` -> `shared`) = 63/532 = 11.8%, matching `TASK-166`'s
+2026-08-31 reading of 11.86% almost exactly - expected, since `TASK-33`
+(share attribution/creative variants) and `TASK-156` (single primary share
+CTA), the two tasks `TASK-166` escalated to Alta/To Do, only shipped
+2026-09-01, two days before this run - too recent for this 30-day window to
+show their effect. Challenge open-to-complete was not recomputed: `TASK-166`
+measured it 3 days ago (2026-08-31) on an almost-identical window, so
+recomputing today would be noise, not a new checkpoint. D1/D7 retention:
+D1 = 44/929 = 4.7%, D7 = 2/696 = 0.3% (cohort size 696, above the
+30-identity floor, so not labeled insufficient) - down from `TASK-167`'s
+1.4% reading on 2026-08-10, still far below the 12-15% gate. `TASK-83` and
+`TASK-58` (paid acquisition and subscription, both Open Points) already gate
+on this exact metric and remain correctly unmet; unlike share rate, no task
+defines a further escalation for a missed D7 gate, so none was invented -
+the existing Open Points already are the escalation.
+
+The four A/B tests that shipped 2026-09-01 (`TASK-219`/`220`/`221`/`222`:
+`auth_prompt_copy`, `home_mode_copy`, `challenge_button_copy`,
+`party_create_copy`) and the `creativeVariants` split (`TASK-33`) all show
+`insufficientSample: true` on every tagged variant except one dominant
+`unknown`/`untagged` bucket (pre-instrumentation traffic) - two days old,
+nowhere near enough for a two-proportion z-test on any of them. No
+experiment concluded, no code touched this run.
+
+Decision: filed `TASK-231` (To Do, Medium, deps on `TASK-33`/`156`/`219`-`222`)
+to re-run this same read no earlier than the first date a clean signal can
+exist - 14 full days after the 2026-09-01 deploy, i.e. 2026-09-15 - mirroring
+`TASK-166`'s own wait-before-re-measuring discipline, to re-check share rate
+post `TASK-33`/`156` and evaluate all four copy experiments plus
+`creativeVariants` for significance in one pass, since they share the same
+deploy date.
+
+Consequences: no code, task status beyond `TASK-231`'s creation, or app
+version changed this run - pure read/decide. The D7 figure is worth
+watching: it moved the wrong direction since `TASK-167` (1.4% -> 0.3%)
+despite Daily Moral Crime shipping in between, though `TASK-45` (push
+notifications) remains deliberately out of scope per ADR-085 and no new
+task changes that. A future `analytics-optimize` run should not fire before
+2026-09-15 on the `TASK-231` checks specifically.
+
+### ADR-107 — Party Room explicit group archetype: mean of participant averages through the existing `assign_archetype()`, no new AI call (TASK-210)
+
+Context: the user flagged the Party Room final recap as "terribilmente
+scarno" (2026-09-04). It already shipped a sequenced stage flow (`TASK-123`):
+individual archetypes -> free-text AI group verdict -> up to 5 awards ->
+actions. The already-accepted `TASK-205` spike (2026-08-31, user approved
+"tutte e 3 le proposte") had decomposed the fix into three independent
+cards ordered cheapest-first; this is the first, `TASK-210`.
+
+Decision: `GET /party-rooms/{code}` now returns `groupArchetype` for a
+`completed` room - the mean of every participant's own
+`participant_averages_by_index` entry (already computed for the awards),
+averaged via the existing `compute_dimension_averages` and fed through the
+same deterministic, versioned `assign_archetype()` used for each individual
+participant. No new logic, no new Groq call: the room's own archetype is
+pure arithmetic over data already in memory, so unlike `groupVerdict` it
+needs no `attribute_not_exists` cache write - recomputing it on every poll
+costs nothing. Frontend: a new `groupArchetype` stage inserted between the
+individual-archetypes list and the AI verdict in the existing sequenced
+reveal, styled with the shared `.card-default` (tinted via the archetype's
+own color, same inline-override technique the archetype list already uses)
+rather than inventing a fifth bespoke archetype-card variant from scratch.
+`shareCard.js`'s recap card now leads with the group archetype's emoji/name
+and adopts its color as the card's accent (previously a fixed red).
+
+Consequences: filed `TASK-232` (Backlog, Low) noting that this is now the
+4th separate CSS implementation of the same "archetype card" look
+(`ResultsScreen`, `ChallengeCompareScreen`, `AccountDeleteScreen`, now
+`PartyRoomScreen`) - a pre-existing divergence from before this task, not
+worsened in a new way, but flagged per the `ADR-095` reuse-and-unify
+convention rather than left silently unnoted. `TASK-209` (cinematic
+stories-style sequencing, presentation-only) and `TASK-211` (individual
+radar + personal AI verdict, the costliest of the three - new per-participant
+Groq calls) remain queued next in the same user-approved order. Backend test
+added (`test_completed_room_includes_group_archetype`); full party-room
+suite 40/40; `pnpm lint` and `pnpm build:prod` both pass.
+
+### ADR-108 — Party Room final recap goes "stories"-style: tap-zone navigation, no timer, same underlying stage data (TASK-209)
+
+Context: second of the three `TASK-205`-approved cards improving the "scarno"
+Party Room recap, right after `TASK-210` (`ADR-107`). The existing sequenced
+reveal (`TASK-123`) already ordered the stages correctly but swapped between
+them with a plain bottom "Continue" button and no transition - functional
+but static, and the spike explicitly proposed a more cinematic "stories"
+pass on the same array.
+
+Decision: reskinned only - the `stages` array and `awardCards` computation
+are untouched. Added a segmented progress bar above the slide (one segment
+per stage, filled up to the current one) and wrapped the slide content in a
+`key={stage}` div so changing `revealStage` remounts it, letting a plain CSS
+`@keyframes` slide-in animation run automatically without any animation
+library. Replaced the bottom button with `handleStoriesTap`: a click handler
+on the slide comparing `event.clientX` against the wrapper's own bounding
+rect to decide right-half-forward vs left-half-back, guarded by
+`event.target.closest('button, a, input, label')` so the `actions` stage's
+real Rematch/Share/Home controls keep working untouched by the same handler
+firing on bubble. `TASK-123`'s explicit no-timer/no-auto-advance constraint
+(the user already rejected countdown/suspense once) carries over unchanged -
+`advanceStage` only ever runs from a tap, never a `setTimeout`/`setInterval`.
+
+Consequences: the previously visible, explicit "Continue" button and its
+`party.continueButton` copy are gone in favor of tap-anywhere navigation
+with a text hint (`party.storiesTapHint`) - a UX bet consistent with the
+already-accepted spike, but one that trades a slightly less discoverable
+control for a more native "stories" feel; worth watching if users get stuck
+on a slide (no telemetry added for this specifically, `party_room_recap_shared`
+and friends already exist). Removed the now-dead `party.continueButton` and
+an unused `party.groupArchetypeTitle` key left over from `ADR-107`'s first
+draft rather than leaving orphaned i18n strings. `pnpm lint`/`pnpm build:prod`
+both pass; no live browser check was performed per `CLAUDE.md`'s
+no-Playwright rule - the user should confirm the tap zones feel right on a
+real device before this ships to other Party Room testers. `TASK-211`
+(individual radar + personal AI verdict) remains the last of the three
+approved cards.
+
+### ADR-109 — Party Room personal radar + per-participant AI verdict, strictly scoped to the caller's own entry (TASK-211)
+
+Context: last of the three `TASK-205`-approved cards closing out the "scarno"
+recap fix, after `TASK-210` (`ADR-107`) and `TASK-209` (`ADR-108`). The
+recap already had a group-level verdict and, as of this session, a group
+archetype, but nothing personal to any one participant - everyone saw
+exactly the same slides.
+
+Decision: `_party_room_participant_summary()` gained an optional `personal`
+parameter (own six dimension averages + a new personal AI verdict),
+attached to a participant's response entry only when that entry `isCaller`
+- reusing the exact privacy pattern already governing `isCaller`/raw-id
+exposure elsewhere in Party Room, and double-guarded (the caller only ever
+passes `personal` for the matching participant index in `get_party_room`,
+and the function itself re-checks `isCaller` before attaching it) so a
+future careless call site cannot leak it. The new
+`_generate_party_personal_verdict` follows the exact
+cache-once/`attribute_not_exists`/deterministic-fallback pattern already
+used by `_generate_party_group_verdict` and Duel's `_generate_duel_pair_insight`,
+persisting on the participant's own `party_participants` row; its prompt is
+deliberately narrower than Solo Evaluation's `/analyze-results` prompt
+(`TASK-121`) - archetype + six averages only, explicitly never the
+per-dilemma choices Solo Eval does send, per `TASK-39`'s stricter rule for
+anything social/shared. Frontend: a `yours` stage - present in the stages
+array only when the data exists at all, which for anyone but the owner it
+structurally does not - reuses `ResultsScreen`'s exact radar shape/domain
+convention rather than inventing a new chart configuration.
+
+Consequences: verified with a same-room, both-directions test (host's view
+never contains guest's averages and vice versa) plus a cache-stability test,
+on top of the pre-existing `test_participant_summary_never_includes_raw_ids`.
+Full party-room suite 42/42; `pnpm lint`/`pnpm build:prod` pass; no live
+browser check per `CLAUDE.md`'s no-Playwright rule. This closes all three
+`TASK-205` cards (`TASK-209`/`210`/`211`) the user approved on 2026-08-31 and
+asked to run "tutti e 3 in sequenza" in this same session (2026-09-04) - the
+Party Room final recap now shows, per player: their own radar + personal
+verdict, the room's explicit collective archetype, the existing group AI
+verdict, and up to 5 awards, all inside a stories-style tap-through flow
+instead of the original single static button-advanced sequence.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

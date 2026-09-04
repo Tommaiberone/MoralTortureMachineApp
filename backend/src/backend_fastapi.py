@@ -3334,11 +3334,19 @@ async def submit_party_vote(room_code: str, vote_request: SubmitPartyVoteRequest
 
 
 def _party_room_participant_summary(
-    participant: dict[str, Any], caller_anonymous_user_id: str, archetype: dict[str, Any] | None = None
+    participant: dict[str, Any],
+    caller_anonymous_user_id: str,
+    archetype: dict[str, Any] | None = None,
+    personal: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Never returns the raw anonymous_user_id to other participants (it's an
     internal identifier, same rule as everywhere else in the product) - only
-    whether this entry is the caller themselves."""
+    whether this entry is the caller themselves. TASK-211: `personal` (own
+    dimension averages + personal AI verdict) is only ever attached when this
+    entry is the caller's own - the `summary["isCaller"]` check below is a
+    second guard on top of the caller only ever passing `personal` for their
+    own index in the first place, so another participant's averages can
+    never leak through this function even if a future caller mispasses it."""
     summary = {
         "isCaller": participant["participantId"] == caller_anonymous_user_id,
         "displayName": participant["displayName"],
@@ -3346,7 +3354,65 @@ def _party_room_participant_summary(
     }
     if archetype:
         summary["archetype"] = archetype
+    if personal and summary["isCaller"]:
+        summary["averages"] = personal["averages"]
+        summary["personalVerdict"] = personal["verdict"]
     return summary
+
+
+def _fallback_party_personal_verdict(archetype_name: str, language: str) -> str:
+    """Always-available, no-AI verdict (core flow must work without Groq)."""
+    if language == "it":
+        return f"Il tuo archetipo in questa stanza: {archetype_name}."
+    return f"Your archetype in this room: {archetype_name}."
+
+
+def _generate_party_personal_verdict(archetype: dict[str, Any], averages: dict[str, float], language: str) -> str:
+    """TASK-211: one short, caustic, second-person verdict for a single
+    participant's own Party Room session - same persist-once/never-regenerate
+    pattern as `_generate_party_group_verdict`/`_generate_duel_pair_insight`,
+    generated once and cached on that participant's own `party_participants`
+    row. The prompt receives only the already-assigned archetype and the six
+    dimension averages, never raw per-dilemma answers/choices - TASK-39 never
+    exposes those, even to the participant themselves. Falls back to a plain,
+    factual sentence if Groq is unavailable or fails."""
+    dimension_summary = ", ".join(f"{key}: {value}" for key, value in averages.items())
+    try:
+        api_key = get_groq_api_key()
+        if language == "it":
+            prompt_content = (
+                f'Una persona ha appena giocato una sessione di Party Room di dilemmi morali. '
+                f'Un motore deterministico separato le ha gia\' assegnato l\'archetipo morale '
+                f'"{archetype["name"]}", descritto cosi\': {archetype["description"]} '
+                f'I suoi punteggi medi attraverso le categorie morali in questa sessione sono: {dimension_summary}. '
+                f'Scrivi UNA sola frase breve e incisiva (massimo 30 parole), rivolta direttamente a lei (usa "tu"), '
+                f'che elabori cosa questo archetipo dice del suo carattere in questa sessione, '
+                f'nel tono "Moral Torture Machine" - leggermente oscuro, arguto, perspicace. '
+                f'Non inventare fatti su di lei, non nominare risposte specifiche ai dilemmi. '
+                f'Restituisci solo la frase, senza virgolette ne\' JSON.'
+            )
+        else:
+            prompt_content = (
+                f'A person just finished a Party Room session of moral dilemmas. '
+                f'A separate deterministic engine already assigned them the moral archetype '
+                f'"{archetype["name"]}", described like this: {archetype["description"]} '
+                f'Their average scores across the moral categories this session are: {dimension_summary}. '
+                f'Write ONE short, punchy sentence (max 30 words), addressed directly to them ("you"), '
+                f'elaborating on what this archetype says about their character this session, '
+                f'in the "Moral Torture Machine" tone - slightly dark, wry, insightful. '
+                f'Do not invent facts about them, do not name specific dilemma answers. '
+                f'Return only the sentence, no quotes, no JSON.'
+            )
+        payload = {
+            # "model" is set by call_groq_api_with_fallback from MODEL_FALLBACK_CHAIN.
+            "messages": [{"role": "user", "content": prompt_content}],
+        }
+        result = call_groq_api_with_fallback(payload=payload, api_key=api_key, operation="Party personal verdict")
+        text = result['choices'][0]['message']['content'].strip()
+        return text or _fallback_party_personal_verdict(archetype["name"], language)
+    except Exception:
+        logger.exception("Failed to generate party personal verdict, using fallback")
+        return _fallback_party_personal_verdict(archetype["name"], language)
 
 
 def _party_room_votes_by_round(participants: list, dilemma_count: int) -> list:
@@ -3415,7 +3481,10 @@ async def get_party_room(room_code: str, request: Request, language: str = "en")
     room = get_room_or_404(room_code)
     room = _advance_party_room_if_due(room)
     participants = _list_party_participants(room_code)
-    caller = next((p for p in participants if p["participantId"] == anonymous_user_id), None)
+    caller_index = next(
+        (index for index, p in enumerate(participants) if p["participantId"] == anonymous_user_id), None,
+    )
+    caller = participants[caller_index] if caller_index is not None else None
     is_completed = room["status"] == "completed"
 
     # TASK-48/123: participant-index keys, never the raw anonymous_user_id,
@@ -3436,6 +3505,38 @@ async def get_party_room(room_code: str, request: Request, language: str = "en")
                 int(round_key): vote["choice"] for round_key, vote in votes.items()
             }
 
+    # TASK-211: the caller's own six dimension averages plus a personal AI
+    # verdict, generated once and cached on their own party_participants row
+    # (attribute_not_exists conditional write, same never-regenerate pattern
+    # as groupVerdict) - never computed or exposed for any other participant.
+    caller_personal: dict[str, Any] | None = None
+    if is_completed and caller is not None:
+        caller_averages = participant_averages_by_index.get(caller_index)
+        caller_archetype = archetypes_by_index.get(caller_index)
+        if caller_averages and caller_archetype:
+            personal_verdict = caller.get("personalVerdict")
+            if not personal_verdict:
+                personal_verdict = _generate_party_personal_verdict(caller_archetype, caller_averages, language)
+                try:
+                    party_participants_table.update_item(
+                        Key={"roomCode": room_code, "participantId": anonymous_user_id},
+                        UpdateExpression="SET personalVerdict = :verdict",
+                        ConditionExpression="attribute_not_exists(personalVerdict)",
+                        ExpressionAttributeValues={":verdict": personal_verdict},
+                    )
+                except ClientError as error:
+                    if error.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                        # Another concurrent request already cached one first;
+                        # use that instead of two different verdicts flip-flopping.
+                        refreshed = party_participants_table.get_item(
+                            Key={"roomCode": room_code, "participantId": anonymous_user_id},
+                        ).get("Item")
+                        if refreshed:
+                            personal_verdict = decimal_to_native(refreshed).get("personalVerdict", personal_verdict)
+                    else:
+                        raise
+            caller_personal = {"averages": caller_averages, "verdict": personal_verdict}
+
     response = {
         "roomCode": room_code,
         "status": room["status"],
@@ -3447,7 +3548,10 @@ async def get_party_room(room_code: str, request: Request, language: str = "en")
         "currentRoundIndex": room["currentRoundIndex"],
         "phaseEndsAt": room["phaseEndsAt"] or None,
         "participants": [
-            _party_room_participant_summary(p, anonymous_user_id, archetypes_by_index.get(index))
+            _party_room_participant_summary(
+                p, anonymous_user_id, archetypes_by_index.get(index),
+                caller_personal if index == caller_index else None,
+            )
             for index, p in enumerate(participants)
         ],
     }
@@ -3496,6 +3600,16 @@ async def get_party_room(room_code: str, request: Request, language: str = "en")
                 "secondVotes": round_tally["second"],
             }
         response["awards"] = awards
+
+        # TASK-210: an explicit archetype for the room as a whole, not just
+        # the free-text AI verdict below - the mean of every participant's own
+        # dimension averages, fed through the same deterministic
+        # assign_archetype() used for each individual. Pure arithmetic (no
+        # Groq call), so unlike groupVerdict it needs no caching.
+        response["groupArchetype"] = (
+            assign_archetype(compute_dimension_averages(list(participant_averages_by_index.values())), language=language)
+            if participant_averages_by_index else None
+        )
 
         # TASK-123 AC9: generate once, cache on the room, never regenerate.
         group_verdict = room.get("groupVerdict")

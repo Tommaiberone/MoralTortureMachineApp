@@ -284,9 +284,42 @@ dev table, or `/dev` SSM hierarchy.
   most-controversial-dilemma picks the round with the closest first/second
   split. A one-line AI group verdict (`_generate_party_group_verdict`,
   archetype names only, never participant names) is generated once and
-  cached on the room record, with a deterministic no-AI fallback. `shareCard.js`'s
-  `sharePartyRecapCard` renders the awards client-side onto the same canvas
-  approach as the archetype share card (no AI, no server round trip).
+  cached on the room record, with a deterministic no-AI fallback. Since
+  `TASK-210`, `GET /party-rooms/{code}` also returns `groupArchetype` for a
+  completed room: the mean of every participant's own `participant_averages_by_index`
+  entry (via `compute_dimension_averages`) fed through the same deterministic,
+  versioned `assign_archetype()` used for each individual - pure arithmetic
+  reusing the existing engine, no new Groq call, no caching needed (unlike
+  `groupVerdict`, recomputing it costs nothing). `shareCard.js`'s
+  `sharePartyRecapCard`/`generatePartyRecapCardDataUrl` lead the recap card
+  with the group archetype's emoji/name and use its color as the card's
+  accent, falling back to the plain red accent when a room predates it.
+  The final screen's sequenced reveal (`TASK-123`) inserts a `groupArchetype`
+  stage between the individual-archetypes list and the AI verdict. Since
+  `TASK-209`, that same stage sequence (`PartyRoomScreen.jsx`, `room.status
+  === 'completed'`) renders as full-bleed "stories"-style slides with a
+  segmented progress bar and a CSS slide-in transition on every stage
+  change, advanced only by an explicit tap/click on the slide (right side
+  forward, left side back via `handleStoriesTap`'s clientX check) - inherits
+  `TASK-123`'s no-timer/no-auto-advance constraint unchanged, just reskins
+  the same data. A tap landing on a real control (the `actions` stage's
+  Rematch/Share/Home) is left alone rather than also treated as navigation.
+  Since `TASK-211`, `_party_room_participant_summary()` additionally attaches
+  `averages` (the caller's own six dimension averages) and `personalVerdict`
+  to a completed room's participant entry, but strictly only when that entry
+  `isCaller` - never on any other participant's entry, checked both by a
+  dedicated backend test and by the summary function's own second internal
+  guard. `personalVerdict` is a one-sentence, second-person AI verdict from a
+  new `_generate_party_personal_verdict`, generated once and cached on that
+  participant's own `party_participants` row (`attribute_not_exists`
+  conditional write, same never-regenerate pattern as `groupVerdict`); its
+  prompt receives only the caller's already-assigned archetype and their six
+  dimension averages, never raw per-dilemma answers (`TASK-39`). The final
+  screen adds a `yours` stage (visible only to its own owner, since the data
+  simply is not present in anyone else's `participants` entry) with a
+  6-dimension Recharts `RadarChart` - the same `subject`/`value` shape and
+  `domain={[0, 1]}` convention as the Solo Evaluation results radar, just fed
+  from the party session's averages - followed by the personal verdict text.
   A load-tested tuning of the polling rate limit and the abandoned-room
   safety-net timeout is deliberately deferred to `TASK-49`.
 
