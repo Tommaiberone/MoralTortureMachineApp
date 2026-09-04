@@ -465,16 +465,6 @@
   background-color: #1DAA5A;
 }
 
-.results-share-button.facebook {
-  background-color: #1877F2;
-  border-color: #0C5EAB;
-  color: white;
-}
-
-.results-share-button.facebook:hover {
-  background-color: #166FE5;
-}
-
 .results-share-button.card-download {
   background-color: var(--creepy-charcoal);
   border-color: var(--horror-crimson);
@@ -485,30 +475,20 @@
   border-color: var(--horror-blood-red);
 }
 
-/* TASK-156: one prominent primary action (native share sheet with the card
-   image already attached where supported) instead of several equal-weight
-   buttons competing for the tap. */
+/* TASK-156/TASK-241: a single share action (native share sheet with the card
+   image already attached where supported) instead of several buttons
+   competing for the tap. */
 .results-share-primary-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   max-width: 420px;
   margin-bottom: 14px;
 }
 
-.results-share-more-label {
-  margin: 0 0 14px;
-  font-family: var(--font-family);
-  font-size: 13px;
-  letter-spacing: 0.1em;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  text-align: center;
-}
-
-.results-share-buttons--secondary {
-  justify-content: center;
-  opacity: 0.85;
-}
-
-.results-share-buttons--secondary .results-share-button {
-  padding: 10px 16px;
-  font-size: 15px;
+.results-share-primary-button svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
 }

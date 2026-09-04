@@ -3480,6 +3480,45 @@ Old distributed Android APKs are unaffected (their bundled JS still forces
 users only see the unified button and email option after a new APK build,
 which was not built or version-bumped here since none was requested.
 
+### ADR-114 — ResultsScreen share section cut down to one button; the "share another way" row (WhatsApp/Facebook/square download) removed outright (TASK-241, narrows TASK-156/AC2)
+
+Context: `TASK-156` (three days earlier, `ADR` above) deliberately replaced
+five equal-weight share buttons with one primary action plus a
+de-emphasized secondary row - explicit AC2 was "WhatsApp/Facebook/square
+format stay available as de-emphasized secondary options, not removed, no
+functionality lost." The user directly judged the resulting screen still too
+button-heavy and asked for the secondary row gone entirely, plus a share
+icon on the remaining primary button.
+
+Decision: removed `ResultsScreen.jsx`'s "or share another way" label and all
+three secondary buttons (WhatsApp, Facebook, "Download card (Square)"),
+leaving only the pre-existing primary action (`shareOrDownloadCard`, stories
+format, opens the native share sheet with the card image where supported).
+Added a small inline "share" SVG glyph before the button's text, following
+the same `viewBox="0 0 24 24" aria-hidden="true" focusable="false"`/
+`fill="currentColor"` convention `HomeScreen.jsx`'s profile-icon link already
+used, rather than introducing a new icon convention or an emoji character.
+This directly narrows `TASK-156`'s AC2 - a deliberate, user-directed
+reversal of that specific line, not an oversight; `TASK-156` itself stays
+Done since its other four ACs (single primary action, attributable link,
+i18n placement, lint/build) still hold. Cleaned up what the removal
+orphaned: the `.facebook`/`--secondary` CSS rules (kept `.whatsapp`/
+`.card-download`/the base `.results-share-button`/`.results-share-buttons`
+classes, still used by the separate, untouched "Challenge a friend" share-
+link row lower on the same screen), the now-unused `archetypeShareLine`
+variable, and six now-orphaned `en.json` keys (`share_challenge`,
+`facebook_share_alert`, `download_card_stories` - already unreferenced
+before this change -, `download_card_square`, `share_more_ways`,
+`facebook`); kept `results.whatsapp`, still used by that other row.
+
+Consequences: `pnpm lint` and `pnpm build:prod` pass. Facebook and the
+square-format card download are no longer reachable from ResultsScreen at
+all (no other entry point calls `shareOrDownloadCard(..., 'square', ...)`
+for a solo result) - if either is wanted back, it needs a deliberate
+decision, not a revert of dead code. No live browser check performed
+per `CLAUDE.md`'s no-Playwright rule - the icon's visual alignment next to
+the button text is worth a manual look.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
