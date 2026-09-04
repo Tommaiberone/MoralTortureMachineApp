@@ -51,6 +51,25 @@ dev table, or `/dev` SSM hierarchy.
 
 ## Frontend styling conventions
 
+- `--font-family` (`horrorTheme.css` `:root`) is the single app-wide font
+  token - IBM Plex Sans, loaded eagerly in `index.html` via a Google Fonts
+  `<link>` (weights 400-700, since every page uses it, unlike the
+  lazily-loaded fonts `shareCard.js` used to load only for itself before
+  `TASK-238`). Since `TASK-238` replaced the product's original `'Courier
+  New', Courier, monospace` (judged unreadable) app-wide - every CSS
+  declaration in every screen references `var(--font-family)` rather than
+  its own literal font stack, so a future font change is one edit instead of
+  another every-file sweep. `shareCard.js`'s canvas "dossier" cards
+  (`TASK-233`) use the same family at two weights (700 for the rotated
+  headline "stamps", 400 for body/data) instead of the two separate
+  typewriter/monospace typefaces (Special Elite + JetBrains Mono) that
+  shipped with the original dossier redesign - it waits on the same
+  app-wide stylesheet via `document.fonts.load()` rather than injecting a
+  second one. `AnalyticsAdminScreen.css`'s `ui-monospace` stack on a raw
+  detail-value cell in the internal `/admin/analytics` dashboard is a
+  deliberate, separate exception (tabular/raw-data legibility in an
+  internal tool, not part of the consumer game experience) and was left
+  alone.
 - `frontend/src/styles/horrorTheme.css` (color tokens, animations) and
   `frontend/src/styles/shared.css` (layout/typography/button/panel classes:
   `screen-container`, `screen-title`/`screen-title-large`/`screen-subtitle`,
@@ -156,6 +175,14 @@ dev table, or `/dev` SSM hierarchy.
   with an instruction that the generated text will render as the
   description directly under the archetype's name on `ResultsScreen` - the
   archetype assignment itself stays entirely independent of Groq either way.
+  Since `TASK-239` (user feedback: "a wall of text, poco leggibile"), the
+  prompt's own length cap dropped from 170 to 90 words with an added
+  instruction to write two short paragraphs separated by a blank line
+  instead of one dense block; `ResultsScreen.css`'s `.results-ai-text` uses
+  `white-space: pre-line` so that blank line actually renders as a visual
+  gap (the prompt change alone would have kept collapsing into one block
+  inside a plain `<p>`) plus a `48ch` reading-measure cap instead of
+  stretching the full card width.
 - A profile stores the `archetypeId` and `archetypesVersion` matched when it
   was created, but profile and Duel reads deliberately recompute the
   archetype from its stored dimension averages using the *current* catalog.

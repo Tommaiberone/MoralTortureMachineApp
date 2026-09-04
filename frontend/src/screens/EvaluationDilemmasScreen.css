@@ -59,7 +59,7 @@
   font-size: 19px;
   font-weight: 700;
   margin-bottom: 12px;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   text-align: center;
   letter-spacing: 0.1em;
   color: var(--text-dim);

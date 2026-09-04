@@ -7,8 +7,11 @@
 }
 
 body {
-  font-family: 'Courier New', Courier, monospace;
-  -webkit-font-smoothing: none;
+  font-family: var(--font-family);
+  /* TASK-238: was 'none' (deliberately jagged, tuned for the old monospace
+     font) - this selector is more specific than index.css's :root rule and
+     was winning the cascade, so it has to be fixed here too. */
+  -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
   background-color: var(--creepy-void);
@@ -41,7 +44,7 @@ body {
   letter-spacing: 0.15em;
   text-shadow: 0 0 3px var(--text-dim);
   animation: horror-flicker 3s infinite;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   text-transform: uppercase;
 }
 

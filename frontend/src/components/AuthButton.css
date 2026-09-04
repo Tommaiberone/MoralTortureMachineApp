@@ -12,7 +12,7 @@
   color: var(--text-normal);
   border: 1px solid var(--creepy-fog);
   background: rgba(18, 17, 19, 0.94);
-  font: 700 0.72rem "Courier New", monospace;
+  font: 700 0.72rem var(--font-family);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   cursor: pointer;

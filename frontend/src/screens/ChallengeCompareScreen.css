@@ -9,7 +9,7 @@
 }
 
 .compare-title {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 22px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -18,7 +18,7 @@
 }
 
 .compare-overall {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 32px;
   font-weight: 700;
   color: var(--text-highlight);
@@ -47,7 +47,7 @@
 }
 
 .compare-archetype-name {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 14px;
   font-weight: 700;
   text-transform: uppercase;
@@ -56,7 +56,7 @@
 }
 
 .compare-vs {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-weight: 700;
   color: var(--text-dim);
 }
@@ -68,7 +68,7 @@
 }
 
 .compare-dimension-highlight {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 14px;
   color: var(--text-dim);
   margin-bottom: 8px;
@@ -84,7 +84,7 @@
 .compare-dimension-row {
   display: flex;
   justify-content: space-between;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 14px;
   border-bottom: 1px solid var(--creepy-fog);
   padding-bottom: 6px;
@@ -101,7 +101,7 @@
 }
 
 .compare-insight-label {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 12px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -111,7 +111,7 @@
 
 .compare-insight-text,
 .compare-login-cta-text {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 15px;
   color: var(--text-normal);
   margin: 0;
@@ -127,7 +127,7 @@
   border: 2px solid var(--horror-crimson);
   background-color: var(--creepy-dark-gray);
   cursor: pointer;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-weight: 700;
   font-size: 14px;
   letter-spacing: 0.08em;
@@ -151,7 +151,7 @@
   border: 2px solid var(--horror-crimson);
   background-color: var(--creepy-charcoal);
   cursor: pointer;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-weight: 700;
   font-size: 17px;
   color: var(--text-normal);
@@ -181,7 +181,7 @@
 
 .compare-rematch-url {
   padding: 12px;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 13px;
   color: var(--text-highlight);
   background-color: var(--creepy-dark-gray);
@@ -191,5 +191,5 @@
 
 .compare-home-link {
   color: var(--text-dim);
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
 }

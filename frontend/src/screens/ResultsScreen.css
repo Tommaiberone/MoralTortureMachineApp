@@ -56,7 +56,7 @@
 
 .results-summary-label {
   font-size: 17px;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-weight: 600;
   color: var(--text-dim);
   text-transform: uppercase;
@@ -65,7 +65,7 @@
 
 .results-summary-value {
   font-size: 17px;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-weight: 400;
   color: var(--text-normal);
 }
@@ -85,7 +85,7 @@
    the card's title (archetype name), the AI-generated text right below it
    is the "description" the card shows. */
 .results-archetype-name {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 21px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -103,7 +103,7 @@
 
 .results-archetype-strength,
 .results-archetype-blind-spot {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 16px;
   line-height: 1.6;
   color: var(--text-normal);
@@ -120,7 +120,7 @@
 
 .results-ai-loading-text {
   margin-top: 15px;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 17px;
   color: var(--text-dim);
   letter-spacing: 0.1em;
@@ -128,14 +128,21 @@
 }
 
 .results-ai-text {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 18px;
-  line-height: 1.7;
+  line-height: 1.75;
   color: var(--text-normal);
   text-align: left;
-  letter-spacing: 0.03em;
-  word-spacing: 0.1em;
-  padding: 10px;
+  /* TASK-239: no more letter/word-spacing padding out a monospace font, and
+     white-space:pre-line renders the prompt's own paragraph break (the AI
+     is asked for two short paragraphs) as an actual visual gap instead of
+     collapsing it into one dense block. max-width caps the reading measure
+     at a comfortable line length instead of stretching full card width. */
+  white-space: pre-line;
+  max-width: 48ch;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 14px 16px;
   background-color: rgba(0, 0, 0, 0.3);
   border-left: 3px solid var(--creepy-dead-red);
   box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
@@ -342,7 +349,7 @@
   font-size: 21px;
   font-weight: 700;
   letter-spacing: 0.15em;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   margin-bottom: 16px;
   color: var(--text-danger-readable);
   text-transform: uppercase;
@@ -350,7 +357,7 @@
 }
 
 .results-challenge-intro {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 15px;
   line-height: 1.6;
   color: var(--text-normal);
@@ -374,7 +381,7 @@
 .results-challenge-url {
   width: 100%;
   padding: 12px;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 14px;
   color: var(--text-highlight);
   background-color: var(--creepy-dark-gray);
@@ -391,7 +398,7 @@
 }
 
 .results-challenge-login-text {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 14px;
   line-height: 1.6;
   color: var(--text-normal);
@@ -402,7 +409,7 @@
 .results-challenge-error {
   margin-top: 16px;
   color: var(--text-danger-readable);
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   text-align: center;
 }
 
@@ -410,7 +417,7 @@
   font-size: 21px;
   font-weight: 700;
   letter-spacing: 0.15em;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   margin-bottom: 20px;
   color: var(--text-danger-readable);
   text-shadow: 2px 2px 0 var(--creepy-void);
@@ -431,7 +438,7 @@
   border: 2px solid var(--creepy-fog);
   background-color: var(--creepy-dark-gray);
   cursor: pointer;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-weight: 700;
   font-size: 17px;
   color: var(--text-normal);
@@ -488,7 +495,7 @@
 
 .results-share-more-label {
   margin: 0 0 14px;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 13px;
   letter-spacing: 0.1em;
   color: var(--text-dim);

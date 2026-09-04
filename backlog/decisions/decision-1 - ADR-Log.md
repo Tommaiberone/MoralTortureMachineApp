@@ -3338,6 +3338,59 @@ than a rendered-PNG check - worth a manual look before wider use. Filed
 Solo/Duel/Party/Daily recap screens, sequenced after this card work per the
 user's explicit ordering.
 
+### ADR-112 — App-wide font swap to IBM Plex Sans, and a shorter/paragraph-broken Solo Evaluation AI verdict (TASK-238/239)
+
+Context: the user judged the product's monospace typeface ('Courier New',
+used literally everywhere - 76 occurrences across 14 CSS files, plus the
+share cards' Special Elite/JetBrains Mono pairing from `TASK-233`) hard to
+read, and separately called the Solo Evaluation AI verdict a "wall of text
+poco leggibile."
+
+Decision (`TASK-238`): picked IBM Plex Sans as the one replacement font -
+legible at small sizes, a technical/institutional character that still
+fits the product's "case file" tone, weights 400-700 covering body/
+headings/buttons without a second family. Rather than a plain find-and-
+replace of the literal font string (which would have just recreated the
+same 76-occurrence duplication with a different value), introduced a single
+`--font-family` token in `horrorTheme.css` and pointed every occurrence at
+`var(--font-family)`. `shareCard.js`'s canvas cards moved from Special
+Elite/JetBrains Mono to the same IBM Plex Sans (700 for stamps, 400 for
+body/data), simplifying its font-loading code to wait on the now-global
+`<link>` instead of injecting a second stylesheet. Fixed
+`-webkit-font-smoothing: none` (deliberately jagged, tuned for the old
+font) to `antialiased` in both `index.css` and `App.css` - the `body` rule
+in `App.css` is more specific and was silently winning the cascade, so the
+`index.css` fix alone would have had no visible effect; caught by checking
+both files instead of assuming the first fix took. Left
+`AnalyticsAdminScreen.css`'s `ui-monospace` stack alone (a different,
+already-non-Courier-New font on a raw-detail-value cell in the internal
+admin dashboard - legitimate monospace use for tabular data, not part of
+the consumer game experience the complaint was about).
+
+Decision (`TASK-239`): reduced `/analyze-results`'s prompt word cap from
+170 to 90 (both EN/IT) and added an instruction to write two short
+paragraphs separated by a blank line. That alone would not have been
+visible - the frontend rendered the AI text as a single `<p>`, so a literal
+`\n\n` in the response would have kept collapsing into one block; added
+`white-space: pre-line` to `.results-ai-text` so the prompt's own paragraph
+break actually renders, plus a `48ch` measure cap (was full ~600px card
+width) and removed letter/word-spacing that had been tuned to loosen up the
+old monospace font and now just looked loose on a proportional one. Caught
+while closing the task: its own AC4 as drafted claimed a "never raw
+per-dilemma answers" constraint that does not apply here - that is
+`TASK-39`'s rule for the social Party/Duel verdicts; `/analyze-results` has
+always intentionally sent the user's own `dilemmasWithChoices` to ground
+the analysis in their real choices (`TASK-121`), correctly so since it is
+single-player data never shared with anyone else - reworded the AC instead
+of "fixing" something that was not broken.
+
+Consequences: backend full suite 198/198 (no test asserts on prompt wording
+or word count); `pnpm lint`/`pnpm build:prod` pass; no live browser check
+performed per `CLAUDE.md`'s no-Playwright rule, so the actual rendered
+typography and the AI text's real paragraph split are worth a manual look.
+Both changes touch packaged frontend code and bump the app version
+(recorded on `TASK-238`).
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

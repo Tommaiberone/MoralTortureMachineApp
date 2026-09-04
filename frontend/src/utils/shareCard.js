@@ -1,23 +1,24 @@
 // Client-side moral archetype share card generator (TASK-31).
 //
-// TASK-233: "dossier" redesign - the flat gradient + thin border + Courier
-// New everywhere the cards used to be was judged too plain/wireframe-y.
-// Direction approved 2026-09-05 via an HTML/CSS mockup published as the
-// "Verdict Cards" Artifact: a case-file look pairing a distressed-typewriter
-// display face (Special Elite, for headlines/stamps) with a clean data
-// monospace (JetBrains Mono, for labels/numbers), the 14 existing per-
-// archetype colors doing real work as a radial glow instead of a hairline
-// border, procedural film grain, corner registration ticks, and a rotated
-// "stamped" headline treatment. Still renders to an offscreen canvas and
-// returns a PNG data URL - no AI, no server round trip, no paid rendering
-// service, matching the "generate social cards client-side or from cached
-// deterministic templates" cost rule in CLAUDE.md. Percentile is
-// intentionally omitted until TASK-28 (MoralProfiles) gives a real
+// TASK-233: "dossier" redesign - the flat gradient + thin border + a
+// monospace font everywhere the cards used to be was judged too plain/
+// wireframe-y. Direction approved 2026-09-05 via an HTML/CSS mockup
+// published as the "Verdict Cards" Artifact: a case-file look with the 14
+// existing per-archetype colors doing real work as a radial glow instead of
+// a hairline border, procedural film grain, corner registration ticks, and
+// a rotated "stamped" headline treatment. TASK-238 then replaced the
+// mockup's original typewriter/monospace pairing (Special Elite + JetBrains
+// Mono) with IBM Plex Sans - the same readable font now used app-wide - kept
+// as one family at two weights (700 bold for stamps/headlines, 400 for
+// body/data) rather than two separate typefaces. Still renders to an
+// offscreen canvas and returns a PNG data URL - no AI, no server round trip,
+// no paid rendering service, matching the "generate social cards client-side
+// or from cached deterministic templates" cost rule in CLAUDE.md. Percentile
+// is intentionally omitted until TASK-28 (MoralProfiles) gives a real
 // population to rank against; fabricating one here would violate the
 // "archetypes are deterministic and testable" product rule.
 
-const FONT_DISPLAY = "'Special Elite', 'Courier New', Courier, monospace";
-const FONT_MONO = "'JetBrains Mono', 'Courier New', Courier, monospace";
+const FONT_FAMILY = "'IBM Plex Sans', 'Segoe UI', Arial, sans-serif";
 const DEEP_LINK_LABEL = 'moraltorturemachine.com';
 const DEFAULT_ACCENT = '#8B0000';
 const STAMP_ROTATION = -0.02;
@@ -44,35 +45,23 @@ const FORMATS = {
 };
 
 // ---------------------------------------------------------------------
-// Fonts: loaded lazily (only once a card is actually generated, not on
-// every page view) via a Google Fonts stylesheet + the FontFace API, with
-// a hard 1.5s timeout. Sharing must never depend on an external network
-// call succeeding - if Google Fonts is slow or unreachable, every ctx.font
-// string below still resolves to its own 'Courier New' fallback, which is
-// exactly the font the cards used before this redesign.
+// Fonts: IBM Plex Sans is already linked app-wide in index.html (TASK-238),
+// so unlike the original TASK-233 version this never injects its own
+// stylesheet - it just waits for the weights this file actually draws with,
+// raced against a hard 1.5s timeout. Sharing must never depend on an
+// external network call succeeding - if the font is slow or still loading,
+// every ctx.font string below still resolves to its own system fallback.
 // ---------------------------------------------------------------------
-
-let dossierFontsLinkInjected = false;
-const injectDossierFontsLink = () => {
-  if (dossierFontsLinkInjected || typeof document === 'undefined') return;
-  dossierFontsLinkInjected = true;
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = 'https://fonts.googleapis.com/css2?family=Special+Elite&family=JetBrains+Mono:ital,wght@0,400;0,700;1,400&display=swap';
-  document.head.appendChild(link);
-};
 
 let dossierFontsReadyPromise = null;
 const ensureDossierFontsReady = () => {
   if (typeof document === 'undefined' || !document.fonts) return Promise.resolve();
   if (!dossierFontsReadyPromise) {
-    injectDossierFontsLink();
     dossierFontsReadyPromise = Promise.race([
       Promise.all([
-        document.fonts.load(`400 100px ${FONT_DISPLAY}`),
-        document.fonts.load(`400 100px ${FONT_MONO}`),
-        document.fonts.load(`700 100px ${FONT_MONO}`),
-        document.fonts.load(`italic 400 100px ${FONT_MONO}`),
+        document.fonts.load(`400 100px ${FONT_FAMILY}`),
+        document.fonts.load(`700 100px ${FONT_FAMILY}`),
+        document.fonts.load(`italic 400 100px ${FONT_FAMILY}`),
       ]).catch(() => {}),
       new Promise((resolve) => setTimeout(resolve, 1500)),
     ]);
@@ -133,7 +122,7 @@ const wrapText = (ctx, text, maxWidth) => {
 // Shrinks the font size until the text fits within maxLines at maxWidth, so
 // the longer Italian strings never overflow the card while staying legible
 // at a sane minimum size.
-const fitText = (ctx, text, { maxWidth, maxLines, startSize, minSize, weight = 'normal', font = FONT_MONO }) => {
+const fitText = (ctx, text, { maxWidth, maxLines, startSize, minSize, weight = 'normal', font = FONT_FAMILY }) => {
   let fontSize = startSize;
   let lines = [];
   while (fontSize >= minSize) {
@@ -221,12 +210,12 @@ const drawDossierFrame = (ctx, width, height, accent) => {
 const drawDossierHeader = (ctx, { width, margin, startY, wordmark, meta }) => {
   ctx.textAlign = 'left';
   ctx.fillStyle = DIM;
-  ctx.font = `${width * 0.021}px ${FONT_MONO}`;
+  ctx.font = `${width * 0.021}px ${FONT_FAMILY}`;
   ctx.fillText(wordmark.toUpperCase(), margin, startY);
   if (meta) {
     ctx.textAlign = 'right';
     ctx.fillStyle = DIM_2;
-    ctx.font = `${width * 0.018}px ${FONT_MONO}`;
+    ctx.font = `${width * 0.018}px ${FONT_FAMILY}`;
     ctx.fillText(meta, width - margin, startY);
   }
 
@@ -261,13 +250,13 @@ const drawFooterSeal = (ctx, { width, height, margin, sealText, accentBright }) 
   ctx.rotate(STAMP_ROTATION);
   ctx.textAlign = 'center';
   ctx.fillStyle = accentBright;
-  ctx.font = `${width * 0.022}px ${FONT_DISPLAY}`;
+  ctx.font = `700 ${width * 0.022}px ${FONT_FAMILY}`;
   ctx.fillText(sealText.toUpperCase(), 0, 0);
   ctx.restore();
 
   ctx.textAlign = 'center';
   ctx.fillStyle = DIM_2;
-  ctx.font = `${width * 0.017}px ${FONT_MONO}`;
+  ctx.font = `${width * 0.017}px ${FONT_FAMILY}`;
   ctx.fillText(DEEP_LINK_LABEL, width / 2, ruleY + width * 0.062);
 };
 
@@ -280,10 +269,11 @@ const drawGlow = (ctx, cx, cy, radius, color) => {
   ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
 };
 
-// Rotated typewriter headline with a faint double-strike offset, like a
-// rubber-stamped verdict. `lines`/`fontSize` come from fitText(..., { font:
-// FONT_DISPLAY }) so callers control wrapping/shrink-to-fit themselves.
-// Returns the y position right after the block.
+// Rotated bold headline with a faint double-strike offset, like a
+// rubber-stamped verdict. `lines`/`fontSize` come from fitText(..., {
+// weight: '700' }) so the measurement matches this always-bold render -
+// callers control wrapping/shrink-to-fit themselves. Returns the y position
+// right after the block.
 const drawStamp = (ctx, lines, fontSize, { cx, startY, color = BONE, glowColor }) => {
   const lineHeight = fontSize * 1.16;
   const offset = fontSize * 0.035;
@@ -291,7 +281,7 @@ const drawStamp = (ctx, lines, fontSize, { cx, startY, color = BONE, glowColor }
   ctx.translate(cx, startY);
   ctx.rotate(STAMP_ROTATION);
   ctx.textAlign = 'center';
-  ctx.font = `${fontSize}px ${FONT_DISPLAY}`;
+  ctx.font = `700 ${fontSize}px ${FONT_FAMILY}`;
   lines.forEach((line, i) => {
     const ly = i * lineHeight;
     ctx.fillStyle = glowColor;
@@ -317,7 +307,7 @@ const drawStatBar = (ctx, {
   const trackHeight = Math.max(2, cardWidth * 0.011);
   const displayLabel = uppercase ? label.toUpperCase() : label;
 
-  ctx.font = `${labelSize}px ${FONT_MONO}`;
+  ctx.font = `${labelSize}px ${FONT_FAMILY}`;
   const valueWidth = ctx.measureText(valueText).width;
   const labelMaxWidth = Math.max(barWidth * 0.3, barWidth - valueWidth - cardWidth * 0.025);
   const wrapped = wrapText(ctx, displayLabel, labelMaxWidth).slice(0, 2);
@@ -330,7 +320,7 @@ const drawStatBar = (ctx, {
 
   ctx.textAlign = 'right';
   ctx.fillStyle = valueColor;
-  ctx.font = `700 ${labelSize}px ${FONT_MONO}`;
+  ctx.font = `700 ${labelSize}px ${FONT_FAMILY}`;
   ctx.fillText(valueText, x + barWidth, y);
 
   const labelBlockHeight = (wrapped.length - 1) * labelSize * 1.3;
@@ -383,19 +373,19 @@ export const generateShareCardDataUrl = async (archetype, format = 'stories', di
   drawGlow(ctx, width / 2, y + width * 0.1, width * 0.34, glow);
 
   ctx.textAlign = 'center';
-  ctx.font = `${width * 0.13}px ${FONT_MONO}`;
+  ctx.font = `${width * 0.13}px ${FONT_FAMILY}`;
   ctx.fillText(archetype.visual?.emoji || '', width / 2, y + width * 0.1);
   y += width * 0.15;
 
   if (!compact) {
     ctx.fillStyle = accentBright;
-    ctx.font = `${width * 0.015}px ${FONT_MONO}`;
+    ctx.font = `${width * 0.015}px ${FONT_FAMILY}`;
     ctx.fillText('VERDICT', width / 2, y);
     y += width * 0.03;
   }
 
   const nameFit = fitText(ctx, archetype.name, {
-    maxWidth, maxLines: 2, startSize: width * 0.062, minSize: width * 0.038, font: FONT_DISPLAY,
+    maxWidth, maxLines: 2, startSize: width * 0.062, minSize: width * 0.038, weight: '700', font: FONT_FAMILY,
   });
   y = drawStamp(ctx, nameFit.lines, nameFit.fontSize, { width, cx: width / 2, startY: y, glowColor: glow });
 
@@ -406,7 +396,7 @@ export const generateShareCardDataUrl = async (archetype, format = 'stories', di
     ctx.fillStyle = DIM;
     y += width * 0.012;
     for (const line of phrase.lines) {
-      ctx.font = `italic ${phrase.fontSize}px ${FONT_MONO}`;
+      ctx.font = `italic ${phrase.fontSize}px ${FONT_FAMILY}`;
       ctx.fillText(line, width / 2, y);
       y += phrase.fontSize * 1.45;
     }
@@ -441,14 +431,14 @@ export const generateShareCardDataUrl = async (archetype, format = 'stories', di
     for (const block of traitBlocks) {
       ctx.textAlign = 'left';
       ctx.fillStyle = accentBright;
-      ctx.font = `700 ${width * 0.017}px ${FONT_MONO}`;
+      ctx.font = `700 ${width * 0.017}px ${FONT_FAMILY}`;
       ctx.fillText(block.label.toUpperCase(), margin, y);
       y += width * 0.028;
 
       const fitted = fitText(ctx, block.text, { maxWidth, maxLines: 2, startSize: width * 0.021, minSize: width * 0.017 });
       ctx.fillStyle = BONE;
       for (const line of fitted.lines) {
-        ctx.font = `${fitted.fontSize}px ${FONT_MONO}`;
+        ctx.font = `${fitted.fontSize}px ${FONT_FAMILY}`;
         ctx.fillText(line, margin, y);
         y += fitted.fontSize * 1.45;
       }
@@ -558,14 +548,14 @@ export const generateDuelCardDataUrl = async (comparison) => {
 
     ctx.textAlign = 'center';
     ctx.fillStyle = DIM;
-    ctx.font = `${width * 0.017}px ${FONT_MONO}`;
+    ctx.font = `${width * 0.017}px ${FONT_FAMILY}`;
     ctx.fillText(who, centerX, y);
 
-    ctx.font = `${width * 0.1}px ${FONT_MONO}`;
+    ctx.font = `${width * 0.1}px ${FONT_FAMILY}`;
     ctx.fillText(archetype?.visual?.emoji || '', centerX, y + width * 0.1);
 
     const nameFit = fitText(ctx, archetype?.name || '', {
-      maxWidth: columnWidth, maxLines: 2, startSize: width * 0.03, minSize: width * 0.019, font: FONT_DISPLAY,
+      maxWidth: columnWidth, maxLines: 2, startSize: width * 0.03, minSize: width * 0.019, weight: '700', font: FONT_FAMILY,
     });
     drawStamp(ctx, nameFit.lines, nameFit.fontSize, {
       width, cx: centerX, startY: y + width * 0.155, color: BONE, glowColor: hexToRgba(accent, 0.5),
@@ -579,7 +569,7 @@ export const generateDuelCardDataUrl = async (comparison) => {
   ctx.translate(width / 2, y + width * 0.075);
   ctx.rotate(0.09);
   ctx.fillStyle = DIM_2;
-  ctx.font = `${width * 0.032}px ${FONT_DISPLAY}`;
+  ctx.font = `${width * 0.032}px ${FONT_FAMILY}`;
   ctx.textAlign = 'center';
   ctx.fillText('vs', 0, 0);
   ctx.restore();
@@ -590,11 +580,11 @@ export const generateDuelCardDataUrl = async (comparison) => {
   y += width * 0.06;
 
   ctx.fillStyle = DIM;
-  ctx.font = `${width * 0.019}px ${FONT_MONO}`;
+  ctx.font = `${width * 0.019}px ${FONT_FAMILY}`;
   ctx.fillText('COMPATIBILITY', width / 2, y);
 
   const pctFit = fitText(ctx, `${compatibility?.overallAgreementPct ?? '--'}%`, {
-    maxWidth: width - margin * 2, maxLines: 1, startSize: width * 0.14, minSize: width * 0.1, font: FONT_DISPLAY,
+    maxWidth: width - margin * 2, maxLines: 1, startSize: width * 0.14, minSize: width * 0.1, weight: '700', font: FONT_FAMILY,
   });
   y = drawStamp(ctx, pctFit.lines, pctFit.fontSize, {
     width, cx: width / 2, startY: y + width * 0.14, color: chromeAccentBright, glowColor: hexToRgba(chromeAccent, 0.6),
@@ -610,10 +600,10 @@ export const generateDuelCardDataUrl = async (comparison) => {
   highlightRows.forEach((row, index) => {
     const cx = margin + colWidth * index + colWidth / 2;
     ctx.fillStyle = DIM;
-    ctx.font = `${width * 0.016}px ${FONT_MONO}`;
+    ctx.font = `${width * 0.016}px ${FONT_FAMILY}`;
     ctx.fillText(row.label.toUpperCase(), cx, y);
     ctx.fillStyle = BONE;
-    ctx.font = `700 ${width * 0.021}px ${FONT_MONO}`;
+    ctx.font = `700 ${width * 0.021}px ${FONT_FAMILY}`;
     ctx.fillText(row.value, cx, y + width * 0.032);
   });
 
@@ -671,7 +661,7 @@ export const generateDailyCardDataUrl = async (dilemma, choice, results) => {
   const question = fitText(ctx, dilemma.dilemma, { maxWidth, maxLines: 4, startSize: width * 0.028, minSize: width * 0.02 });
   ctx.fillStyle = BONE;
   for (const line of question.lines) {
-    ctx.font = `${question.fontSize}px ${FONT_MONO}`;
+    ctx.font = `${question.fontSize}px ${FONT_FAMILY}`;
     ctx.fillText(line, width / 2, y);
     y += question.fontSize * 1.5;
   }
@@ -680,11 +670,11 @@ export const generateDailyCardDataUrl = async (dilemma, choice, results) => {
   y += width * 0.04;
   drawGlow(ctx, width / 2, y + width * 0.08, width * 0.4, hexToRgba(accent, 0.4));
   ctx.fillStyle = DIM;
-  ctx.font = `${width * 0.02}px ${FONT_MONO}`;
+  ctx.font = `${width * 0.02}px ${FONT_FAMILY}`;
   ctx.fillText('CHOSE LIKE YOU', width / 2, y);
 
   const pctFit = fitText(ctx, `${agreementPct}%`, {
-    maxWidth, maxLines: 1, startSize: width * 0.16, minSize: width * 0.11, font: FONT_DISPLAY,
+    maxWidth, maxLines: 1, startSize: width * 0.16, minSize: width * 0.11, weight: '700', font: FONT_FAMILY,
   });
   y = drawStamp(ctx, pctFit.lines, pctFit.fontSize, {
     width, cx: width / 2, startY: y + width * 0.16, color: accentBright, glowColor: hexToRgba(accent, 0.6),
@@ -708,7 +698,7 @@ export const generateDailyCardDataUrl = async (dilemma, choice, results) => {
 
   y += width * 0.01;
   ctx.fillStyle = DIM_2;
-  ctx.font = `${width * 0.018}px ${FONT_MONO}`;
+  ctx.font = `${width * 0.018}px ${FONT_FAMILY}`;
   ctx.fillText(`${results.totalVotes} votes today`, width / 2, y);
 
   drawFooterSeal(ctx, { width, height, margin, sealText: 'case filed', accentBright });
@@ -791,17 +781,17 @@ export const generatePartyRecapCardDataUrl = async (awards, participants, groupA
   if (groupArchetype) {
     drawGlow(ctx, width / 2, y + width * 0.08, width * 0.3, glow);
     ctx.textAlign = 'center';
-    ctx.font = `${width * 0.1}px ${FONT_MONO}`;
+    ctx.font = `${width * 0.1}px ${FONT_FAMILY}`;
     ctx.fillText(groupArchetype.visual?.emoji || '', width / 2, y + width * 0.08);
     y += width * 0.12;
 
     ctx.fillStyle = accentBright;
-    ctx.font = `${width * 0.015}px ${FONT_MONO}`;
+    ctx.font = `${width * 0.015}px ${FONT_FAMILY}`;
     ctx.fillText('TOGETHER, YOU ARE', width / 2, y);
     y += width * 0.025;
 
     const nameFit = fitText(ctx, groupArchetype.name, {
-      maxWidth, maxLines: 1, startSize: width * 0.048, minSize: width * 0.03, font: FONT_DISPLAY,
+      maxWidth, maxLines: 1, startSize: width * 0.048, minSize: width * 0.03, weight: '700', font: FONT_FAMILY,
     });
     y = drawStamp(ctx, nameFit.lines, nameFit.fontSize, { width, cx: width / 2, startY: y, glowColor: glow });
     y += width * 0.02;
@@ -816,13 +806,13 @@ export const generatePartyRecapCardDataUrl = async (awards, participants, groupA
   for (const [label, value] of docketRows) {
     ctx.textAlign = 'left';
     ctx.fillStyle = accentBright;
-    ctx.font = `700 ${width * 0.017}px ${FONT_MONO}`;
+    ctx.font = `700 ${width * 0.017}px ${FONT_FAMILY}`;
     ctx.fillText(label.toUpperCase(), margin, y);
 
     ctx.textAlign = 'right';
     const valueFit = fitText(ctx, value, { maxWidth: maxWidth * 0.55, maxLines: 1, startSize: width * 0.021, minSize: width * 0.016 });
     ctx.fillStyle = BONE;
-    ctx.font = `${valueFit.fontSize}px ${FONT_MONO}`;
+    ctx.font = `${valueFit.fontSize}px ${FONT_FAMILY}`;
     ctx.fillText(valueFit.lines[0] || value, width - margin, y);
 
     const dividerY = y + width * 0.028;

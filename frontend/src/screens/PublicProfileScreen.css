@@ -25,7 +25,7 @@
 }
 
 .profile-name {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 24px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -35,7 +35,7 @@
 }
 
 .profile-description {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 15px;
   line-height: 1.6;
   color: var(--text-normal);
@@ -43,7 +43,7 @@
 }
 
 .profile-share-phrase {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 14px;
   font-style: italic;
   color: var(--text-dim);
@@ -57,5 +57,5 @@
 .profile-home-link {
   margin-top: 24px;
   color: var(--text-dim);
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
 }

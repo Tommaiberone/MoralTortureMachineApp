@@ -4996,7 +4996,9 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
                 f'questo testo verra\' mostrato come descrizione direttamente sotto il nome dell\'archetipo, quindi deve essere coerente con esso, non contraddirlo ne\' ripeterne semplicemente la descrizione parola per parola '
                 f'Scrivi in seconda persona (rivolgendoti a "tu") e mantieni un tono inquietante e filosofico. '
                 f'IMPORTANTE: Basa la tua analisi sulle scelte EFFETTIVE che hanno fatto, non solo sui punteggi numerici. '
-                f'VINCOLO CRUCIALE: L\'analisi deve essere di MASSIMO 170 parole. Sii conciso e incisivo. '
+                f'VINCOLO CRUCIALE (TASK-239): L\'analisi deve essere di MASSIMO 90 parole, scritta come due paragrafi '
+                f'brevi separati da una riga vuota (mai un unico blocco di testo denso). Sii conciso e incisivo - '
+                f'poche frasi che colpiscono, non un elenco esaustivo. '
                 f'Non usare il formato JSON, restituisci solo il testo dell\'analisi direttamente.'
             )
         else:
@@ -5025,7 +5027,9 @@ async def analyze_results(analyze_request: AnalyzeResultsRequest, request: Reque
                 f'consistent with it rather than contradicting it or simply repeating its description verbatim '
                 f'Write in second person (addressing "you") and maintain a haunting, philosophical tone. '
                 f'IMPORTANT: Base your analysis on the ACTUAL choices they made, not just the numerical scores. '
-                f'CRITICAL CONSTRAINT: The analysis must be MAXIMUM 170 words. Be concise and impactful. '
+                f'CRITICAL CONSTRAINT (TASK-239): The analysis must be MAXIMUM 90 words, written as two short '
+                f'paragraphs separated by a blank line (never one dense block of text). Be concise and impactful - '
+                f'a few sentences that land, not an exhaustive checklist. '
                 f'Do not use JSON format, just return the analysis text directly.'
             )
 

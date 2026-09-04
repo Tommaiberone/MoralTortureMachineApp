@@ -1,6 +1,16 @@
 /* web/src/styles/horrorTheme.css - Low-Res Creepy Dark Theme */
 
 :root {
+  /* TASK-238: single app-wide font, replacing 'Courier New' - every CSS
+     file referenced the same literal font stack independently (76
+     occurrences across 14 files) rather than a shared token, so a plain
+     find-and-replace would have just recreated the same duplication with a
+     different value. IBM Plex Sans for its legibility at small sizes and a
+     technical/institutional character that still fits the "case file" tone,
+     with enough weights (400-700) to cover body, headings, and buttons
+     without a second family. */
+  --font-family: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+
   /* Core Creepy Dark Colors - Very desaturated, dark, oppressive */
   --creepy-void: #1a1a1a;
   --creepy-deep-black: #121212;

@@ -17,7 +17,7 @@
 }
 
 .party-home-form label {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 14px;
   color: var(--text-dim);
   text-transform: uppercase;
@@ -29,7 +29,7 @@
   background-color: var(--creepy-deep-black);
   border: 1px solid var(--creepy-fog);
   color: var(--text-highlight);
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 18px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -45,7 +45,7 @@
   border: 1px solid var(--text-danger-readable);
   padding: 8px 14px;
   margin-bottom: 16px;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -53,7 +53,7 @@
 }
 
 .party-room-code {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 42px;
   font-weight: 700;
   letter-spacing: 0.2em;
@@ -85,7 +85,7 @@
   border: 1px solid var(--creepy-fog);
   border-left-width: 4px;
   color: var(--text-normal);
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   text-align: left;
 }
 
@@ -128,7 +128,7 @@
   margin-bottom: 8px;
   background-color: var(--creepy-blood);
   color: var(--text-highlight);
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -164,7 +164,7 @@
   background-color: var(--creepy-dark-gray);
   border-left: 3px solid var(--text-danger-readable);
   color: var(--text-normal);
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   text-align: left;
 }
 
@@ -214,7 +214,7 @@
 
 .party-group-archetype-description {
   color: var(--text-normal);
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   line-height: 1.6;
   margin: 14px 0;
 }

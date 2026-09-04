@@ -1,5 +1,5 @@
 :root {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   line-height: 1.4;
   font-weight: 400;
   font-size: 21px;
@@ -8,8 +8,11 @@
   background-color: var(--creepy-void);
 
   font-synthesis: none;
-  text-rendering: geometricPrecision;
-  -webkit-font-smoothing: none;
+  text-rendering: optimizeLegibility;
+  /* TASK-238: was 'none' - deliberately jagged/low-res rendering, tuned for
+     the old monospace font's retro-terminal look. Standard smoothing now
+     that body text is a proportional, more readable font. */
+  -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
   -webkit-text-size-adjust: 100%;
@@ -97,7 +100,7 @@ body {
 h1 {
   font-size: 3em;
   line-height: 1.1;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-weight: 700;
   letter-spacing: 0.05em;
 }
@@ -108,7 +111,7 @@ button {
   padding: 0.8em 1.5em;
   font-size: 1.1em;
   font-weight: 400;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   background-color: var(--creepy-dark-gray);
   color: var(--text-normal);
   cursor: pointer;

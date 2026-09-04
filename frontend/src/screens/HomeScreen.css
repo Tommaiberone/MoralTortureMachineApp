@@ -44,7 +44,7 @@
   font-size: 17px;
   color: var(--text-dim);
   font-weight: 400;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   margin-bottom: 40px;
   text-align: center;
   letter-spacing: 0.15em;
@@ -138,7 +138,7 @@
   color: var(--text-highlight);
   font-size: 13px;
   font-weight: 700;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   letter-spacing: 0.1em;
 }
 
@@ -146,7 +146,7 @@
   color: var(--text-highlight);
   font-size: 19px;
   font-weight: 700;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   margin-bottom: 8px;
   letter-spacing: 0.05em;
   text-shadow: 1px 1px 0 var(--creepy-void);
@@ -156,7 +156,7 @@
   color: var(--text-normal);
   font-size: 14px;
   font-weight: 400;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   text-align: center;
   margin-top: 8px;
   line-height: 1.4;
@@ -167,7 +167,7 @@
   color: var(--text-dim);
   font-size: 14px;
   font-weight: 400;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   text-align: center;
   margin-top: 30px;
   letter-spacing: 0.1em;

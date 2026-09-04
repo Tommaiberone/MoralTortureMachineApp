@@ -16,7 +16,7 @@
   background-color: var(--creepy-dark-gray);
   border: 2px solid var(--creepy-fog);
   color: var(--text-dim);
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -38,7 +38,7 @@
 }
 
 .party-home-form label {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 14px;
   color: var(--text-dim);
   text-transform: uppercase;
@@ -50,7 +50,7 @@
   background-color: var(--creepy-deep-black);
   border: 1px solid var(--creepy-fog);
   color: var(--text-highlight);
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 18px;
   letter-spacing: 0.1em;
   text-transform: uppercase;

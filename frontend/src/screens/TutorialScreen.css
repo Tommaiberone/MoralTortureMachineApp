@@ -14,7 +14,7 @@
   margin-bottom: 20px;
   color: var(--text-dim);
   text-shadow: 2px 2px 0 var(--creepy-void);
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   animation: horror-flicker 4s infinite;
 }
 
@@ -28,7 +28,7 @@
   color: var(--text-normal);
   line-height: 1.6;
   margin-bottom: 30px;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -62,7 +62,7 @@
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   border: 2px solid var(--creepy-fog);
@@ -112,7 +112,7 @@
   cursor: pointer;
   margin-top: 10px;
   transition: color 0.3s ease;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }

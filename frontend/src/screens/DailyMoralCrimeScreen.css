@@ -22,7 +22,7 @@
 .daily-choice-label {
   margin: 0 0 12px;
   color: var(--text-danger-readable);
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-family);
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.1em;
