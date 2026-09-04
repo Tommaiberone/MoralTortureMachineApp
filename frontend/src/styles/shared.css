@@ -404,12 +404,12 @@
 @media (max-width: 480px) {
   .screen-container {
     width: 95%;
-    padding: 60px 10px 20px;
+    padding: 30px 10px 20px;
   }
 
   .screen-container-wide {
     width: 95%;
-    padding: 60px 10px 20px;
+    padding: 30px 10px 20px;
   }
 
   .screen-title {

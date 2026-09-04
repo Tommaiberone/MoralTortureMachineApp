@@ -3,10 +3,10 @@ id: TASK-263
 title: >-
   [regression] Cognito Hosted UI login restituisce 403 'Login pages unavailable'
   su tutti i client
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-09-04 18:42'
-updated_date: '2026-09-04 18:44'
+updated_date: '2026-09-04 18:50'
 labels:
   - regression
   - auth
@@ -25,6 +25,6 @@ GET .../login su moral-torture-machine-586250839220.auth.eu-west-1.amazoncognito
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 aws_cognito_user_pool_domain.auth.managed_login_version riportato a 1 (Classic Hosted UI) in backend/terraform/main.tf
-- [ ] #2 Dopo il deploy, GET /login con i parametri del client web risponde 200 (form di login), non piu 403
+- [x] #2 Dopo il deploy, GET /login con i parametri del client web risponde 200 (form di login), non piu 403
 - [x] #3 ADR aggiunto in backlog/decisions/decision-1 con causa e alternative valutate (branding style vs downgrade a v1 vs bump provider a 6.x)
 <!-- AC:END -->

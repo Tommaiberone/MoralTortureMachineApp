@@ -137,7 +137,6 @@ const AccountDeleteScreen = () => {
           <h1 className="account-page-title">{t('account.title')}</h1>
           <div className="account-login-card">
             <p>{t('account.notLoggedInBenefits')}</p>
-            <p>{t('account.notLoggedIn')}</p>
             <button type="button" className="btn-primary" onClick={() => login(window.location.pathname)}>
               {t('auth.login')}
             </button>

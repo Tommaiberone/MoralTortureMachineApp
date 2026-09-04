@@ -351,7 +351,6 @@
     "title": "Your account",
     "loading": "Loading…",
     "notLoggedInBenefits": "Signing in keeps your results and Moral Duels linked to one account across devices, so you never lose them.",
-    "notLoggedIn": "Sign in to delete your account data.",
     "loggedInAs": "Signed in as {{email}}.",
     "loggedInGeneric": "Signed in.",
     "deleteButton": "Delete my account",
