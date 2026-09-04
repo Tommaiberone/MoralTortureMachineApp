@@ -519,9 +519,12 @@ resource "aws_ssm_parameter" "analytics_fingerprint_pepper" {
   }
 }
 
-# Production-only authentication. Google is the only end-user sign-in method;
-# web and Android use separate public app clients with authorization-code flow
-# and PKCE.
+# Production-only authentication. End-user sign-in supports Google and native
+# Cognito email+password (TASK-227), both through the same Cognito managed
+# login page (no forced identity_provider param -> the hosted UI itself shows
+# the email/password form plus the Google button, so the app only needs one
+# generic "Sign in" entry point). Web and Android use separate public app
+# clients with authorization-code flow and PKCE.
 resource "aws_cognito_user_pool" "users" {
   name                     = "${var.environment}-${var.stack_name}-users"
   username_attributes      = ["email"]
@@ -529,6 +532,14 @@ resource "aws_cognito_user_pool" "users" {
   mfa_configuration        = "OFF"
   deletion_protection      = "ACTIVE"
   user_pool_tier           = "ESSENTIALS"
+
+  # Cognito's own built-in mailer (no SES setup, zero extra cost) sends the
+  # sign-up verification and forgot-password codes that email+password now
+  # relies on. It is capped at 50 emails/day pool-wide (TASK-227) - fine at
+  # current signup volume; see TASK-240 to move to SES if that cap is ever hit.
+  email_configuration {
+    email_sending_account = "COGNITO_DEFAULT"
+  }
 
   account_recovery_setting {
     recovery_mechanism {
@@ -598,7 +609,7 @@ resource "aws_cognito_user_pool_client" "web" {
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["openid", "email", "profile"]
-  supported_identity_providers         = [aws_cognito_identity_provider.google.provider_name]
+  supported_identity_providers         = ["COGNITO", aws_cognito_identity_provider.google.provider_name]
   callback_urls = [
     "https://moraltorturemachine.com/auth/callback",
     "https://www.moraltorturemachine.com/auth/callback",
@@ -633,7 +644,7 @@ resource "aws_cognito_user_pool_client" "android" {
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["openid", "email", "profile"]
-  supported_identity_providers         = [aws_cognito_identity_provider.google.provider_name]
+  supported_identity_providers         = ["COGNITO", aws_cognito_identity_provider.google.provider_name]
   callback_urls                        = ["moraltorturemachine://auth/callback"]
   logout_urls                          = ["moraltorturemachine://auth/logout"]
   default_redirect_uri                 = "moraltorturemachine://auth/callback"

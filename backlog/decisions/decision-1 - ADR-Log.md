@@ -3391,6 +3391,95 @@ typography and the AI text's real paragraph split are worth a manual look.
 Both changes touch packaged frontend code and bump the app version
 (recorded on `TASK-238`).
 
+### ADR-113 — Email+password login added as a native Cognito identity provider, unified behind one "Sign in" button; MFA stays off (TASK-227)
+
+Context: the user asked to add email+password sign-in alongside the existing
+Google-only login, and to merge the two into a single button instead of a
+per-provider chooser, plus asked for a recommendation on further providers.
+`ADR-071` had already flagged this exact fork in the road: it kept
+`mfa_configuration = "OFF"` but named "a native password/SRP auth flow ...
+added to either app client" as one of its own revisit triggers.
+
+Decision: added `"COGNITO"` to `supported_identity_providers` on both the
+`web` and `android` `aws_cognito_user_pool_client` resources, next to the
+existing `Google` identity provider - no new Terraform resource, no change to
+`explicit_auth_flows` (still only `ALLOW_REFRESH_TOKEN_AUTH`), because native
+username/password on Cognito managed login is served entirely by Cognito's
+own hosted pages, not through the app client's direct `InitiateAuth`
+API family that `explicit_auth_flows` gates; the authorization-code+PKCE
+flow this app already used exclusively for Google needed no new
+grant type. Self-service sign-up, the "Forgot your password?" flow, and the
+sign-up email-verification code are all Cognito-managed-login defaults that
+switch on automatically once `COGNITO` is a supported provider and
+`account_recovery_setting` names `verified_email` (already configured) -
+no custom sign-up/reset screens were built. For the "one button" requirement,
+rather than build a custom in-app provider chooser (a second, larger UI
+surface to design and maintain, translate, and keep in sync with Cognito's
+own validation errors), `authClient.js`'s authorize-URL builder simply stopped
+forcing `identity_provider=Google`; with no identity_provider named, Cognito's
+own managed login page shows the email+password form and the Google button
+together on one screen, so `AuthButton.jsx` (and the three other login
+call-sites) still render exactly one generic "Sign in" trigger. Renamed the
+Google-specific `beginGoogleSignIn`/`completeGoogleSignIn`/
+`isGoogleAuthAvailable` to `beginSignIn`/`completeSignIn`/`isAuthAvailable`
+throughout, and stopped hardcoding `provider: 'google'` on the
+`auth_started`/`auth_completed`/`auth_failed`/`auth_logout` analytics events -
+`auth_completed`/`auth_logout` now read the session's real provider (derived
+from the ID token's `identities` claim when present, else `'email'`);
+`auth_started`/`auth_failed` drop the property outright rather than guess it,
+since the provider is genuinely unknown until Cognito's page resolves it.
+`claimAnonymousData`/`upsert_user_record`/every `verify_cognito_id_token`
+caller were already provider-agnostic (`sub`, `token_use`,
+`cognito:groups`, `cognito:username` are standard Cognito claims regardless
+of which IdP populated the record), so AC3 needed no backend change.
+
+Decision (email delivery): left `email_configuration.email_sending_account`
+at `COGNITO_DEFAULT` (Cognito's own built-in mailer, zero setup, zero cost)
+rather than standing up SES up front. It is hard-capped at 50 emails/day
+pool-wide - fine at the product's current pre-validation signup volume, but
+a real ceiling once email+password gets real usage. Filed `TASK-240` (low
+priority, Backlog) to move to an SES-backed `email_configuration` if that
+volume is ever approached, rather than pre-building SES domain
+verification/DKIM for a limit not yet in sight.
+
+Decision (MFA): kept `mfa_configuration = "OFF"`, i.e. did not flip
+`ADR-071`'s trigger into actually turning MFA on. Reasoning: `ADR-071`'s
+trigger condition was specifically `explicit_auth_flows` gaining
+`ALLOW_USER_SRP_AUTH`/`ALLOW_USER_PASSWORD_AUTH` for direct API auth, which
+this change does not add - Cognito managed login's native form never goes
+through that gate. The practical picture did shift regardless (real password
+hashes now exist pool-wide for the first time), but turning on TOTP today
+would add sign-up/sign-in friction to a casual social game with no observed
+abuse signal yet, for a `admins`-group blast radius that is still a single
+owner account (`ADR-071`'s own finding). Optional TOTP is included in the
+`ESSENTIALS` tier already active at no extra cost, so this is purely a UX/
+friction call, not a cost one - revisit if password-account volume or an
+actual credential-stuffing signal ever appears, same as `ADR-071`'s original
+revisit condition.
+
+Decision (further providers): recommended against adding a third identity
+provider (Facebook, Apple, Amazon, ...) in this change. Apple Sign-In only
+carries real weight once/if an iOS build exists (the product is Android +
+web only per `doc-1`); Facebook Login now requires Meta Business
+verification/app review even for basic login permissions, an ongoing
+maintenance and review-risk surface disproportionate to a still pre-
+validation product (`doc-2` gates). Google + email/password already covers
+the two dominant sign-in preferences and satisfies `TASK-227` in full; adding
+a Cognito social IdP later (Apple, Facebook, Amazon) is the same
+`aws_cognito_identity_provider` + `supported_identity_providers` pattern used
+for Google today, so nothing here forecloses it.
+
+Consequences: `pnpm lint` and `pnpm build:prod` pass; `terraform validate`
+passes (checked with a throwaway local `lambda_function.zip`, since the real
+one is only built in CI - no state-changing command was run). No live
+Cognito signup/reset/Google-still-works check was performed - unlike
+`ADR-065`'s Android device verification, this needs a real deploy first;
+flagged on `TASK-227` (AC4 left unchecked) for a manual post-deploy check.
+Old distributed Android APKs are unaffected (their bundled JS still forces
+`identity_provider=Google` and keeps working exactly as before); Android
+users only see the unified button and email option after a new APK build,
+which was not built or version-bumped here since none was requested.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

@@ -30,7 +30,7 @@ const getCognitoClientId = () => (
   Capacitor.isNativePlatform() ? cognitoNativeClientId : cognitoWebClientId
 );
 
-export const isGoogleAuthAvailable = () => (
+export const isAuthAvailable = () => (
   isConfiguredValue(cognitoDomain) && isConfiguredValue(getCognitoClientId())
 );
 
@@ -105,6 +105,14 @@ const decodeJwtPayload = (token) => {
   }
 };
 
+// Federated sign-ins (Google, ...) carry an `identities` claim naming the IdP;
+// a native Cognito email+password account has none, so it falls back to 'email'.
+const resolveAuthProvider = (idClaims) => (
+  Array.isArray(idClaims.identities) && idClaims.identities[0]?.providerName
+    ? idClaims.identities[0].providerName.toLowerCase()
+    : 'email'
+);
+
 const persistSession = async (tokens, previousRefreshToken = null) => {
   const idClaims = decodeJwtPayload(tokens.id_token);
   if (!idClaims?.sub || !idClaims?.exp) throw new Error('Invalid identity token');
@@ -118,6 +126,7 @@ const persistSession = async (tokens, previousRefreshToken = null) => {
       sub: idClaims.sub,
       email: idClaims.email || null,
       name: idClaims.name || null,
+      provider: resolveAuthProvider(idClaims),
       groups: Array.isArray(idClaims['cognito:groups']) ? idClaims['cognito:groups'] : [],
       isAdmin: Array.isArray(idClaims['cognito:groups']) && idClaims['cognito:groups'].includes('admins'),
     },
@@ -144,21 +153,24 @@ const clearPendingSignIn = async () => {
   ]);
 };
 
-// A fast double-tap on any "Sign in with Google" button (AuthButton,
-// ChallengeLandingScreen, AccountDeleteScreen all call this indirectly) used
-// to fire two overlapping sign-ins: each generates its own PKCE state/
-// verifier and writes them to the same storage keys, so the second call
-// clobbers the first's before its browser tab returns. Whichever callback
-// comes back then fails completeGoogleSignIn's state check with "Invalid
-// authentication callback", even though nothing was actually wrong. This
-// module-level flag makes a re-entrant call while one is already in flight
-// a harmless no-op instead.
-let googleSignInInFlight = false;
+// A fast double-tap on any sign-in button (AuthButton, ChallengeLandingScreen,
+// AccountDeleteScreen all call this indirectly) used to fire two overlapping
+// sign-ins: each generates its own PKCE state/verifier and writes them to the
+// same storage keys, so the second call clobbers the first's before its
+// browser tab returns. Whichever callback comes back then fails
+// completeSignIn's state check with "Invalid authentication callback", even
+// though nothing was actually wrong. This module-level flag makes a
+// re-entrant call while one is already in flight a harmless no-op instead.
+let signInInFlight = false;
 
-export const beginGoogleSignIn = async (returnTo = window.location.pathname) => {
-  if (!isGoogleAuthAvailable()) throw new Error('Google authentication is not configured');
-  if (googleSignInInFlight) return;
-  googleSignInInFlight = true;
+// No identity_provider param: Cognito's own managed login page shows the
+// email+password form and the Google button together (both are supported
+// identity providers on the app client, TASK-227), so the app needs only one
+// generic "Sign in" entry point instead of a per-provider button/flow.
+export const beginSignIn = async (returnTo = window.location.pathname) => {
+  if (!isAuthAvailable()) throw new Error('Authentication is not configured');
+  if (signInInFlight) return;
+  signInInFlight = true;
 
   try {
     const state = randomUrlSafeValue();
@@ -169,7 +181,7 @@ export const beginGoogleSignIn = async (returnTo = window.location.pathname) => 
       setAuthStorageItem(PKCE_VERIFIER_KEY, verifier),
       setAuthStorageItem(RETURN_TO_KEY, safeReturnPath(returnTo)),
     ]);
-    trackEvent('auth_started', { provider: 'google' });
+    trackEvent('auth_started');
 
     const query = new URLSearchParams({
       response_type: 'code',
@@ -179,7 +191,6 @@ export const beginGoogleSignIn = async (returnTo = window.location.pathname) => 
       state,
       code_challenge_method: 'S256',
       code_challenge: challenge,
-      identity_provider: 'Google',
     });
     const authorizationUrl = `${cognitoDomain}/oauth2/authorize?${query.toString()}`;
 
@@ -189,7 +200,7 @@ export const beginGoogleSignIn = async (returnTo = window.location.pathname) => 
     }
     window.location.assign(authorizationUrl);
   } finally {
-    googleSignInInFlight = false;
+    signInInFlight = false;
   }
 };
 
@@ -224,8 +235,8 @@ export const refreshAccountActivity = async (idToken) => {
   }
 };
 
-export const completeGoogleSignIn = async (callbackUrl) => {
-  if (!isGoogleAuthAvailable()) throw new Error('Google authentication is not configured');
+export const completeSignIn = async (callbackUrl) => {
+  if (!isAuthAvailable()) throw new Error('Authentication is not configured');
   const url = parseAuthUrl(callbackUrl);
   if (!url) throw new Error('Invalid authentication callback');
 
@@ -255,7 +266,7 @@ export const completeGoogleSignIn = async (callbackUrl) => {
   });
   const session = await persistSession(tokens);
   void claimAnonymousData(session.idToken);
-  trackEvent('auth_completed', { provider: 'google' });
+  trackEvent('auth_completed', { provider: session.user.provider });
   return { session, returnTo };
 };
 
@@ -272,7 +283,7 @@ export const getValidAuthSession = async () => {
   const session = await getStoredAuthSession();
   if (!session) return null;
   if (session.expiresAt > Date.now() + 60_000) return session;
-  if (!session.refreshToken || !isGoogleAuthAvailable()) {
+  if (!session.refreshToken || !isAuthAvailable()) {
     await removeAuthStorageItem(AUTH_SESSION_KEY);
     return null;
   }
@@ -293,9 +304,10 @@ export const getValidAuthSession = async () => {
 export const clearAuthSession = () => removeAuthStorageItem(AUTH_SESSION_KEY);
 
 export const signOut = async ({ track = true } = {}) => {
+  const priorSession = track ? await getStoredAuthSession() : null;
   await Promise.all([clearAuthSession(), clearPendingSignIn()]);
-  if (track) trackEvent('auth_logout', { provider: 'google' });
-  if (!isGoogleAuthAvailable()) return;
+  if (track) trackEvent('auth_logout', { provider: priorSession?.user?.provider || 'unknown' });
+  if (!isAuthAvailable()) return;
 
   const query = new URLSearchParams({
     client_id: getCognitoClientId(),

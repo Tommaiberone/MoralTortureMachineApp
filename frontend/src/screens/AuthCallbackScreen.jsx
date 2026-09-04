@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
-import { completeGoogleSignIn } from '../auth/authClient';
+import { completeSignIn } from '../auth/authClient';
 import useAuth from '../auth/useAuth';
 import { trackEvent } from '../utils/analytics';
 
@@ -19,12 +19,12 @@ const AuthCallbackScreen = () => {
 
     const complete = async () => {
       try {
-        const { returnTo } = await completeGoogleSignIn(window.location.search);
+        const { returnTo } = await completeSignIn(window.location.search);
         await refreshSession();
         navigate(returnTo, { replace: true });
       } catch (callbackError) {
         console.error('Authentication callback failed', callbackError);
-        trackEvent('auth_failed', { provider: 'google', reason: 'callback' });
+        trackEvent('auth_failed', { reason: 'callback' });
         setError(t('auth.callbackError'));
       }
     };

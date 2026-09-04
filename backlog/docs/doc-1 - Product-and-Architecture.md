@@ -102,8 +102,28 @@ dev table, or `/dev` SSM hierarchy.
 - `anonymous_user_id` persists per browser/installation; `session_id` is scoped
   to the current tab/session; native builds also expose an `install_id`.
 - Request identity uses `X-Anonymous-User-Id` and `X-Session-Id`.
-- Web authentication uses Cognito managed login with Google, authorization code
-  plus PKCE. Browser tokens use `sessionStorage`, never `localStorage`.
+- Web authentication uses Cognito managed login, authorization code plus PKCE.
+  Since `TASK-227`, both Cognito app clients (`web`/`android`) list `COGNITO`
+  (native email+password) alongside `Google` in `supported_identity_providers`,
+  and the frontend's `/oauth2/authorize` request omits the `identity_provider`
+  query param entirely - Cognito's own managed login page then renders the
+  email+password form (with its built-in "Sign up" and "Forgot your password?"
+  links) and the Google button together on one screen, so the app needs only
+  one generic "Sign in" entry point (`AuthButton.jsx`, plus the login CTAs on
+  `ResultsScreen`/`ChallengeLandingScreen`/`AccountDeleteScreen`/
+  `AnalyticsAdminScreen`) rather than a per-provider button or a custom
+  multi-provider chooser. `frontend/src/auth/authClient.js`'s `beginSignIn`/
+  `completeSignIn`/`isAuthAvailable` (renamed from their Google-specific
+  originals) are fully provider-agnostic; the persisted session's
+  `user.provider` is derived from the ID token's `identities` claim
+  (federated IdP name, lowercased) or `'email'` when absent (native
+  signup), and `auth_started`/`auth_completed`/`auth_logout` analytics use
+  that real value instead of a hardcoded `'google'`. Cognito's built-in
+  mailer (`email_configuration.email_sending_account = "COGNITO_DEFAULT"`)
+  sends the new signup-verification and password-reset emails this
+  introduces, capped at 50/day pool-wide; `TASK-240` tracks moving to SES if
+  that volume is ever approached. Browser tokens use `sessionStorage`, never
+  `localStorage`.
 - Android uses a separate public Cognito app client, the system browser, PKCE,
   and the `moraltorturemachine://auth/callback` deep link. Native session and PKCE
   material are encrypted by an AES-GCM key stored in Android Keystore.

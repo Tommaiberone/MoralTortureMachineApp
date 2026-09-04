@@ -22,12 +22,11 @@ const AuthButton = () => {
     <div className="auth-login">
       <button
         type="button"
-        className="auth-google-button"
+        className="auth-login-button"
         onClick={() => login(window.location.pathname)}
         disabled={loading}
       >
-        <span aria-hidden="true">G</span>
-        {t('auth.loginGoogle')}
+        {t('auth.login')}
       </button>
       {error && <small className="auth-error" role="alert">{t('auth.startError')}</small>}
     </div>

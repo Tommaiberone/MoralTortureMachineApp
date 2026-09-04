@@ -1,12 +1,21 @@
-# Google authentication setup
+# Authentication setup (Google + email/password)
 
-Status: web and Android flows implemented in code, awaiting Google OAuth
-credentials, production deployment, and an Android 1.3.0 build.
+Status: Google flow deployed in production and Android-verified. Native
+Cognito email+password (`TASK-227`) is a second, equally supported identity
+provider on the same Cognito managed login page - no separate credentials or
+setup to provision for it beyond the Terraform in this repo.
 
 ## Architecture
 
 - Production-only Amazon Cognito User Pool.
-- Google federation through Cognito managed login.
+- Google federation, and native Cognito email+password, both through the same
+  Cognito managed login page. The app's `/oauth2/authorize` request names no
+  `identity_provider`, so that one hosted page shows the email+password form
+  (with its own "Sign up" and "Forgot your password?" links) and the Google
+  button together - the app only ever renders one generic "Sign in" button.
+- Cognito's own built-in mailer sends the email+password sign-up-verification
+  and password-reset codes, capped at 50/day pool-wide (`TASK-240` tracks
+  moving to SES if that is ever approached).
 - Separate public web and Android app clients using OAuth authorization-code
   flow with PKCE.
 - Access and ID tokens expire after one hour; refresh tokens after 30 days.
@@ -80,8 +89,11 @@ injects the Google client secret into the frontend.
 After deployment:
 
 1. Open `https://moraltorturemachine.com`.
-2. Choose **Accedi con Google**.
-3. Complete Google consent and return through `/auth/callback`.
+2. Choose **Sign in**.
+3. On Cognito's managed login page, confirm both paths work: Google consent,
+   and native sign-up/sign-in with email+password (including "Forgot your
+   password?" and the sign-up verification email) - both return through
+   `/auth/callback`.
 4. Confirm that logout works and a reload preserves only the current-tab session.
 
 ## 4. Build and test Android authentication
@@ -105,7 +117,7 @@ authentication client accepts only `/callback` and `/logout`. Validate on a real
 device or emulator:
 
 1. Anonymous gameplay still works before login.
-2. **Accedi con Google** opens the system browser.
+2. **Sign in** opens the system browser.
 3. Google/Cognito returns to the same screen in the app.
 4. Closing and reopening the app restores the encrypted session.
 5. Logout clears the local session and returns from the Cognito browser flow.

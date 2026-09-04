@@ -139,7 +139,7 @@ const AccountDeleteScreen = () => {
             <p>{t('account.notLoggedInBenefits')}</p>
             <p>{t('account.notLoggedIn')}</p>
             <button type="button" className="btn-primary" onClick={() => login(window.location.pathname)}>
-              {t('auth.loginGoogle')}
+              {t('auth.login')}
             </button>
           </div>
           <PrivacyFooter />

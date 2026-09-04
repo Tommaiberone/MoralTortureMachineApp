@@ -5,12 +5,12 @@ import { Capacitor } from '@capacitor/core';
 
 import AuthContext from './authContext';
 import {
-  beginGoogleSignIn,
-  completeGoogleSignIn,
+  beginSignIn,
+  completeSignIn,
   getValidAuthSession,
   isNativeAuthCallbackUrl,
   isNativeAuthLogoutUrl,
-  isGoogleAuthAvailable,
+  isAuthAvailable,
   refreshAccountActivity,
   signOut,
 } from './authClient';
@@ -50,7 +50,7 @@ const AuthProvider = ({ children }) => {
       setLoading(true);
       setError('');
       try {
-        const result = await completeGoogleSignIn(url);
+        const result = await completeSignIn(url);
         if (cancelled) return;
         setSession(result.session);
         void refreshAccountActivity(result.session.idToken);
@@ -58,7 +58,7 @@ const AuthProvider = ({ children }) => {
         window.dispatchEvent(new PopStateEvent('popstate'));
       } catch (callbackError) {
         console.error('Native authentication callback failed', callbackError);
-        trackEvent('auth_failed', { provider: 'google', reason: 'native_callback' });
+        trackEvent('auth_failed', { reason: 'native_callback' });
         if (!cancelled) setError('callback');
       } finally {
         if (!cancelled) setLoading(false);
@@ -87,10 +87,10 @@ const AuthProvider = ({ children }) => {
   const login = useCallback(async (returnTo) => {
     setError('');
     try {
-      await beginGoogleSignIn(returnTo);
+      await beginSignIn(returnTo);
     } catch (loginError) {
       console.error('Authentication could not be started', loginError);
-      trackEvent('auth_failed', { provider: 'google', reason: 'start' });
+      trackEvent('auth_failed', { reason: 'start' });
       setError('start');
     }
   }, []);
@@ -109,7 +109,7 @@ const AuthProvider = ({ children }) => {
   const clearError = useCallback(() => setError(''), []);
 
   const value = useMemo(() => ({
-    available: isGoogleAuthAvailable(),
+    available: isAuthAvailable(),
     clearError,
     error,
     isAuthenticated: Boolean(session),

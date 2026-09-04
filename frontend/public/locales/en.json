@@ -270,15 +270,15 @@
     "propertiesCount_other": "{{count}} properties"
   },
   "auth": {
-    "loginGoogle": "Sign in with Google",
+    "login": "Sign in",
     "logout": "Sign out",
     "account": "Account",
     "completing": "Completing authentication…",
     "callbackError": "Sign-in failed. Return home and try again.",
     "startError": "Unable to complete sign-in. Please try again.",
     "adminPending": "Your account is authenticated but is not an administrator yet.",
-    "adminLoginRequired": "Sign in with Google to open analytics.",
-    "loginForAnalytics": "Sign in with Google"
+    "adminLoginRequired": "Sign in to open analytics.",
+    "loginForAnalytics": "Sign in"
   },
   "common": {
     "backToHome": "Back to Home"
