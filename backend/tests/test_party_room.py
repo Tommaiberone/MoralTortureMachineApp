@@ -97,17 +97,49 @@ class _FakeTable:
             item = dict(Key)
             self._items[key] = item
 
-        assignments = UpdateExpression[len("SET "):].split(", ")
-        for assignment in assignments:
-            path_str, _, value_token = assignment.partition("=")
-            path = resolve_path(path_str)
-            value = ExpressionAttributeValues[value_token.strip()]
-            target = item
-            for part in path[:-1]:
-                target = target.setdefault(part, {})
-            target[path[-1]] = value
+        set_clause, add_clause = self._split_update_expression(UpdateExpression)
+
+        if set_clause:
+            for assignment in set_clause.split(", "):
+                path_str, _, value_token = assignment.partition("=")
+                path = resolve_path(path_str)
+                value = ExpressionAttributeValues[value_token.strip()]
+                target = item
+                for part in path[:-1]:
+                    target = target.setdefault(part, {})
+                target[path[-1]] = value
+
+        if add_clause:
+            # Real DynamoDB ADD semantics: creates the numeric attribute
+            # (defaulting to 0) if it doesn't exist yet, including any
+            # missing intermediate maps in a nested path.
+            for assignment in add_clause.split(", "):
+                path_str, value_token = assignment.strip().rsplit(" ", 1)
+                path = resolve_path(path_str)
+                delta = ExpressionAttributeValues[value_token.strip()]
+                target = item
+                for part in path[:-1]:
+                    target = target.setdefault(part, {})
+                target[path[-1]] = target.get(path[-1], 0) + delta
 
         return {"Attributes": dict(item)}
+
+    @staticmethod
+    def _split_update_expression(expression):
+        """Splits a "SET a = :x, b = :y ADD c :z" style expression into its
+        SET and ADD clauses (either may be absent). Good enough for the
+        finite set of expressions this codebase actually sends - not a
+        general DynamoDB expression parser."""
+        expression = expression.strip()
+        if expression.startswith("SET "):
+            rest = expression[len("SET "):]
+            if " ADD " in rest:
+                set_clause, add_clause = rest.split(" ADD ", 1)
+                return set_clause, add_clause
+            return rest, None
+        if expression.startswith("ADD "):
+            return None, expression[len("ADD "):]
+        raise NotImplementedError(expression)
 
     def _check_condition(self, item, condition, names, values):
         if condition.startswith("attribute_not_exists("):
@@ -151,6 +183,10 @@ class PartyRoomTestCase(unittest.TestCase):
         for p in self.patches:
             p.start()
             self.addCleanup(p.stop)
+        # TASK-270 follow-up: _get_room_cached's cache is a module-level dict
+        # scoped to a warm Lambda container in production; clear it so one
+        # test's room codes can never linger into another's assertions.
+        backend_module._party_room_read_cache.clear()
 
     def _create_room(self, host="host-1", count=3):
         return asyncio.run(create_party_room(
@@ -181,6 +217,18 @@ class PartyRoomTestCase(unittest.TestCase):
 
     def _advance(self, room_code, participant="host-1"):
         return asyncio.run(advance_party_room(room_code, request_with_headers({"X-Anonymous-User-Id": participant})))
+
+    def _force_safety_timeout(self, room_code):
+        """Simulates the safety-net deadline having already passed, by
+        rewriting the fake table directly instead of sleeping. TASK-270
+        follow-up: get_party_room now reads through a short-TTL in-process
+        cache (_get_room_cached), which has no way to know about a write
+        that bypasses the normal update_item path like this one does - drop
+        the cached entry too, exactly as a real out-of-band write never
+        needs to (every real write in production goes through update_item,
+        which get_party_room already re-caches after)."""
+        self.rooms._items[(room_code,)]["phaseEndsAt"] = 0
+        backend_module._party_room_read_cache.pop(room_code, None)
 
     def test_create_room_makes_host_the_first_participant(self):
         result = self._create_room()
@@ -261,7 +309,7 @@ class PartyRoomTestCase(unittest.TestCase):
         self._vote(room["roomCode"], "host-1", "first")
 
         # Force the safety-net deadline into the past instead of sleeping.
-        self.rooms._items[(room["roomCode"],)]["phaseEndsAt"] = 0
+        self._force_safety_timeout(room["roomCode"])
 
         state = self._get_state(room["roomCode"], "host-1")
         self.assertEqual(state["status"], "reveal")
@@ -312,6 +360,39 @@ class PartyRoomTestCase(unittest.TestCase):
             self._advance(room["roomCode"])
         self.assertEqual(raised.exception.status_code, 409)
 
+    def test_question_phase_response_omits_participant_roster(self):
+        # TASK-270 follow-up: PartyRoomScreen.jsx never reads room.participants
+        # while status is "question", so get_party_room skips the Query that
+        # would otherwise fetch it on every single poll - this is the biggest
+        # cut to Party Room's DynamoDB read volume. Locks in that the roster
+        # stays empty (not just "unused") during this specific phase, so a
+        # future change can't silently reintroduce the Query without a test
+        # noticing. hasVotedThisRound/isHost must still work correctly since
+        # they come from a targeted GetItem on the caller's own row instead.
+        room = self._create_room()
+        self._join(room["roomCode"], "guest-1")
+        self._start(room["roomCode"])
+
+        state = self._get_state(room["roomCode"], "guest-1")
+        self.assertEqual(state["status"], "question")
+        self.assertEqual(state["participants"], [])
+        self.assertEqual(state["participantCount"], 2)
+        self.assertFalse(state["isHost"])
+        self.assertFalse(state["hasVotedThisRound"])
+
+        host_state = self._get_state(room["roomCode"], "host-1")
+        self.assertTrue(host_state["isHost"])
+
+    def test_repeated_poll_within_cache_window_reuses_the_cached_room(self):
+        # TASK-270 follow-up: _get_room_cached should serve a second poll for
+        # the same room within PARTY_ROOM_READ_CACHE_TTL_SECONDS straight from
+        # memory - only one real GetItem, not two.
+        room = self._create_room()
+        with patch.object(self.rooms, "get_item", wraps=self.rooms.get_item) as spy:
+            self._get_state(room["roomCode"], "host-1")
+            self._get_state(room["roomCode"], "host-1")
+            self.assertEqual(spy.call_count, 1)
+
     def test_host_advance_moves_to_the_next_round(self):
         room = self._create_room(count=backend_module.PARTY_ROOM_MIN_DILEMMAS)
         self._join(room["roomCode"], "guest-1")
@@ -336,7 +417,7 @@ class PartyRoomTestCase(unittest.TestCase):
             self._vote(room["roomCode"], "guest-1", "second", {"Empathy": 0.1})
             # Voting both sides advances straight to reveal; force the reveal
             # window shut too so the loop reaches the next question/completed.
-            self.rooms._items[(room["roomCode"],)]["phaseEndsAt"] = 0
+            self._force_safety_timeout(room["roomCode"])
             self._get_state(room["roomCode"], "host-1")
 
         state = self._get_state(room["roomCode"], "host-1")
@@ -361,7 +442,7 @@ class PartyRoomTestCase(unittest.TestCase):
         self._vote(room["roomCode"], "host-1", "first", {"Empathy": 0.9})
         self._vote(room["roomCode"], "guest-1", "first", {"Empathy": 0.88})
         self._vote(room["roomCode"], "guest-2", "second", {"Empathy": 0.1})
-        self.rooms._items[(room["roomCode"],)]["phaseEndsAt"] = 0
+        self._force_safety_timeout(room["roomCode"])
 
         state = self._get_state(room["roomCode"], "host-1")
         self.assertEqual(state["status"], "completed")
@@ -391,7 +472,7 @@ class PartyRoomTestCase(unittest.TestCase):
         self._start(room["roomCode"])
         self._vote(room["roomCode"], "host-1", "first", {"Empathy": 0.9})
         self._vote(room["roomCode"], "guest-1", "second", {"Empathy": 0.1})
-        self.rooms._items[(room["roomCode"],)]["phaseEndsAt"] = 0
+        self._force_safety_timeout(room["roomCode"])
 
         state = self._get_state(room["roomCode"], "host-1")
         self.assertEqual(state["status"], "completed")
@@ -413,7 +494,7 @@ class PartyRoomTestCase(unittest.TestCase):
         self._start(room["roomCode"])
         self._vote(room["roomCode"], "host-1", "first")
         self._vote(room["roomCode"], "guest-1", "second")
-        self.rooms._items[(room["roomCode"],)]["phaseEndsAt"] = 0
+        self._force_safety_timeout(room["roomCode"])
 
         first = self._get_state(room["roomCode"], "host-1")
         second = self._get_state(room["roomCode"], "host-1")
@@ -432,7 +513,7 @@ class PartyRoomTestCase(unittest.TestCase):
         self._start(room["roomCode"])
         self._vote(room["roomCode"], "host-1", "first", {"Empathy": 0.9})
         self._vote(room["roomCode"], "guest-1", "second", {"Empathy": 0.1})
-        self.rooms._items[(room["roomCode"],)]["phaseEndsAt"] = 0
+        self._force_safety_timeout(room["roomCode"])
 
         host_view = self._get_state(room["roomCode"], "host-1")
         host_self = next(p for p in host_view["participants"] if p["isCaller"])
@@ -459,7 +540,7 @@ class PartyRoomTestCase(unittest.TestCase):
         self._start(room["roomCode"])
         self._vote(room["roomCode"], "host-1", "first")
         self._vote(room["roomCode"], "guest-1", "second")
-        self.rooms._items[(room["roomCode"],)]["phaseEndsAt"] = 0
+        self._force_safety_timeout(room["roomCode"])
 
         first = self._get_state(room["roomCode"], "host-1")
         second = self._get_state(room["roomCode"], "host-1")

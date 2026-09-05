@@ -266,6 +266,18 @@ PARTY_ROOM_MIN_PARTICIPANTS_TO_START = 2
 # explicitly advances - see _advance_party_room_if_due. This is a pure
 # abandoned-room safety net, never a visible countdown.
 PARTY_ROOM_SAFETY_TIMEOUT_MS = 10 * 60 * 1000
+# TASK-270 follow-up: best-effort read-through cache for the polled GET only
+# (backend_fastapi.py's get_party_room / _get_room_cached), scoped to this
+# warm Lambda container's lifetime - same "one execution environment, no
+# shared state" pattern as enforce_zero_cost_burst_guard's rate limiter.
+# Several participants in the same room often poll close together; within
+# this window a request that lands on the same warm container reuses the
+# last GetItem instead of repeating it. Never used by join/start/advance/
+# vote, which always read the real current state directly - a stale read
+# there would just cost a spurious 409 on the ConditionExpression, not a
+# correctness bug, but there is no reason to accept even that on paths that
+# fire once per round instead of once per poll.
+PARTY_ROOM_READ_CACHE_TTL_SECONDS = 0.6
 
 # Model fallback strategy - ordered by capability, highest first. Refreshed
 # 2026-08-05 (TASK-162) against GroqCloud's Supported Models page: models no
@@ -3058,6 +3070,30 @@ def get_room_or_404(room_code: str) -> dict[str, Any]:
     return decimal_to_native(item)
 
 
+_party_room_read_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def _get_room_cached(room_code: str) -> dict[str, Any]:
+    """Read-through cache for get_party_room only - see
+    PARTY_ROOM_READ_CACHE_TTL_SECONDS above. Only successful lookups are
+    cached; a 404/410/tombstone always goes straight to get_room_or_404 so
+    its exception behavior is untouched."""
+    now = time.monotonic()
+    cached = _party_room_read_cache.get(room_code)
+    if cached and cached[0] > now:
+        return cached[1]
+    room = get_room_or_404(room_code)
+    _cache_room(room_code, room, now)
+    return room
+
+
+def _cache_room(room_code: str, room: dict[str, Any], now: float | None = None) -> None:
+    _party_room_read_cache[room_code] = (
+        (now if now is not None else time.monotonic()) + PARTY_ROOM_READ_CACHE_TTL_SECONDS,
+        room,
+    )
+
+
 def _list_party_participants(room_code: str) -> list[dict[str, Any]]:
     response = party_participants_table.query(
         KeyConditionExpression="roomCode = :room",
@@ -3082,10 +3118,17 @@ def _advance_party_room_if_due(room: dict[str, Any]) -> dict[str, Any]:
     due = now_ms >= phase_ends_at
 
     if room["status"] == "question" and not due:
-        participants = _list_party_participants(room["roomCode"])
+        # TASK-270 follow-up: reads the counters already sitting on `room`
+        # (voteTallyByRound/participantCount, maintained by submit_party_vote
+        # and join_party_room) instead of Query-ing every participant - this
+        # function runs on every single poll while status is "question", so
+        # removing that Query here is the single biggest cut to Party Room's
+        # DynamoDB read volume.
         round_key = str(room["currentRoundIndex"])
-        voted = sum(1 for p in participants if round_key in p.get("votes", {}))
-        due = len(participants) > 0 and voted >= len(participants)
+        tally = room.get("voteTallyByRound", {}).get(round_key, {})
+        voted = sum(tally.values())
+        participant_count = room.get("participantCount", 0)
+        due = participant_count > 0 and voted >= participant_count
 
     if room["status"] == "reveal" and not due:
         due = bool(room.get("hostAdvanceRequested"))
@@ -3164,6 +3207,12 @@ async def create_party_room(create_request: CreatePartyRoomRequest, request: Req
                     "hostAdvanceRequested": False,
                     "createdAt": now,
                     "expirationTime": expiration_time,
+                    # TASK-270 follow-up: counters kept on the room item so
+                    # the hot polling/advance paths never need to Query every
+                    # participant just to answer "how many" / "has everyone
+                    # voted" - see join_party_room and submit_party_vote.
+                    "participantCount": 1,
+                    "voteTallyByRound": {},
                 },
                 ConditionExpression="attribute_not_exists(roomCode)",
             )
@@ -3216,6 +3265,15 @@ async def join_party_room(room_code: str, join_request: JoinPartyRoomRequest, re
         "votes": {},
         "expirationTime": room["expirationTime"],
     })
+    # TASK-270 follow-up: keeps participantCount authoritative on the room
+    # item without a Query - only reached on a genuine new join, guarded by
+    # the idempotent `if existing:` return above, so a rejoin/refresh never
+    # double-counts.
+    party_rooms_table.update_item(
+        Key={"roomCode": room_code},
+        UpdateExpression="ADD participantCount :one",
+        ExpressionAttributeValues={":one": 1},
+    )
     _track_duel_event(request, "party_room_joined", {"room_code": room_code})
     return {"roomCode": room_code, "participantId": anonymous_user_id, "status": "lobby"}
 
@@ -3327,6 +3385,20 @@ async def submit_party_vote(room_code: str, vote_request: SubmitPartyVoteRequest
         if error.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
             raise HTTPException(status_code=409, detail="You already voted this round")
         raise
+
+    # TASK-270 follow-up: mirrors the just-cast vote into a counter on the
+    # room item (a different table, so a separate write - not the same call
+    # as the ConditionExpression above, which is what actually enforces
+    # immutability). This is a fast-path signal only: the participant row
+    # above stays the source of truth for the vote itself, so if this second
+    # write ever failed, the round simply falls back to the safety-net
+    # timeout instead of ending early - never a correctness issue.
+    party_rooms_table.update_item(
+        Key={"roomCode": room_code},
+        UpdateExpression="ADD voteTallyByRound.#round.#choice :one",
+        ExpressionAttributeNames={"#round": round_key, "#choice": vote_request.choice},
+        ExpressionAttributeValues={":one": 1},
+    )
 
     room = _advance_party_room_if_due(get_room_or_404(room_code))
     _track_duel_event(request, "party_room_vote_cast", {"room_code": room_code, "round_index": room["currentRoundIndex"]})
@@ -3478,14 +3550,40 @@ async def get_party_room(room_code: str, request: Request, language: str = "en")
     the final screen) - this single endpoint carries the room's entire
     visible state so the frontend never needs a second call to stay in sync."""
     anonymous_user_id = require_anonymous_user_id(request)
-    room = get_room_or_404(room_code)
+    room = _get_room_cached(room_code)
     room = _advance_party_room_if_due(room)
-    participants = _list_party_participants(room_code)
-    caller_index = next(
-        (index for index, p in enumerate(participants) if p["participantId"] == anonymous_user_id), None,
-    )
-    caller = participants[caller_index] if caller_index is not None else None
+    # Re-cache with whatever _advance_party_room_if_due just returned (a
+    # fresh read if it made a transition, the same object otherwise), so the
+    # next poll within the TTL window - possibly from a different
+    # participant - sees the transition instead of the pre-advance state.
+    _cache_room(room_code, room)
     is_completed = room["status"] == "completed"
+
+    # TASK-270 follow-up (Party Room DynamoDB capacity): "question" is by far
+    # the highest-volume phase - every participant polls this endpoint for
+    # the whole time everyone is answering - and the frontend never reads
+    # room.participants while status is "question" (confirmed against
+    # PartyRoomScreen.jsx: the roster only ever renders in lobby/reveal/
+    # completed). So only fetch the full roster (a Query across every
+    # participant) when it's actually needed; during "question", a single
+    # targeted GetItem on the caller's own row is enough for isHost/
+    # hasVotedThisRound, and participantCount now comes from the counter
+    # maintained on the room item itself (see join_party_room), not from
+    # counting a list we no longer fetch.
+    if room["status"] == "question":
+        participants: list[dict[str, Any]] = []
+        caller = decimal_to_native(
+            party_participants_table.get_item(
+                Key={"roomCode": room_code, "participantId": anonymous_user_id}
+            ).get("Item") or {}
+        ) or None
+        caller_index = None
+    else:
+        participants = _list_party_participants(room_code)
+        caller_index = next(
+            (index for index, p in enumerate(participants) if p["participantId"] == anonymous_user_id), None,
+        )
+        caller = participants[caller_index] if caller_index is not None else None
 
     # TASK-48/123: participant-index keys, never the raw anonymous_user_id,
     # both for the awards computation and for referencing "which participant"
@@ -3543,7 +3641,7 @@ async def get_party_room(room_code: str, request: Request, language: str = "en")
         "language": room["language"],
         "isHost": bool(caller and caller.get("isHost")),
         "hasJoined": caller is not None,
-        "participantCount": len(participants),
+        "participantCount": room.get("participantCount", len(participants)),
         "dilemmaCount": len(room["dilemmaBaseIds"]),
         "currentRoundIndex": room["currentRoundIndex"],
         "phaseEndsAt": room["phaseEndsAt"] or None,
@@ -3564,9 +3662,14 @@ async def get_party_room(room_code: str, request: Request, language: str = "en")
         response["currentDilemma"] = dilemma_item or None
         response["hasVotedThisRound"] = round_key in caller.get("votes", {})
         if room["status"] == "reveal":
-            first_votes = sum(1 for p in participants if p.get("votes", {}).get(round_key, {}).get("choice") == "first")
-            second_votes = sum(1 for p in participants if p.get("votes", {}).get(round_key, {}).get("choice") == "second")
-            response["roundResult"] = {"firstVotes": first_votes, "secondVotes": second_votes}
+            # Sourced from the same voteTallyByRound counter
+            # _advance_party_room_if_due uses, not recomputed from
+            # `participants` - one fewer place this can ever disagree.
+            tally = room.get("voteTallyByRound", {}).get(round_key, {})
+            response["roundResult"] = {
+                "firstVotes": tally.get("first", 0),
+                "secondVotes": tally.get("second", 0),
+            }
             # TASK-123: show who voted what, not just the aggregate split -
             # people in the same room, more fun to see individually. Never
             # the raw participantId, same rule as everywhere else.

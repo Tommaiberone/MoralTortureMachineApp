@@ -14,10 +14,13 @@ import { sharePartyRecapCard } from '../utils/shareCard';
 import './PartyRoomScreen.css';
 
 const API_URL = import.meta.env.VITE_API_URL;
-const POLL_INTERVAL_MS = 1500;
+// TASK-270 follow-up: adaptive poll cadence - see the polling effect below.
+const POLL_INTERVAL_ACTIVE_MS = 1500;
+const POLL_INTERVAL_IDLE_MS = 3000;
 // TASK-148: consecutive poll failures before showing a connection-lost
 // indicator - high enough to not flap on a single dropped request, low
-// enough to still surface a real stall quickly (~4.5s at POLL_INTERVAL_MS).
+// enough to still surface a real stall quickly (~4.5-9s depending on the
+// current cadence).
 const CONNECTION_LOST_THRESHOLD = 3;
 
 const DIMENSIONS = ['Empathy', 'Integrity', 'Responsibility', 'Justice', 'Altruism', 'Honesty'];
@@ -146,24 +149,33 @@ const PartyRoomScreen = () => {
 
   // Poll the room state. Stops once the room is completed or a fatal
   // 404/410 was hit - nothing further changes after either, so there is no
-  // reason to keep hitting the API.
+  // reason to keep hitting the API. Adaptive cadence (TASK-270 follow-up,
+  // Party Room DynamoDB capacity): "question" is a genuine race to see when
+  // everyone else has answered, so it stays fast; "lobby"/"reveal" (and a
+  // failed poll) are waiting on a human to act, not a vote, so they poll
+  // slower - cuts total request volume without making the actual gameplay
+  // moment feel slower. A recursive setTimeout, not setInterval, so the
+  // delay can change between ticks based on the status just observed.
   useEffect(() => {
     let cancelled = false;
-    let intervalId;
+    let timeoutId;
+
+    const scheduleNext = (status) => {
+      if (cancelled || status === 'completed' || fatalRef.current) return;
+      const delay = status === 'question' ? POLL_INTERVAL_ACTIVE_MS : POLL_INTERVAL_IDLE_MS;
+      timeoutId = setTimeout(tick, delay);
+    };
 
     const tick = async () => {
       const data = await fetchRoom();
       if (cancelled) return;
-      if ((data?.status === 'completed' || fatalRef.current) && intervalId) {
-        clearInterval(intervalId);
-      }
+      scheduleNext(data?.status);
     };
 
     tick();
-    intervalId = setInterval(tick, POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
-      clearInterval(intervalId);
+      clearTimeout(timeoutId);
     };
   }, [fetchRoom]);
 

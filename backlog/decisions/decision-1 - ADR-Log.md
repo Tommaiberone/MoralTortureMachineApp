@@ -3735,6 +3735,115 @@ intended, rather than looking cramped or too busy, needs a manual look
 once this deploys; the background SVG is a single file, trivial to
 re-draw or swap if it doesn't land well.
 
+### ADR-118 — Party Room's per-poll DynamoDB read cost cut with counters, a targeted GetItem, and a short-TTL cache; on-demand billing deliberately not activated (TASK-271)
+
+Context: discussing Party Room's implementation with the user surfaced that
+its concurrency ceiling is not Lambda or API Gateway - both would scale far
+beyond anything this product sees - but the provisioned DynamoDB capacity
+`TASK-191`'s incident already bumped once (1/1 -> 5/5 RCU/WCU), itself only
+~1 unit of headroom below the account's entire 25/25 always-free provisioned
+pool shared with every other table. Root cause, read directly from the code
+rather than guessed: `get_party_room` unconditionally ran `_list_party_
+participants` (a `Query` returning every participant's full row, votes maps
+included) on *every single poll*, and `_advance_party_room_if_due` -
+invoked at the top of that same GET, plus `submit_party_vote` and
+`advance_party_room` - ran a *second*, separate `Query` of its own just to
+check "has everyone voted", on every call while `status == "question"`, the
+longest-duration and highest-participant-count phase. The user asked for a
+smart, free way to cut this load before considering anything that costs
+money, explicitly floating caching as an idea.
+
+Decision: three complementary, zero-new-infrastructure changes, in order of
+how much of the read volume they remove:
+
+1. **Counters on the room item, not recomputed by Query.** `party_rooms`
+   items now carry `participantCount` (incremented via `ADD participantCount
+   :one` in `join_party_room`, on the genuine-new-join path only - the
+   existing `if existing: return` idempotency guard already prevents a
+   rejoin from double-counting) and `voteTallyByRound` (a `{round_key:
+   {first, second}} ` map, incremented via `ADD voteTallyByRound.#round.
+   #choice :one` in `submit_party_vote`, right after the participant's own
+   vote write succeeds - a *separate* call since it targets a different
+   table, not the same write the `attribute_not_exists` immutability
+   condition guards). `_advance_party_room_if_due`'s "has everyone voted"
+   check now reads `room["voteTallyByRound"]`/`room["participantCount"]` -
+   fields already sitting on the `room` dict it was passed - instead of
+   Query-ing `party_participants` itself. This alone removes a `Query` from
+   every poll/vote/advance call during the entire `question` phase, the
+   single biggest cut. If the tally write ever failed after the vote
+   succeeded, the round just falls back to the existing safety-timeout
+   instead of ending early - a fast-path signal, not a new source of
+   truth; the participant row stays authoritative for the vote itself.
+2. **Skip the full roster fetch entirely during `question`.** Checked
+   `PartyRoomScreen.jsx` first: the frontend never reads `room.participants`
+   while `status === 'question'` (only `lobby`/`reveal`/`completed` render
+   it). So `get_party_room` now only calls `_list_party_participants` for
+   those three phases; during `question` it does a single targeted
+   `GetItem` on the caller's own `party_participants` row (cost independent
+   of room size) for `isHost`/`hasVotedThisRound`, and reports
+   `participantCount` from the new counter rather than `len(participants)` -
+   `response["participants"]` is `[]` in that phase, which nothing consumes.
+   `roundResult` during `reveal` is now sourced from `voteTallyByRound`
+   too, rather than recomputing it from `participants` a second way, so the
+   two numbers can never disagree.
+3. **Short-TTL in-process cache, polling endpoint only.** `_get_room_cached`
+   (0.6s TTL) wraps `get_room_or_404` for `get_party_room` exclusively -
+   the same "one warm Lambda container, no shared state" pattern already
+   used by `enforce_zero_cost_burst_guard`'s rate limiter. Deliberately
+   *not* used by `join`/`start`/`advance`/`vote`: a stale read gating a
+   state-changing decision there would only ever cost a spurious 409 from
+   the real `ConditionExpression` at write time (never a correctness bug,
+   since that condition always checks live state), but there is no reason
+   to accept even that on paths that fire once per round instead of once
+   per poll. Re-cached immediately after `_advance_party_room_if_due` runs,
+   so a phase transition is visible to the *next* poll (even from a
+   different participant) rather than staying hidden for the rest of the
+   TTL window.
+4. **Adaptive poll cadence.** `PartyRoomScreen.jsx` polls every 1.5s only
+   during `question` (a genuine race to see when everyone else has
+   answered); `lobby`/`reveal`/a failed poll now use 3s, since both are
+   waiting on a human's next action, not a vote - direct, proportional cut
+   to total request volume for zero cost.
+
+Decision (deferred, not activated): the user's own framing distinguished
+"free ideas first" from the one lever that removes the provisioned-capacity
+ceiling outright - switching `party_rooms`/`party_participants` to
+`PAY_PER_REQUEST` (on-demand) billing. That was discussed and explicitly
+left un-activated here: it is not part of the always-free provisioned pool,
+so per `CLAUDE.md`'s Free Tier rule it needs its own explicit-cost approval
+step (current, unverified-here DynamoDB on-demand pricing is roughly
+$0.25/million eventually-consistent read request units and $1.25/million
+write request units - cheap at any realistic volume for this product, but
+not zero) rather than being bundled into a "free" change.
+
+Consequences: extended `test_party_room.py`'s `_FakeTable` fake to actually
+execute `ADD` (previously `SET`-only), so the new counters are exercised
+with real conditional-update semantics rather than mocked out - the same
+"exercise the real state machine, not a scripted sequence of mocks"
+standard the file's own docstring already set. One existing test broke
+during this work for an instructive reason: `test_full_room_reaches_
+completed_and_returns_archetypes` force-expires the safety timeout by
+writing `phaseEndsAt = 0` directly into the fake table, bypassing
+`update_item` entirely - a shortcut that real production code never takes
+(every real write goes through `update_item`, which `get_party_room`
+already re-caches after), but one the new cache has no way to know about.
+Fixed by adding `_force_safety_timeout()`, which does the same direct
+mutation *and* drops that room's cache entry, documented as mimicking an
+out-of-band write only the test harness performs. Added two new tests
+directly locking in the behavior change itself, not just its side effects:
+one asserting `participants == []` during `question` (so a future change
+can't silently reintroduce the Query without a test noticing) and one
+spying on the fake table's `get_item` to assert a second poll within the
+cache window makes zero additional calls. Full suite: 200/200 backend tests
+pass; `pnpm lint`/`pnpm build:prod` pass. No live device/browser check was
+performed (`CLAUDE.md`'s no-browser-automation rule) - the adaptive-cadence
+UX (does 3s idle polling feel sluggish waiting for the host to advance
+reveal?) is worth a manual look. `_party_room_read_cache` is an unbounded
+module-level dict for the lifetime of a warm container, same accepted
+trade-off the existing rate-limiter already makes - each entry is small and
+Lambda containers recycle periodically, so this was not treated as a
+problem needing its own eviction logic.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
