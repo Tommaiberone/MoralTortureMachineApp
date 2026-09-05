@@ -3898,6 +3898,104 @@ created for this smoke test were left to expire via their existing 6-hour
 TTL rather than force-deleted, consistent with test data volume this
 low already being immaterial to the Free Tier tables it lives in.
 
+### ADR-120 — Six autonomous To Do fixes from the TASK-190 app walkthrough: exception-text leak, dead deploy step, DynamoDB deletion protection, a missing confirmation detail, a false hreflang claim, and stale doc-1 rows (TASK-245/246/251/253/258/259)
+
+Context: asked to look at the backlog and find something to do autonomously.
+All six items were already-queued, already-documented `To Do` tasks from
+the 2026-09-04 `TASK-190` app-walkthrough sweep - not new findings - so this
+was ordinary task execution, not scope invention. Picked a batch that was
+small, independent, and each either purely additive/risk-reducing or
+strictly frontend-copy, rather than anything requiring a product decision.
+
+Decisions:
+
+- **`TASK-246`** (`GET /health` leaked raw exception text): all five
+  dependency checks (`dynamodb_dilemmas`/`dynamodb_analytics`/
+  `dynamodb_product_events`/`dynamodb_daily_moral_crime`/`ssm_parameter`)
+  now log the real exception server-side (`logger.warning(..., exc_info=
+  True)`) and report only a bare `"error"` string in the public,
+  unauthenticated response body - the endpoint previously put boto3/IAM
+  error text (potentially naming specific denied resources) directly in
+  JSON anyone on the internet could request. Also gave `/health` its own
+  `health_check` rate-limit bucket (20/min per source, `ABUSE_HEALTH_CHECK_
+  REQUESTS_PER_MINUTE`) instead of leaving it on the generic 120/min
+  `global` bucket - each hit does five DynamoDB `DescribeTable` calls plus
+  one SSM `GetParameter`, and a real liveness probe never needs anywhere
+  near that rate. New `test_health_check.py` locks in both the no-leak
+  behavior and the dedicated bucket (this repo had zero prior test coverage
+  on `/health` - `TASK-249` tracks extending that pattern to the other
+  high-traffic endpoints, deliberately not attempted here).
+- **`TASK-251`** (`[regression]`, deploy.yml still populated the deleted
+  `story-flows` DynamoDB table): removed the "Populate DynamoDB Story
+  Flows" step and every story-flows reference from "Check dilemma files"/
+  "Verify population" in `.github/workflows/deploy.yml`. This was a live,
+  reachable path (`workflow_dispatch` or a `[populate-db]`/`[populate-db-
+  append]` commit marker) that would `aws dynamodb scan` a table deleted by
+  `TASK-185` on 2026-09-02 and fail, and because "Verify population" runs
+  after it in the same job, that failure could have blocked verifying the
+  real dilemmas table too. Deliberately left `backend/scripts/
+  populate_story_flows.py`, its two `data/story_flows_*.json` files, and
+  the harmless `py_compile` syntax check on that script (deploy.yml line
+  132) untouched - out of this task's stated scope - and filed `TASK-272`
+  (`Backlog`, low priority) to remove them as a fully separate, lower-risk
+  cleanup, flagging that `doc-1`'s note about the table's 2 rows being
+  "exported before deletion" should be checked before deleting the JSON
+  files, since they might be the only remaining copy. AC#2 (dilemmas
+  population still works) was verified by careful static reading of the
+  resulting YAML, not a live trigger - actually running that path performs
+  a real backup-and-reload of the production dilemmas table, disproportionate
+  risk just to test a cleanup; a real end-to-end check needs a deliberate
+  `[populate-db]` push.
+- **`TASK-253`** (`users`/`moral_profiles` DynamoDB tables lacked deletion
+  protection, unlike the Cognito user pool's `deletion_protection = ACTIVE`
+  + `prevent_destroy`): added `deletion_protection_enabled = true` to both
+  tables. Verified `terraform providers schema -json` against the actually-
+  installed `6.63.0` provider first to confirm the exact argument name
+  (continuing this session's established "check the real schema, don't
+  guess" discipline from `ADR-116`/`ADR-118`/`ADR-119`), then - since a
+  wrong guess here risks real data loss, not just a failed request - went
+  further than usual and ran an actual `terraform plan` against live `prod`
+  state (`-target` on just these two resources, dummy `-var` values for the
+  unrelated Google OAuth variables the root module also requires, a
+  throwaway placeholder `lambda_function.zip` so the graph could evaluate,
+  neither ever used for anything but this read-only plan) rather than
+  trusting documentation alone. Confirmed `0 to destroy`, both tables
+  `will be updated in-place` - not inferred, observed.
+- **`TASK-258`** (account-deletion confirmation dialog never showed the
+  already-written `account.deleteScope` copy explaining exactly what gets
+  removed): added it to `AccountDeleteScreen.jsx`'s confirm dialog, right
+  above the existing generic `deleteConfirmPrompt`, styled as a dimmer
+  supporting line (`.account-delete-scope`, `var(--text-dim)`) so the
+  specific-consequences detail doesn't visually compete with the primary
+  warning. An irreversible action deserves the full scope in front of the
+  user before they confirm it, not buried in a locale file nothing reads.
+- **`TASK-259`** (`SEO.jsx` emitted `hreflang="it"` pointing at the same URL
+  as `hreflang="en"` for every page without explicit `alternateUrls`):
+  removed the false `it` alternate from that default branch - confirmed via
+  grep that `alternateUrls` is only ever passed by `SeoLandingScreen.jsx`
+  (the real bilingual EN/IT pages, ADR-020), so every other screen was
+  claiming a non-existent Italian version of itself to search engines ever
+  since `TASK-101` made the in-app product EN-only.
+- **`TASK-245`** (`doc-1`'s cost/audit table falsely called Cognito and
+  Party Room "not yet deployed", the latter self-contradicting its own
+  "already-provisioned" classification in the same row): corrected both
+  rows to state their real, months-long production history and the
+  specific tasks/incidents since (`TASK-227` email/password, `TASK-132`/
+  `191`/`199` Party Room incidents). `doc-1` is the pre-task source of
+  truth every agent reads first - a wrong row there risks misleading future
+  work, not just a cosmetic error.
+
+Consequences: full backend suite 203/203 (200 pre-existing + 3 new
+`test_health_check.py` tests); `pnpm lint`/`pnpm build:prod` clean.
+`TASK-253`'s Terraform change is staged but not yet applied - it deploys on
+the next push per this repo's standing commit/push authorization, and its
+in-place-update behavior was confirmed against real state before that push,
+not after. No live visual check was performed for `TASK-258` (`CLAUDE.md`'s
+no-browser-automation rule) - worth a manual look at how the new scope line
+reads against the primary prompt. `TASK-272` (orphaned story-flows script/
+data) and `TASK-249` (broader `/health`-style test coverage) are net-new
+Backlog entries this batch surfaced rather than resolved.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

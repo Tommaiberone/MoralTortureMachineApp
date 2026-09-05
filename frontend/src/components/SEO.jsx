@@ -59,9 +59,11 @@ const SEO = ({
           <link rel="alternate" hrefLang="x-default" href={`${baseUrl}${alternateUrls.en || url || '/'}`} />
         </>
       ) : (
+        // TASK-101: the app itself is EN-only, so a page with no real Italian
+        // counterpart (every screen except the bilingual SEO landing pages
+        // above, which always pass alternateUrls) must not claim one exists.
         <>
           <link rel="alternate" hrefLang="en" href={`${baseUrl}${url || '/'}`} />
-          <link rel="alternate" hrefLang="it" href={`${baseUrl}${url || '/'}`} />
           <link rel="alternate" hrefLang="x-default" href={`${baseUrl}${url || '/'}`} />
         </>
       )}

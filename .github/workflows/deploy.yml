@@ -615,15 +615,6 @@ jobs:
             echo "❌ No dilemma files found!"
             exit 1
           fi
-
-          echo "📖 Checking story flow files..."
-          if [ -f "data/story_flows_it.json" ] && [ -f "data/story_flows_en.json" ]; then
-            en_flows=$(jq '. | length' data/story_flows_en.json)
-            it_flows=$(jq '. | length' data/story_flows_it.json)
-            echo "✅ Found $en_flows English + $it_flows Italian story flows"
-          else
-            echo "⚠️ No story flow files found (optional)"
-          fi
       - name: Backup DynamoDB
         run: |
           timestamp=$(date +%Y%m%d-%H%M%S)
@@ -656,30 +647,6 @@ jobs:
             python3 -u scripts/populate_dynamodb_multilang.py --auto-confirm $TABLE_NAME
           fi
           echo "✅ DynamoDB dilemmas populated!"
-      - name: Populate DynamoDB Story Flows
-        working-directory: backend
-        run: |
-          echo "📖 Populating DynamoDB story flows..."
-          TABLE_NAME="${{ needs.setup.outputs.environment }}-moral-torture-machine-story-flows"
-
-          echo "DEBUG: Table name: $TABLE_NAME"
-          echo "DEBUG: Checking if JSON files exist..."
-          ls -la data/story_flows_*.json
-
-          python3 -u scripts/populate_story_flows.py --auto-confirm $TABLE_NAME
-          POPULATE_EXIT_CODE=$?
-
-          echo "DEBUG: Populate script exit code: $POPULATE_EXIT_CODE"
-
-          if [ $POPULATE_EXIT_CODE -ne 0 ]; then
-            echo "❌ Populate script failed with exit code $POPULATE_EXIT_CODE"
-            exit 1
-          fi
-
-          echo "✅ DynamoDB story flows populated!"
-
-          echo "DEBUG: Immediately checking table contents..."
-          aws dynamodb scan --table-name $TABLE_NAME --region ${{ env.AWS_REGION }} --select COUNT --query 'Count' --output text
       - name: Verify population
         run: |
           echo "🔍 Verifying dilemmas table..."
@@ -687,18 +654,8 @@ jobs:
           dilemmas_total=$(aws dynamodb scan --table-name $DILEMMAS_TABLE --region ${{ env.AWS_REGION }} --select COUNT --query 'Count' --output text)
           echo "📊 Total dilemmas: $dilemmas_total"
 
-          echo "🔍 Verifying story flows table..."
-          FLOWS_TABLE="${{ needs.setup.outputs.environment }}-moral-torture-machine-story-flows"
-          flows_total=$(aws dynamodb scan --table-name $FLOWS_TABLE --region ${{ env.AWS_REGION }} --select COUNT --query 'Count' --output text)
-          echo "📊 Total story flows: $flows_total"
-
           if [ "$dilemmas_total" -eq 0 ]; then
             echo "❌ No dilemmas in table!"
-            exit 1
-          fi
-
-          if [ "$flows_total" -eq 0 ]; then
-            echo "❌ No story flows in table!"
             exit 1
           fi
 

@@ -166,6 +166,9 @@ resource "aws_dynamodb_table" "users" {
   read_capacity  = 1
   write_capacity = 1
   hash_key       = "sub"
+  # TASK-253: authoritative, irreplaceable user data - same protection
+  # already applied to aws_cognito_user_pool.users.
+  deletion_protection_enabled = true
 
   attribute {
     name = "sub"
@@ -190,6 +193,8 @@ resource "aws_dynamodb_table" "moral_profiles" {
   read_capacity  = 1
   write_capacity = 1
   hash_key       = "publicId"
+  # TASK-253: same reasoning as aws_dynamodb_table.users above.
+  deletion_protection_enabled = true
 
   attribute {
     name = "publicId"

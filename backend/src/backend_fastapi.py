@@ -162,6 +162,16 @@ ABUSE_PARTY_ROOM_POLL_REQUESTS_PER_MINUTE = _env_positive_int(
     "ABUSE_PARTY_ROOM_POLL_REQUESTS_PER_MINUTE",
     90,
 )
+# TASK-246: /health previously fell through to the generic "global" bucket
+# (120/min per source) despite doing five DynamoDB DescribeTable calls plus
+# one SSM GetParameter per hit - a real, unauthenticated liveness probe
+# never needs anywhere near that rate (an uptime monitor typically pings
+# every 30-60s), so a much tighter dedicated bucket limits how much AWS API
+# call volume a single source can generate through it.
+ABUSE_HEALTH_CHECK_REQUESTS_PER_MINUTE = _env_positive_int(
+    "ABUSE_HEALTH_CHECK_REQUESTS_PER_MINUTE",
+    20,
+)
 
 # TASK-104: email every 4xx/5xx via the existing ops_alerts SNS topic
 # (ADR-031). Coalesced per (status_code, path) rather than per request, so a
@@ -1445,6 +1455,8 @@ def _rate_limit_rules_for_request(method: str, path: str) -> list[tuple[str, int
             rules.append(("party_room_poll", ABUSE_PARTY_ROOM_POLL_REQUESTS_PER_MINUTE))
         else:
             rules.append(("duel_write", ABUSE_DUEL_WRITE_REQUESTS_PER_MINUTE))
+    elif path == "/health":
+        rules.append(("health_check", ABUSE_HEALTH_CHECK_REQUESTS_PER_MINUTE))
     return rules
 
 
@@ -3771,28 +3783,37 @@ async def health_check():
         "checks": {}
     }
 
+    # TASK-246: /health is public and unauthenticated, so a dependency
+    # failure must never put the real exception text (which can name
+    # specific AWS resources/IAM permissions) in the response body - the
+    # real message is logged server-side only, where it stays useful for
+    # debugging without being handed to whoever is polling the endpoint.
+
     # Check DynamoDB connectivity
     try:
         table.meta.client.describe_table(TableName=DYNAMODB_TABLE)
         health_status["checks"]["dynamodb_dilemmas"] = "ok"
-    except Exception as e:
-        health_status["checks"]["dynamodb_dilemmas"] = f"error: {e!s}"
+    except Exception:
+        logger.warning("Health check failed: dynamodb_dilemmas", exc_info=True)
+        health_status["checks"]["dynamodb_dilemmas"] = "error"
         health_status["status"] = "unhealthy"
 
     # Check Analytics Table connectivity
     try:
         analytics_table.meta.client.describe_table(TableName=ANALYTICS_TABLE)
         health_status["checks"]["dynamodb_analytics"] = "ok"
-    except Exception as e:
-        health_status["checks"]["dynamodb_analytics"] = f"error: {e!s}"
+    except Exception:
+        logger.warning("Health check failed: dynamodb_analytics", exc_info=True)
+        health_status["checks"]["dynamodb_analytics"] = "error"
         health_status["status"] = "degraded"
 
     # Check idempotent product event table connectivity
     try:
         product_events_table.meta.client.describe_table(TableName=PRODUCT_EVENTS_TABLE)
         health_status["checks"]["dynamodb_product_events"] = "ok"
-    except Exception as e:
-        health_status["checks"]["dynamodb_product_events"] = f"error: {e!s}"
+    except Exception:
+        logger.warning("Health check failed: dynamodb_product_events", exc_info=True)
+        health_status["checks"]["dynamodb_product_events"] = "error"
         health_status["status"] = "degraded"
 
     # Daily participation is a retention feature, not a prerequisite for the
@@ -3803,16 +3824,18 @@ async def health_check():
             TableName=DAILY_MORAL_CRIME_VOTES_TABLE,
         )
         health_status["checks"]["dynamodb_daily_moral_crime"] = "ok"
-    except Exception as e:
-        health_status["checks"]["dynamodb_daily_moral_crime"] = f"error: {e!s}"
+    except Exception:
+        logger.warning("Health check failed: dynamodb_daily_moral_crime", exc_info=True)
+        health_status["checks"]["dynamodb_daily_moral_crime"] = "error"
         health_status["status"] = "degraded"
 
     # Check SSM Parameter Store connectivity
     try:
         ssm_client.get_parameter(Name=GROQ_API_KEY_SSM_NAME, WithDecryption=True)
         health_status["checks"]["ssm_parameter"] = "ok"
-    except Exception as e:
-        health_status["checks"]["ssm_parameter"] = f"error: {e!s}"
+    except Exception:
+        logger.warning("Health check failed: ssm_parameter", exc_info=True)
+        health_status["checks"]["ssm_parameter"] = "error"
         health_status["status"] = "degraded"
 
     # Set appropriate HTTP status code

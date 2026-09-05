@@ -258,6 +258,7 @@ const AccountDeleteScreen = () => {
 
           {confirming && (
             <div className="account-delete-confirm">
+              <p className="account-delete-scope">{t('account.deleteScope')}</p>
               <p>{t('account.deleteConfirmPrompt')}</p>
               <div className="account-delete-confirm-actions">
                 <button type="button" className="btn-primary" onClick={handleDelete} disabled={busy}>

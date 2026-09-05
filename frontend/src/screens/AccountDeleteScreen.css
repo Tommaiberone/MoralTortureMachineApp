@@ -264,6 +264,7 @@
   border: 1px solid var(--text-danger);
 }
 .account-delete-confirm p { color: var(--text-normal); font-size: 0.82rem; margin: 0 0 0.7rem; }
+.account-delete-confirm .account-delete-scope { color: var(--text-dim); font-size: 0.76rem; }
 .account-delete-confirm-actions { display: flex; gap: 0.6rem; }
 
 @media (max-width: 380px) {

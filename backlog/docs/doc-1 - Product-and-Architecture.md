@@ -747,8 +747,8 @@ conflicts below.
 | SSM Parameter Store | Two Standard SecureString parameters | Aligned; Standard tier has no additional Parameter Store charge at standard throughput |
 | CloudWatch Logs | Two groups, seven-day retention, about 3.5 MB stored; July cost USD 0 | Aligned at current usage; keep ingestion, queries, metrics, and alarms within their allowances |
 | S3 and CloudFront | About 1.45 MB frontend assets, 86,962 July CloudFront requests, and about 0.62 GB transfer; July cost effectively USD 0 | Aligned at current usage, but recheck plan/allowance before traffic campaigns |
-| Cognito for this product | Essentials is declared in Terraform but the project user pool is not deployed | Planned configuration is aligned for direct/social sign-in up to the current 10,000 MAU allowance; no SMS, M2M, Plus, or paid add-ons |
-| Party Room realtime | Code-complete (`TASK-46`/`47`, ADR-051), not yet deployed | Uses HTTP polling over the already-provisioned API Gateway HTTP + Lambda + DynamoDB stack (2 new provisioned 1/1 tables) instead of API Gateway WebSocket, avoiding its introductory-only Free Tier entirely (ADR-050, `TASK-91` closed) |
+| Cognito for this product | Essentials tier, live in production since `TASK-11`/`5` (Google login); native email+password added on top (`TASK-227`) | Aligned for direct/social sign-in up to the current 10,000 MAU allowance (`TASK-21` is the checkpoint to revisit before that); no SMS, M2M, Plus, or paid add-ons |
+| Party Room realtime | Live in production since `TASK-46`/`47` (ADR-051), with several since-fixed incidents (`TASK-132`, `TASK-191`, `TASK-199`) and feature work (`TASK-209`-`213`) | Uses HTTP polling over the already-provisioned API Gateway HTTP + Lambda + DynamoDB stack (2 provisioned tables, capacity bumped 1/1 -> 5/5 after `TASK-191`) instead of API Gateway WebSocket, avoiding its introductory-only Free Tier entirely (ADR-050, `TASK-91` closed) |
 
 ## Repository workflow
 
