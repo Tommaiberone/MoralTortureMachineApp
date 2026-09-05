@@ -3,7 +3,7 @@ terraform {
 
   required_providers {
     aws = {
-      source  = "hashicorp/aws"
+      source = "hashicorp/aws"
       # >= 6.13 specifically: aws_cognito_managed_login_branding (added 6.12)
       # has a known bug reading branding for a user pool with >1 app client,
       # fixed in 6.13. This pool has two (web, android).
@@ -321,8 +321,8 @@ resource "aws_dynamodb_table" "challenge_participants" {
 # A room is a short-lived, same-session activity, so a much shorter TTL than
 # Duel challenges (backend PARTY_ROOM_TTL_SECONDS = 6h) is appropriate.
 resource "aws_dynamodb_table" "party_rooms" {
-  name           = "${var.environment}-${var.stack_name}-party-rooms"
-  billing_mode   = "PROVISIONED"
+  name         = "${var.environment}-${var.stack_name}-party-rooms"
+  billing_mode = "PROVISIONED"
   # Bumped from 1/1 (2026-08-10): live Party Room polling (every
   # POLL_INTERVAL_MS per participant, backend_fastapi.py) was hitting
   # ProvisionedThroughputExceededException with only a few concurrent
@@ -356,8 +356,8 @@ resource "aws_dynamodb_table" "party_rooms" {
 # One row per participant per room, holding their per-round votes in a
 # nested map (see PARTY_ROOM_* logic in backend_fastapi.py).
 resource "aws_dynamodb_table" "party_participants" {
-  name           = "${var.environment}-${var.stack_name}-party-participants"
-  billing_mode   = "PROVISIONED"
+  name         = "${var.environment}-${var.stack_name}-party-participants"
+  billing_mode = "PROVISIONED"
   # Bumped from 1/1 alongside party_rooms above - same root cause (real
   # concurrent Party Room polling exceeding provisioned capacity).
   read_capacity  = 5
@@ -423,13 +423,13 @@ resource "aws_dynamodb_table" "daily_moral_crime_votes" {
   }
 
   global_secondary_index {
-    name            = "AnonymousUserIndex"
-    hash_key        = "anonymousUserId"
-    range_key       = "dayKey"
+    name               = "AnonymousUserIndex"
+    hash_key           = "anonymousUserId"
+    range_key          = "dayKey"
     projection_type    = "INCLUDE"
     non_key_attributes = ["choice", "dilemmaBaseId", "createdAt"]
-    read_capacity   = 1
-    write_capacity  = 1
+    read_capacity      = 1
+    write_capacity     = 1
   }
 
   ttl {
@@ -700,8 +700,8 @@ locals {
         }
       }
       form = {
-        displayGraphics = true
-        instructions    = { enabled = false }
+        displayGraphics  = true
+        instructions     = { enabled = false }
         languageSelector = { enabled = false }
         location = {
           horizontal = "CENTER"
@@ -854,7 +854,7 @@ locals {
           borderColor     = "c6c6cdff"
         }
         logo = {
-          enabled       = false
+          enabled       = true
           formInclusion = "IN"
           location      = "CENTER"
           position      = "TOP"
@@ -931,12 +931,44 @@ resource "aws_cognito_managed_login_branding" "web" {
   user_pool_id = aws_cognito_user_pool.users.id
   client_id    = aws_cognito_user_pool_client.web.id
   settings     = jsonencode(local.cognito_branding_settings)
+
+  # Reuses the app's own icon (frontend/public/favicon-512x512.png) rather
+  # than a separate logo asset, and a purpose-made dark vignette/scar texture
+  # (assets/cognito-login-background.svg) instead of AWS's generic default -
+  # both DARK-only since colorSchemeMode never renders LIGHT here.
+  asset {
+    category   = "FORM_LOGO"
+    color_mode = "DARK"
+    extension  = "PNG"
+    bytes      = filebase64("${path.module}/../../frontend/public/favicon-512x512.png")
+  }
+
+  asset {
+    category   = "PAGE_BACKGROUND"
+    color_mode = "DARK"
+    extension  = "SVG"
+    bytes      = filebase64("${path.module}/assets/cognito-login-background.svg")
+  }
 }
 
 resource "aws_cognito_managed_login_branding" "android" {
   user_pool_id = aws_cognito_user_pool.users.id
   client_id    = aws_cognito_user_pool_client.android.id
   settings     = jsonencode(local.cognito_branding_settings)
+
+  asset {
+    category   = "FORM_LOGO"
+    color_mode = "DARK"
+    extension  = "PNG"
+    bytes      = filebase64("${path.module}/../../frontend/public/favicon-512x512.png")
+  }
+
+  asset {
+    category   = "PAGE_BACKGROUND"
+    color_mode = "DARK"
+    extension  = "SVG"
+    bytes      = filebase64("${path.module}/assets/cognito-login-background.svg")
+  }
 }
 
 resource "aws_cognito_user_group" "admins" {

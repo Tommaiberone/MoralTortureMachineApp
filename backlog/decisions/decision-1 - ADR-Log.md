@@ -3669,6 +3669,72 @@ actual rendered colors, contrast, and whether `DARK` mode is really what
 renders (vs. the browser's own OS-level preference doing something
 unexpected) still need a manual look after this deploys.
 
+### ADR-117 — Managed Login gets a logo + a purpose-made background texture; a fully custom in-app login is deliberately deferred, not built now (TASK-268/269)
+
+Context: the user saw `ADR-116`'s dark-themed result and judged it "poco
+horror" - a fair read, since Managed Login's branding schema has a real
+ceiling: no custom fonts (so no `IBM Plex Sans`, the app's own font since
+`ADR-112`), no animations/glitch effects, and a page layout AWS controls,
+not this app. Asked directly whether a fully custom, in-app-styled login
+was possible. It is - `authClient.js`'s `beginSignIn` already sends Google
+sign-ins straight to `/oauth2/authorize?identity_provider=Google`, which
+Cognito forwards directly to Google without ever rendering any Cognito
+page, so only the email/password path actually touches Managed Login today.
+A true match would mean building sign-in, sign-up, email verification, and
+forgot/reset-password screens inside the app itself against Cognito's
+`InitiateAuth`/`SignUp`/`ConfirmSignUp`/`ForgotPassword` APIs directly -
+which is exactly the surface `ADR-113` chose not to build, for the reasons
+`ADR-113` already gave (translation, and staying in sync with Cognito's own
+validation/error codes). Rather than silently expand scope into reversing
+`ADR-113` mid-styling-pass, presented the trade-off and three concrete
+options (full custom now / background+logo only / background+logo now with
+full custom planned separately) and let the user choose.
+
+Decision: user chose the middle path. Implemented now: two `asset` blocks
+on both `aws_cognito_managed_login_branding` resources - `FORM_LOGO`
+(`PNG`, reusing `frontend/public/favicon-512x512.png`, the app's existing
+icon, rather than commissioning or duplicating a new logo asset) and
+`PAGE_BACKGROUND` (`SVG`, a new purpose-made `backend/terraform/assets/
+cognito-login-background.svg`: a dark radial vignette, faint stitched-scar
+crack lines echoing the app icon's mechanical-heart motif without
+repeating it literally, subtle scanlines, and a low-alpha noise filter -
+deliberately not a reuse of `frontend/public/og-image.svg`, whose baked-in
+title text and older `#ff0066` magenta accent would have clashed with both
+the new dark palette and the login form's own content). Both assets tagged
+`color_mode = DARK` only, since `colorSchemeMode` is forced `DARK` and a
+`LIGHT` variant would never render. Flipped `components.form.logo.enabled`
+from `false` to `true` in `locals.cognito_branding_settings` so the logo
+asset actually shows - it existed as a disabled slot in every version of
+the settings document since `ADR-116`'s original pull, unnoticed until now
+because nothing was assigned to fill it. The exact `asset` block schema
+(`category`/`color_mode`/`extension` required, `bytes` optional, `nesting_
+mode = "set"`) was confirmed by running `terraform providers schema -json`
+against the actually-installed `6.63.0` provider rather than guessed from
+docs, continuing `ADR-116`'s "verify against the real thing before an
+auto-applied `terraform apply`" approach.
+
+Decision (deferred): filed `TASK-269` (`Backlog`, not `To Do`) to plan the
+full custom login as its own initiative rather than building it now. Its
+acceptance criteria are explicitly about reaching a scope decision first
+(sign-in only, or sign-up/reset/verify too) and writing the `ADR` that
+reverses `ADR-113` when that work actually starts - not implementation
+steps, since no code should be written for it until the user commits to
+that scope. Also fixed a real mistake while writing `TASK-268`: its own
+description referenced itself ("vedi TASK-268") instead of `TASK-269`,
+corrected via `backlog task edit --description` before this ADR was
+written.
+
+Consequences: `terraform validate` and `terraform fmt` are clean. Combined
+per-client asset payload (settings JSON + both images, base64-encoded) is
+roughly 130KB, far under the `UpdateManagedLoginBranding`/`CreateManaged
+LoginBranding` 2MB request-size limit confirmed in AWS's own docs, so no
+size-driven surprises are expected at apply time. No live visual check was
+performed (same `CLAUDE.md` constraint `ADR-116` already noted) - whether
+the logo placement/size and the background texture actually read as
+intended, rather than looking cramped or too busy, needs a manual look
+once this deploys; the background SVG is a single file, trivial to
+re-draw or swap if it doesn't land well.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
