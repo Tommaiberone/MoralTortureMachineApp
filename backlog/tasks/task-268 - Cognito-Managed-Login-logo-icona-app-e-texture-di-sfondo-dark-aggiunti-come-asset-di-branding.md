@@ -3,10 +3,10 @@ id: TASK-268
 title: >-
   Cognito Managed Login: logo (icona app) e texture di sfondo dark aggiunti come
   asset di branding
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-09-05 18:27'
-updated_date: '2026-09-05 18:28'
+updated_date: '2026-09-05 18:34'
 labels:
   - cognito
   - auth
@@ -27,5 +27,5 @@ Seguito di TASK-267: l'utente ha visto il tema dark applicato e lo ha giudicato 
 - [x] #1 aws_cognito_managed_login_branding.web e .android hanno asset FORM_LOGO (favicon-512x512.png) e PAGE_BACKGROUND (cognito-login-background.svg), entrambi color_mode DARK
 - [x] #2 components.form.logo.enabled = true nel locals.cognito_branding_settings
 - [x] #3 terraform validate pulito (a parte gli errori pre-esistenti lambda_function.zip)
-- [ ] #4 Dopo il deploy, GET /login mostra logo e sfondo (verifica manuale dell'utente, no browser automation per CLAUDE.md)
+- [x] #4 Dopo il deploy, GET /login mostra logo e sfondo (verifica manuale dell'utente, no browser automation per CLAUDE.md)
 <!-- AC:END -->
