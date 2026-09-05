@@ -110,17 +110,23 @@ class _FakeTable:
                 target[path[-1]] = value
 
         if add_clause:
-            # Real DynamoDB ADD semantics: creates the numeric attribute
-            # (defaulting to 0) if it doesn't exist yet, including any
-            # missing intermediate maps in a nested path.
+            # Real DynamoDB's ADD action only supports a bare top-level
+            # attribute name, never a nested document path (confirmed the
+            # hard way: `ADD voteTallyByRound.#round.#choice :one` deployed
+            # fine, passed every test against an earlier, more permissive
+            # version of this fake, and then 500'd in production - see
+            # TASK-271/ADR-118's follow-up correction). Enforcing that same
+            # restriction here means a future regression gets caught by
+            # this test suite instead of by a live user's vote failing.
             for assignment in add_clause.split(", "):
                 path_str, value_token = assignment.strip().rsplit(" ", 1)
                 path = resolve_path(path_str)
+                if len(path) != 1:
+                    raise NotImplementedError(
+                        f"ADD only supports a top-level attribute in real DynamoDB, got: {path_str.strip()}"
+                    )
                 delta = ExpressionAttributeValues[value_token.strip()]
-                target = item
-                for part in path[:-1]:
-                    target = target.setdefault(part, {})
-                target[path[-1]] = target.get(path[-1], 0) + delta
+                item[path[0]] = item.get(path[0], 0) + delta
 
         return {"Attributes": dict(item)}
 

@@ -6,7 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-09-05 19:41'
-updated_date: '2026-09-05 19:41'
+updated_date: '2026-09-05 19:53'
 labels:
   - backend
   - frontend
@@ -34,3 +34,9 @@ Seguito diretto della discussione su TASK-49/TASK-191 (capacita' concorrente Par
 - [x] #6 Frontend: poll a 1.5s durante question, 3s altrove/su errore
 - [x] #7 backend: tutti i 200 test passano (25 su test_party_room.py, inclusi 2 nuovi: omissione roster in question, riuso della cache); frontend: pnpm lint e pnpm build:prod passano
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+REGRESSIONE CATTURATA E CORRETTA NELLA STESSA SESSIONE, prima che l'utente la incontrasse: uno smoke test manuale contro la produzione (creare stanza, join, vota) ha rivelato che POST /party-rooms/{code}/vote rispondeva 500 Internal Server Error dopo il deploy iniziale di questo task. Causa: ADD voteTallyByRound.#round.#choice :one usava un path annidato a 3 livelli - DynamoDB reale supporta ADD solo su attributi top-level, mai su un document path annidato (lo stesso pattern esistente altrove nel file, daily_moral_crime_votes, infatti usa gia' solo un #votes top-level, mai annidato - dettaglio che avrei dovuto notare prima). Il voto del partecipante veniva comunque salvato correttamente (la ConditionExpression su party_participants_table e' un'operazione separata, riuscita), ma il client riceveva un 500 invece della risposta di successo, e il tally non veniva mai incrementato. Il _FakeTable di test non l'ha intercettato perche' la sua implementazione di ADD era troppo permissiva (supportava path annidati che DynamoDB reale rifiuta). Fix: voteTallyByRound sostituito da attributi top-level dinamici (_party_room_vote_tally_attr: voteTally_{round}_{choice}), e il fake aggiornato per rifiutare esplicitamente un ADD non top-level (NotImplementedError), cosi' una futura regressione dello stesso tipo verrebbe presa dai test invece che da un utente reale. Verificato di nuovo con uno smoke test end-to-end contro la produzione dopo il fix. Vedi ADR-119.
+<!-- SECTION:NOTES:END -->

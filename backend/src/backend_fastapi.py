@@ -3102,6 +3102,24 @@ def _list_party_participants(room_code: str) -> list[dict[str, Any]]:
     return [decimal_to_native(item) for item in response.get("Items", [])]
 
 
+def _party_room_vote_tally_attr(round_key: str, choice: str) -> str:
+    """DynamoDB's ADD action only supports top-level attributes, not a
+    nested document path (confirmed against the real table - `ADD
+    voteTallyByRound.#round.#choice :one` fails; `daily_moral_crime_votes`'s
+    own existing `ADD #votes :increment` elsewhere in this file is only
+    ever a bare top-level name for the same reason). So each round/choice
+    pair gets its own dynamically-named top-level attribute instead of a
+    nested map."""
+    return f"voteTally_{round_key}_{choice}"
+
+
+def _party_room_round_tally(room: dict[str, Any], round_key: str) -> dict[str, int]:
+    return {
+        "first": room.get(_party_room_vote_tally_attr(round_key, "first"), 0),
+        "second": room.get(_party_room_vote_tally_attr(round_key, "second"), 0),
+    }
+
+
 def _advance_party_room_if_due(room: dict[str, Any]) -> dict[str, Any]:
     """Move the room to its next phase if it's actually due. TASK-123: no
     visible timer drives this - "question" only ends once everyone has
@@ -3119,13 +3137,13 @@ def _advance_party_room_if_due(room: dict[str, Any]) -> dict[str, Any]:
 
     if room["status"] == "question" and not due:
         # TASK-270 follow-up: reads the counters already sitting on `room`
-        # (voteTallyByRound/participantCount, maintained by submit_party_vote
-        # and join_party_room) instead of Query-ing every participant - this
+        # (voteTally_*/participantCount, maintained by submit_party_vote and
+        # join_party_room) instead of Query-ing every participant - this
         # function runs on every single poll while status is "question", so
         # removing that Query here is the single biggest cut to Party Room's
         # DynamoDB read volume.
         round_key = str(room["currentRoundIndex"])
-        tally = room.get("voteTallyByRound", {}).get(round_key, {})
+        tally = _party_room_round_tally(room, round_key)
         voted = sum(tally.values())
         participant_count = room.get("participantCount", 0)
         due = participant_count > 0 and voted >= participant_count
@@ -3207,12 +3225,14 @@ async def create_party_room(create_request: CreatePartyRoomRequest, request: Req
                     "hostAdvanceRequested": False,
                     "createdAt": now,
                     "expirationTime": expiration_time,
-                    # TASK-270 follow-up: counters kept on the room item so
-                    # the hot polling/advance paths never need to Query every
-                    # participant just to answer "how many" / "has everyone
-                    # voted" - see join_party_room and submit_party_vote.
+                    # TASK-270 follow-up: participantCount is kept on the
+                    # room item so the hot polling/advance paths never need
+                    # to Query every participant just to answer "how many" -
+                    # see join_party_room. Per-round vote tallies (see
+                    # _party_room_vote_tally_attr) need no initialization
+                    # here: ADD creates each one at 0 the first time a vote
+                    # touches it.
                     "participantCount": 1,
-                    "voteTallyByRound": {},
                 },
                 ConditionExpression="attribute_not_exists(roomCode)",
             )
@@ -3395,8 +3415,8 @@ async def submit_party_vote(room_code: str, vote_request: SubmitPartyVoteRequest
     # timeout instead of ending early - never a correctness issue.
     party_rooms_table.update_item(
         Key={"roomCode": room_code},
-        UpdateExpression="ADD voteTallyByRound.#round.#choice :one",
-        ExpressionAttributeNames={"#round": round_key, "#choice": vote_request.choice},
+        UpdateExpression="ADD #tally :one",
+        ExpressionAttributeNames={"#tally": _party_room_vote_tally_attr(round_key, vote_request.choice)},
         ExpressionAttributeValues={":one": 1},
     )
 
@@ -3662,10 +3682,10 @@ async def get_party_room(room_code: str, request: Request, language: str = "en")
         response["currentDilemma"] = dilemma_item or None
         response["hasVotedThisRound"] = round_key in caller.get("votes", {})
         if room["status"] == "reveal":
-            # Sourced from the same voteTallyByRound counter
-            # _advance_party_room_if_due uses, not recomputed from
-            # `participants` - one fewer place this can ever disagree.
-            tally = room.get("voteTallyByRound", {}).get(round_key, {})
+            # Sourced from the same counter _advance_party_room_if_due uses,
+            # not recomputed from `participants` - one fewer place this can
+            # ever disagree.
+            tally = _party_room_round_tally(room, round_key)
             response["roundResult"] = {
                 "firstVotes": tally.get("first", 0),
                 "secondVotes": tally.get("second", 0),

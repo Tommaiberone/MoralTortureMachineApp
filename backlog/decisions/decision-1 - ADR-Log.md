@@ -3844,6 +3844,60 @@ trade-off the existing rate-limiter already makes - each entry is small and
 Lambda containers recycle periodically, so this was not treated as a
 problem needing its own eviction logic.
 
+### ADR-119 — [regression] `ADD` on a nested DynamoDB path 500'd every Party Room vote; caught by a post-deploy smoke test, not a user (TASK-271 follow-up)
+
+Context: immediately after `ADR-118`/`TASK-271` deployed, ran a manual
+end-to-end smoke test against the real production API (create room, join,
+vote) rather than trusting the unit suite alone - and `POST /party-rooms/
+{code}/vote` came back `500 Internal Server Error`. A second call to the
+same endpoint returned `409 "You already voted this round"`, proving the
+participant's vote itself had actually been written correctly (that
+`ConditionExpression` on `party_participants_table` is a separate, already-
+working call) and the crash happened afterward, in the new counter write.
+
+Root cause: `ADD voteTallyByRound.#round.#choice :one` - a 3-level nested
+document path. Real DynamoDB's `ADD` action only supports a bare top-level
+attribute name; unlike `SET`/`REMOVE`, it does not accept a nested path at
+all, let alone auto-vivify missing intermediate maps. This was knowable in
+advance: this same file's existing `daily_moral_crime_votes` aggregate
+write (`"SET ... ADD #votes :increment"`, `#votes` resolving to a bare
+`firstVotes`/`secondVotes`) already only ever used `ADD` on a top-level
+name - a precedent worth reading as a constraint, not just an example, and
+missed under the pressure of shipping several changes in one pass.
+`test_party_room.py`'s `_FakeTable` didn't catch this because its `ADD`
+implementation was written from the same wrong assumption as the
+production code, auto-vivifying nested paths that real DynamoDB rejects -
+a test double mirroring the author's own misunderstanding instead of the
+real service's actual constraints, the exact failure mode `analytics-
+optimize.md` already warns about for a different reason (§0.2, "never
+reimplement metrics from memory - import and run the real functions"). The
+underlying lesson generalizes: a hand-written fake is only as trustworthy
+as the assumptions that went into it.
+
+Decision: replaced the nested `voteTallyByRound` map with dynamically-named
+top-level attributes instead (`_party_room_vote_tally_attr`: `voteTally_
+{round}_{choice}`, e.g. `voteTally_0_first`) - the same shape already
+proven correct by `participantCount` (also a bare top-level `ADD`, and
+confirmed working in the same smoke test before this fix). Every reader
+(`_advance_party_room_if_due`, `get_party_room`'s `roundResult`) now goes
+through one shared `_party_room_round_tally()` helper instead of
+duplicating the attribute-name construction. Also hardened `_FakeTable`
+itself: its `ADD` handler now raises `NotImplementedError` for any path
+with more than one segment, matching DynamoDB's real restriction, so a
+future regression of this exact shape fails a unit test instead of a real
+vote in production.
+
+Consequences: re-ran the full backend suite (200/200) against the
+corrected fake, then re-ran the same manual production smoke test end to
+end (create -> join -> lobby state -> start -> question-phase state for
+both host and guest -> vote) to confirm the fix, not just the unit tests -
+this is now the second time in this session that a change touching Party
+Room's DynamoDB access needed real-service verification, not just a
+plausible-looking fake, to be trusted. The test party room/participants
+created for this smoke test were left to expire via their existing 6-hour
+TTL rather than force-deleted, consistent with test data volume this
+low already being immaterial to the Free Tier tables it lives in.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
