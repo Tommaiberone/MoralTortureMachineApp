@@ -676,21 +676,267 @@ resource "aws_cognito_user_pool_domain" "auth" {
   managed_login_version = 2
 }
 
-# Step 1 of 2: Cognito-provided defaults first (guaranteed-valid Settings
-# JSON - the full custom schema is large/console-authored and not worth
-# guessing blind in an auto-applied CI pipeline). Once this deploys, read
-# back the real `settings_all` this produces and layer dark/horror-themed
-# overrides on top of that known-good structure in a follow-up change.
+# Dark/horror-theme branding matching frontend/src/styles/horrorTheme.css's
+# tokens. Built by taking the real settings_all Cognito generated for
+# use_cognito_provided_values = true (pulled from prod state) and only
+# overriding darkMode color leaves + flattening border radii to 0 (this
+# app uses square corners everywhere) - every other key/structure is left
+# exactly as AWS's own schema produced it, so this can't drift from a
+# valid document. colorSchemeMode is forced to DARK (not DYNAMIC) because
+# the app itself never offers a light theme.
+locals {
+  cognito_branding_settings = {
+    categories = {
+      auth = {
+        authMethodOrder = [
+          [
+            { display = "BUTTON", type = "FEDERATED" },
+            { display = "INPUT", type = "USERNAME_PASSWORD" },
+          ],
+        ]
+        federation = {
+          interfaceStyle = "BUTTON_LIST"
+          order          = []
+        }
+      }
+      form = {
+        displayGraphics = true
+        instructions    = { enabled = false }
+        languageSelector = { enabled = false }
+        location = {
+          horizontal = "CENTER"
+          vertical   = "CENTER"
+        }
+        sessionTimerDisplay = "NONE"
+      }
+      global = {
+        colorSchemeMode = "DARK"
+        pageFooter      = { enabled = false }
+        pageHeader      = { enabled = false }
+        spacingDensity  = "REGULAR"
+      }
+      signUp = {
+        acceptanceElements = [
+          { enforcement = "NONE", textKey = "en" },
+        ]
+      }
+    }
+    componentClasses = {
+      buttons = { borderRadius = 0 }
+      divider = {
+        darkMode  = { borderColor = "3a3a3aff" }
+        lightMode = { borderColor = "ebebf0ff" }
+      }
+      dropDown = {
+        borderRadius = 0
+        darkMode = {
+          defaults = { itemBackgroundColor = "242424ff" }
+          hover = {
+            itemBackgroundColor = "2d2d2dff"
+            itemBorderColor     = "3a3a3aff"
+            itemTextColor       = "ffffffff"
+          }
+          match = {
+            itemBackgroundColor = "4a1a1aff"
+            itemTextColor       = "ce7e7eff"
+          }
+        }
+        lightMode = {
+          defaults = { itemBackgroundColor = "ffffffff" }
+          hover = {
+            itemBackgroundColor = "f4f4f4ff"
+            itemBorderColor     = "7d8998ff"
+            itemTextColor       = "000716ff"
+          }
+          match = {
+            itemBackgroundColor = "414d5cff"
+            itemTextColor       = "0972d3ff"
+          }
+        }
+      }
+      focusState = {
+        darkMode  = { borderColor = "ce7e7eff" }
+        lightMode = { borderColor = "0972d3ff" }
+      }
+      idpButtons = {
+        icons = { enabled = true }
+      }
+      input = {
+        borderRadius = 0
+        darkMode = {
+          defaults = {
+            backgroundColor = "242424ff"
+            borderColor     = "3a3a3aff"
+          }
+          placeholderColor = "8a8a8aff"
+        }
+        lightMode = {
+          defaults = {
+            backgroundColor = "ffffffff"
+            borderColor     = "7d8998ff"
+          }
+          placeholderColor = "5f6b7aff"
+        }
+      }
+      inputDescription = {
+        darkMode  = { textColor = "8a8a8aff" }
+        lightMode = { textColor = "5f6b7aff" }
+      }
+      inputLabel = {
+        darkMode  = { textColor = "c5c5c5ff" }
+        lightMode = { textColor = "000716ff" }
+      }
+      link = {
+        darkMode = {
+          defaults = { textColor = "ce7e7eff" }
+          hover    = { textColor = "d99a9aff" }
+        }
+        lightMode = {
+          defaults = { textColor = "0972d3ff" }
+          hover    = { textColor = "033160ff" }
+        }
+      }
+      optionControls = {
+        darkMode = {
+          defaults = {
+            backgroundColor = "242424ff"
+            borderColor     = "3a3a3aff"
+          }
+          selected = {
+            backgroundColor = "4a1a1aff"
+            foregroundColor = "ffffffff"
+          }
+        }
+        lightMode = {
+          defaults = {
+            backgroundColor = "ffffffff"
+            borderColor     = "7d8998ff"
+          }
+          selected = {
+            backgroundColor = "0972d3ff"
+            foregroundColor = "ffffffff"
+          }
+        }
+      }
+      statusIndicator = {
+        darkMode = {
+          error   = { backgroundColor = "1a0000ff", borderColor = "eb6f6fff", indicatorColor = "eb6f6fff" }
+          pending = { indicatorColor = "AAAAAAAA" }
+          success = { backgroundColor = "001a02ff", borderColor = "29ad32ff", indicatorColor = "29ad32ff" }
+          warning = { backgroundColor = "1d1906ff", borderColor = "e0ca57ff", indicatorColor = "e0ca57ff" }
+        }
+        lightMode = {
+          error   = { backgroundColor = "fff7f7ff", borderColor = "d91515ff", indicatorColor = "d91515ff" }
+          pending = { indicatorColor = "AAAAAAAA" }
+          success = { backgroundColor = "f2fcf3ff", borderColor = "037f0cff", indicatorColor = "037f0cff" }
+          warning = { backgroundColor = "fffce9ff", borderColor = "8d6605ff", indicatorColor = "8d6605ff" }
+        }
+      }
+    }
+    components = {
+      alert = {
+        borderRadius = 0
+        darkMode     = { error = { backgroundColor = "1a0000ff", borderColor = "eb6f6fff" } }
+        lightMode    = { error = { backgroundColor = "fff7f7ff", borderColor = "d91515ff" } }
+      }
+      favicon = {
+        enabledTypes = ["ICO", "SVG"]
+      }
+      form = {
+        backgroundImage = { enabled = false }
+        borderRadius    = 0
+        darkMode = {
+          backgroundColor = "1a1a1aff"
+          borderColor     = "3a3a3aff"
+        }
+        lightMode = {
+          backgroundColor = "ffffffff"
+          borderColor     = "c6c6cdff"
+        }
+        logo = {
+          enabled       = false
+          formInclusion = "IN"
+          location      = "CENTER"
+          position      = "TOP"
+        }
+      }
+      idpButton = {
+        custom = {}
+        standard = {
+          darkMode = {
+            active   = { backgroundColor = "1a1a1aff", borderColor = "ce7e7eff", textColor = "ffffffff" }
+            defaults = { backgroundColor = "242424ff", borderColor = "3a3a3aff", textColor = "c5c5c5ff" }
+            hover    = { backgroundColor = "2d2d2dff", borderColor = "ce7e7eff", textColor = "ffffffff" }
+          }
+          lightMode = {
+            active   = { backgroundColor = "d3e7f9ff", borderColor = "033160ff", textColor = "033160ff" }
+            defaults = { backgroundColor = "ffffffff", borderColor = "424650ff", textColor = "424650ff" }
+            hover    = { backgroundColor = "f2f8fdff", borderColor = "033160ff", textColor = "033160ff" }
+          }
+        }
+      }
+      pageBackground = {
+        darkMode  = { color = "121212ff" }
+        image     = { enabled = true }
+        lightMode = { color = "ffffffff" }
+      }
+      pageFooter = {
+        backgroundImage = { enabled = false }
+        darkMode        = { background = { color = "1a1a1aff" }, borderColor = "3a3a3aff" }
+        lightMode       = { background = { color = "fafafaff" }, borderColor = "d5dbdbff" }
+        logo            = { enabled = false, location = "START" }
+      }
+      pageHeader = {
+        backgroundImage = { enabled = false }
+        darkMode        = { background = { color = "1a1a1aff" }, borderColor = "3a3a3aff" }
+        lightMode       = { background = { color = "fafafaff" }, borderColor = "d5dbdbff" }
+        logo            = { enabled = false, location = "START" }
+      }
+      pageText = {
+        darkMode  = { bodyColor = "c5c5c5ff", descriptionColor = "c5c5c5ff", headingColor = "ffffffff" }
+        lightMode = { bodyColor = "414d5cff", descriptionColor = "414d5cff", headingColor = "000716ff" }
+      }
+      phoneNumberSelector = { displayType = "TEXT" }
+      primaryButton = {
+        darkMode = {
+          active   = { backgroundColor = "5a2020ff", textColor = "ffffffff" }
+          defaults = { backgroundColor = "4a1a1aff", textColor = "ffffffff" }
+          disabled = { backgroundColor = "3a3a3aff", borderColor = "3a3a3aff" }
+          hover    = { backgroundColor = "5a2020ff", textColor = "ffffffff" }
+        }
+        lightMode = {
+          active   = { backgroundColor = "033160ff", textColor = "ffffffff" }
+          defaults = { backgroundColor = "0972d3ff", textColor = "ffffffff" }
+          disabled = { backgroundColor = "ffffffff", borderColor = "ffffffff" }
+          hover    = { backgroundColor = "033160ff", textColor = "ffffffff" }
+        }
+      }
+      secondaryButton = {
+        darkMode = {
+          active   = { backgroundColor = "2d2d2dff", borderColor = "ce7e7eff", textColor = "ffffffff" }
+          defaults = { backgroundColor = "1a1a1aff", borderColor = "3a3a3aff", textColor = "c5c5c5ff" }
+          hover    = { backgroundColor = "242424ff", borderColor = "ce7e7eff", textColor = "ffffffff" }
+        }
+        lightMode = {
+          active   = { backgroundColor = "d3e7f9ff", borderColor = "033160ff", textColor = "033160ff" }
+          defaults = { backgroundColor = "ffffffff", borderColor = "0972d3ff", textColor = "0972d3ff" }
+          hover    = { backgroundColor = "f2f8fdff", borderColor = "033160ff", textColor = "033160ff" }
+        }
+      }
+    }
+  }
+}
+
 resource "aws_cognito_managed_login_branding" "web" {
-  user_pool_id                = aws_cognito_user_pool.users.id
-  client_id                   = aws_cognito_user_pool_client.web.id
-  use_cognito_provided_values = true
+  user_pool_id = aws_cognito_user_pool.users.id
+  client_id    = aws_cognito_user_pool_client.web.id
+  settings     = jsonencode(local.cognito_branding_settings)
 }
 
 resource "aws_cognito_managed_login_branding" "android" {
-  user_pool_id                = aws_cognito_user_pool.users.id
-  client_id                   = aws_cognito_user_pool_client.android.id
-  use_cognito_provided_values = true
+  user_pool_id = aws_cognito_user_pool.users.id
+  client_id    = aws_cognito_user_pool_client.android.id
+  settings     = jsonencode(local.cognito_branding_settings)
 }
 
 resource "aws_cognito_user_group" "admins" {

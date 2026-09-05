@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-09-05 17:49'
-updated_date: '2026-09-05 17:50'
+updated_date: '2026-09-05 18:04'
 labels:
   - cognito
   - auth
@@ -26,6 +26,7 @@ TASK-263/ADR-115 avevano risolto il 403 di Hosted UI riportando managed_login_ve
 <!-- AC:BEGIN -->
 - [x] #1 backend/terraform: provider aws aggiornato a ~> 6.13, .terraform.lock.hcl rigenerato, terraform validate pulito (a parte gli errori pre-esistenti e non correlati di lambda_function.zip mancante in locale)
 - [x] #2 aws_cognito_managed_login_branding creata per web e android con use_cognito_provided_values = true
-- [ ] #3 Dopo il deploy CI, GET /login con i parametri del client web risponde 200 e mostra la pagina Managed Login (non piu' Classic UI ne' l'errore 403)
+- [x] #3 Dopo il deploy CI, GET /login con i parametri del client web risponde 200 e mostra la pagina Managed Login (non piu' Classic UI ne' l'errore 403)
 - [x] #4 ADR aggiunto in decision-1 che documenta il superamento del workaround di ADR-115
+- [ ] #5 settings JSON custom (dark/horror-theme, verificato con lo stesso set di chiavi del documento reale generato da AWS, 0 chiavi mancanti/extra) sostituisce use_cognito_provided_values, deployato e verificato visivamente
 <!-- AC:END -->

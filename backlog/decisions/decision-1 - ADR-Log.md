@@ -3612,10 +3612,62 @@ pre-existing, unrelated `hash_key`-is-deprecated warning on the
 plan` was possible for the same secret-material reason as `ADR-115`; this
 change is verified by watching CI's real `terraform apply` and then curling
 `/login` directly post-deploy, same as `ADR-115`'s own verification method.
-`.terraform.lock.hcl` is committed alongside the version bump so CI resolves
-the identical `6.63.0` build. This does not touch anything Android-specific
-beyond the same shared Cognito domain/branding both platforms already
-shared - no new rebuild trigger beyond what `ADR-115` already covered.
+`backend/terraform/.terraform.lock.hcl` is gitignored in this repo (CI runs
+a fresh `terraform init` each deploy rather than pinning a committed lock),
+so the version constraint in `main.tf` is the only thing actually governing
+which `6.x` patch CI resolves - confirmed by reading `backend/terraform/
+.gitignore` after initially assuming otherwise. This does not touch anything
+Android-specific beyond the same shared Cognito domain/branding both
+platforms already shared - no new rebuild trigger beyond what `ADR-115`
+already covered.
+
+Decision (theming, same change): once the `use_cognito_provided_values =
+true` deploy above was live, pulled the real `settings_all` it produced
+from the actual `prod` Terraform workspace state (`terraform workspace
+select prod` - the local checkout defaults to the unrelated `default`
+workspace, which this repo's CI never uses; confirmed by first finding an
+implausibly small state under `default` before realizing the mismatch) and
+used that exact document as the editing base for a `locals.cognito_branding_
+settings` block, changing only: `categories.global.colorSchemeMode` (`LIGHT`
+-> `DARK`, since the app itself never offers a light theme), every
+`darkMode` color leaf across `componentClasses`/`components` (backgrounds,
+text, primary/secondary/idp buttons, inputs, links, dividers, dropdowns,
+focus ring) mapped to the closest `horrorTheme.css` token, and every
+`borderRadius` (`buttons`/`dropDown`/`input`/`form`/`alert`, all `8` or `12`
+by default) flattened to `0` to match the app's square-corner look
+elsewhere. Left untouched: `lightMode` branches (unreachable once
+`colorSchemeMode` is `DARK`, but keeping them as Cognito's own defaults
+means nothing breaks if that ever flips back), `statusIndicator`/`alert`
+semantic colors (error/success/warning stay legible rather than
+reskinned), header/footer (`enabled: false`, unchanged - no logo asset
+exists yet for the space that would open, tracked as part of `TASK-266`'s
+open mascot question instead of guessed here), and every non-visual key
+(`auth.authMethodOrder`, `federation`, `signUp.acceptanceElements`,
+`favicon`, `phoneNumberSelector`). Verified programmatically before
+deploying: extracted both the original AWS-generated JSON and the new
+HCL-produced one, diffed their key sets (0 missing, 0 extra) and their leaf
+values (61 changed, and every one of the 61 matched the override list
+above with nothing accidental) - this is the same "edit a known-good
+document, don't invent one" approach `ADR-116`'s first decision already
+used to avoid guessing the schema, just carried one step further with an
+actual before/after diff instead of visual inspection alone. Fixed a real
+mistake caught by `terraform validate` along the way:
+`aws_cognito_managed_login_branding` rejects `settings` and
+`use_cognito_provided_values` being set together ("2 attributes specified
+when one ... is required") - `use_cognito_provided_values` was removed
+once `settings` carried the real document.
+
+Consequences: `terraform validate` is clean (same pre-existing, unrelated
+warnings/errors as before). Scratch files used only for local inspection
+(`terraform state pull` output, extracted `settings_*.json`) were deleted
+before committing - they are not build artifacts and would have leaked AWS
+account/resource details into git for no reason; the local checkout's
+Terraform workspace was switched back to `default` afterward so this
+machine doesn't stay pointed at `prod` between sessions. No live visual
+check was performed per `CLAUDE.md`'s no-browser-automation rule - the
+actual rendered colors, contrast, and whether `DARK` mode is really what
+renders (vs. the browser's own OS-level preference doing something
+unexpected) still need a manual look after this deploys.
 
 ## Consequences
 
