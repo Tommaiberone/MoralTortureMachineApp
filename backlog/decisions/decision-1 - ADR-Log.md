@@ -3568,6 +3568,55 @@ Post-deploy, `TASK-263`'s AC2 (a real `GET /login` returning 200) still
 needs a manual check, the same gap `ADR-113` left open for the Google/email
 login flows themselves.
 
+### ADR-116 — Superseded ADR-115: bumped the AWS provider to `~> 6.13` and adopted real Managed Login branding instead of the Classic UI workaround (TASK-267)
+
+Context: after `ADR-115` shipped, the user saw the resulting page and called
+it out directly - the unbranded Classic Hosted UI genuinely looks like a
+generic AWS settings page, jarring against this app's horror-themed
+`frontend/src/styles/horrorTheme.css` identity, in the middle of an
+otherwise-branded flow. Asked for an opinion, then explicitly authorized
+bumping the Terraform AWS provider if it would fix the root cause properly,
+accepting that follow-on issues get fixed as they appear rather than staying
+on the safer-but-uglier `v1` workaround indefinitely.
+
+Decision: raised `required_providers.aws.version` from `~> 5.0` to `~> 6.13`
+in `backend/terraform/main.tf` only (`frontend/terraform` stays on `~> 5.0`
+- it has no Cognito resources, so bumping it would be pure unforced risk).
+`6.13` specifically, not the `6.12` floor `aws_cognito_managed_login_branding`
+first shipped in, because of a documented bug reading branding for a user
+pool with more than one app client below `6.13` - this pool has two (`web`,
+`android`). `terraform init -upgrade` (run under `AWS_PROFILE=personal` -
+the default AWS CLI profile on this machine resolves to an unrelated
+466133393938 account, not this product's 586250839220; state-bucket access
+needs the right profile even just to init) resolved `6.63.0`, the current
+latest `6.x`. Set `aws_cognito_user_pool_domain.auth.managed_login_version`
+back to `2` and added `aws_cognito_managed_login_branding` for both `web`
+and `android`, each with `use_cognito_provided_values = true` rather than a
+hand-authored `settings` JSON. That field's full schema is large and
+explicitly designed to be produced by the console's visual Branding
+Designer (`managed-login-brandingeditor.html` in AWS's own docs), not typed
+from memory; guessing at it risks `CreateManagedLoginBranding` rejecting the
+JSON during CI's `terraform apply -auto-approve`, in a workflow that also
+builds/deploys the frontend and Android APK in the same run. The Cognito-
+provided default under Managed Login v2 already reads as a cleaner, more
+modern card than Classic UI even unstyled, so this alone is a real
+improvement over `ADR-115`'s state - true dark/horror-theme colors are
+deferred to a follow-up that reads the real `settings_all` this deploy
+produces and edits that known-good structure, instead of inventing key
+names.
+
+Consequences: `terraform validate` is clean under the new provider (only a
+pre-existing, unrelated `hash_key`-is-deprecated warning on the
+`aws_dynamodb_table` resources, and the same lambda-zip-not-found errors
+`ADR-115` already noted as local-only and expected). No local `terraform
+plan` was possible for the same secret-material reason as `ADR-115`; this
+change is verified by watching CI's real `terraform apply` and then curling
+`/login` directly post-deploy, same as `ADR-115`'s own verification method.
+`.terraform.lock.hcl` is committed alongside the version bump so CI resolves
+the identical `6.63.0` build. This does not touch anything Android-specific
+beyond the same shared Cognito domain/branding both platforms already
+shared - no new rebuild trigger beyond what `ADR-115` already covered.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

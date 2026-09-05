@@ -4,7 +4,10 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      # >= 6.13 specifically: aws_cognito_managed_login_branding (added 6.12)
+      # has a known bug reading branding for a user pool with >1 app client,
+      # fixed in 6.13. This pool has two (web, android).
+      version = "~> 6.13"
     }
     null = {
       source  = "hashicorp/null"
@@ -664,17 +667,30 @@ resource "aws_cognito_user_pool_client" "android" {
   }
 }
 
-# managed_login_version = 1 (Classic Hosted UI). Version 2 (Managed Login)
-# requires a branding style to be assigned to every app client via the
-# aws_cognito_managed_login_branding resource, or /login returns 403 "Login
-# pages unavailable" - that resource only exists from AWS provider >= 6.12
-# (we pin ~> 5.0) and has a known multi-client bug below 6.13. We don't use
-# any custom branding, so Classic Hosted UI gives the same Google + email/
-# password login page without the provider bump.
+# managed_login_version = 2 (Managed Login). Requires a branding style per
+# app client (aws_cognito_managed_login_branding below) or /login returns
+# 403 "Login pages unavailable" - see ADR-115/ADR-116 in decision-1.
 resource "aws_cognito_user_pool_domain" "auth" {
   domain                = "moral-torture-machine-${data.aws_caller_identity.current.account_id}"
   user_pool_id          = aws_cognito_user_pool.users.id
-  managed_login_version = 1
+  managed_login_version = 2
+}
+
+# Step 1 of 2: Cognito-provided defaults first (guaranteed-valid Settings
+# JSON - the full custom schema is large/console-authored and not worth
+# guessing blind in an auto-applied CI pipeline). Once this deploys, read
+# back the real `settings_all` this produces and layer dark/horror-themed
+# overrides on top of that known-good structure in a follow-up change.
+resource "aws_cognito_managed_login_branding" "web" {
+  user_pool_id                = aws_cognito_user_pool.users.id
+  client_id                   = aws_cognito_user_pool_client.web.id
+  use_cognito_provided_values = true
+}
+
+resource "aws_cognito_managed_login_branding" "android" {
+  user_pool_id                = aws_cognito_user_pool.users.id
+  client_id                   = aws_cognito_user_pool_client.android.id
+  use_cognito_provided_values = true
 }
 
 resource "aws_cognito_user_group" "admins" {
