@@ -417,8 +417,10 @@ const PartyRoomScreen = () => {
     const result = room.roundResult || { firstVotes: 0, secondVotes: 0 };
     const priorRounds = Object.entries(revealHistory).filter(([index]) => Number(index) !== room.currentRoundIndex);
     const currentImbalance = Math.abs(result.firstVotes - result.secondVotes);
+    // Strict >: a prior round tied with the current one keeps the badge on
+    // the round that earned it first, instead of also lighting up on a tie.
     const isMostDividedSoFar = priorRounds.length > 0 && priorRounds.every(
-      ([, priorResult]) => Math.abs(priorResult.firstVotes - priorResult.secondVotes) >= currentImbalance,
+      ([, priorResult]) => Math.abs(priorResult.firstVotes - priorResult.secondVotes) > currentImbalance,
     );
     const dimension = dominantDimension(room.currentDilemma);
     // TASK-204: the caustic tease tied to the caller's own vote this round,
