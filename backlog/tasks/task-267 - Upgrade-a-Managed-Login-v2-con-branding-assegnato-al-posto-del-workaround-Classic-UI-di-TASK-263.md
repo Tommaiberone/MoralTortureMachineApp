@@ -3,10 +3,10 @@ id: TASK-267
 title: >-
   Upgrade a Managed Login v2 con branding assegnato, al posto del workaround
   Classic UI di TASK-263
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-09-05 17:49'
-updated_date: '2026-09-05 18:04'
+updated_date: '2026-09-05 18:11'
 labels:
   - cognito
   - auth
@@ -28,5 +28,5 @@ TASK-263/ADR-115 avevano risolto il 403 di Hosted UI riportando managed_login_ve
 - [x] #2 aws_cognito_managed_login_branding creata per web e android con use_cognito_provided_values = true
 - [x] #3 Dopo il deploy CI, GET /login con i parametri del client web risponde 200 e mostra la pagina Managed Login (non piu' Classic UI ne' l'errore 403)
 - [x] #4 ADR aggiunto in decision-1 che documenta il superamento del workaround di ADR-115
-- [ ] #5 settings JSON custom (dark/horror-theme, verificato con lo stesso set di chiavi del documento reale generato da AWS, 0 chiavi mancanti/extra) sostituisce use_cognito_provided_values, deployato e verificato visivamente
+- [x] #5 settings JSON custom (dark/horror-theme, verificato con lo stesso set di chiavi del documento reale generato da AWS, 0 chiavi mancanti/extra) sostituisce use_cognito_provided_values, deployato e verificato visivamente
 <!-- AC:END -->
