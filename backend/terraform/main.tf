@@ -495,7 +495,7 @@ resource "aws_dynamodb_table" "push_subscriptions" {
     Name        = "Moral Torture Machine Push Subscriptions"
     Environment = var.environment
     ManagedBy   = "Terraform"
-    Purpose     = "Web Push (VAPID) and native FCM device registrations, TASK-274"
+    Purpose     = "Web Push and native FCM device registrations"
   }
 }
 
