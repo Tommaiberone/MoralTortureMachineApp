@@ -217,21 +217,29 @@ jobs:
 
       - name: Update SSM Parameter (VAPID Private Key)
         # TASK-274: same out-of-band pattern as the Groq key above - only
-        # runs once the VAPID_PRIVATE_KEY repo secret actually exists.
-        # Until then this intentionally leaves the SSM parameter at its
-        # Terraform-managed "SET_THIS_LATER" placeholder, and
+        # runs once the VAPID_PRIVATE_KEY repo secret actually exists. The
+        # emptiness check happens inside the shell step (not a step-level
+        # `if: secrets....`, which GitHub Actions' static validator rejects
+        # in this position) so it skips cleanly rather than failing when the
+        # secret doesn't exist yet. Until then the SSM parameter stays at
+        # its Terraform-managed "SET_THIS_LATER" placeholder, and
         # get_vapid_private_key()/send_push_notification() raise a clear 503
         # for web_push sends rather than failing silently.
-        if: ${{ secrets.VAPID_PRIVATE_KEY != '' }}
+        env:
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
         run: |
-          SSM_NAME="/${{ needs.setup.outputs.environment }}/moral-torture-machine/vapid-private-key"
-          aws ssm put-parameter \
-            --name "$SSM_NAME" \
-            --type SecureString \
-            --value "${{ secrets.VAPID_PRIVATE_KEY }}" \
-            --overwrite \
-            --region ${{ env.AWS_REGION }}
-          echo "✅ SSM parameter updated: $SSM_NAME"
+          if [ -z "$VAPID_PRIVATE_KEY" ]; then
+            echo "ℹ️ VAPID_PRIVATE_KEY secret not set yet - skipping, web_push stays unconfigured"
+          else
+            SSM_NAME="/${{ needs.setup.outputs.environment }}/moral-torture-machine/vapid-private-key"
+            aws ssm put-parameter \
+              --name "$SSM_NAME" \
+              --type SecureString \
+              --value "$VAPID_PRIVATE_KEY" \
+              --overwrite \
+              --region ${{ env.AWS_REGION }}
+            echo "✅ SSM parameter updated: $SSM_NAME"
+          fi
 
       - name: Terraform Init & Apply
         working-directory: ./backend/terraform
