@@ -6,7 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-09-07 08:28'
-updated_date: '2026-09-07 08:55'
+updated_date: '2026-09-07 09:10'
 labels:
   - growth
   - retention
@@ -54,4 +54,6 @@ python -c "from py_vapid import Vapid02 as Vapid; from py_vapid.utils import b64
 (richiede py-vapid installato: pip install py-vapid). Finche' il secret non esiste, get_vapid_private_key() risponde 503 in modo esplicito invece di fallire silenziosamente.
 
 Verifica: terraform validate pulito (isolato dal backend S3 reale, .terraform temporaneamente spostato e ripristinato, nessuna credenziale root usata); 219/219 test backend passano (16 nuovi + 203 esistenti); py_compile pulito. Nessun terraform apply eseguito; nessuna modifica frontend/Android, quindi nessun rebuild APK necessario per questo task.
+
+Addendum: il push ha innescato il deploy reale (pipeline CI/CD standard). Due problemi non intercettati da terraform validate/fmt locali sono emersi solo nell'apply vero e sono stati corretti in commit di follow-up immediati: (1) lo step CI per la chiave VAPID usava if: secrets.VAPID_PRIVATE_KEY in una posizione che il validator statico di GitHub Actions rifiuta (workflow fallito prima ancora di schedulare un job) - spostato il controllo dentro lo script di shell; (2) il tag Purpose di push_subscriptions conteneva parentesi e virgola, non validi per i tag value DynamoDB lato API AWS - stesso errore gia' capitato 2 volte in passato (ADR-055, TASK-137), aperta TASK-276 per un controllo automatico invece di un altro promemoria a memoria. Deploy finale verde end-to-end (Deploy Backend, Get API Endpoint, Test API Health tutti passati), confermato via gh run view. Dettagli completi nell'addendum di ADR-123.
 <!-- SECTION:NOTES:END -->

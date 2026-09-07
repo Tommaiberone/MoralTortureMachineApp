@@ -4196,6 +4196,31 @@ triggered by this change (backend/Terraform only, nothing in `frontend/` or
 does not apply here. `TASK-275` (Web Push/PWA) and `TASK-45` (native Android,
 rescoped by `ADR-122`) are unblocked and are the next natural picks.
 
+Addendum (same day, after the push this ADR describes): the real deploy hit
+two problems local `terraform validate`/`fmt` could not catch, both fixed in
+immediate follow-up commits and confirmed green before considering `TASK-274`
+actually done. First, the VAPID CI step's `if: ${{ secrets.VAPID_PRIVATE_KEY
+!= '' }}` - GitHub Actions' static workflow validator rejects a direct
+`secrets.*` reference in a step-level `if:` in this position (the run failed
+before any job was scheduled, 0 jobs); moved the emptiness check inside the
+shell step instead (`env:` passthrough + `[ -z ... ]`), matching how every
+other secret in this file is already accessed - no other `if:` anywhere in
+`deploy.yml` had ever referenced `secrets`, so this was genuinely new
+territory, not a previously-working pattern breaking. Second,
+`push_subscriptions`'s `Purpose` tag ("Web Push (VAPID) and native FCM
+device registrations, TASK-274") has parentheses and a comma - DynamoDB
+`CreateTable` rejects tag values outside its allowed character set, an
+AWS-API-side constraint `terraform validate` structurally cannot see. This
+exact mistake was already made and fixed twice before (`party_rooms`/
+`challenges`, 2026-08-02, ADR-055; `ops_error_alerts`, 2026-08-04, `TASK-137`)
+- a fourth occurrence despite being documented twice already, which is why
+this time got a Backlog task (`TASK-276`) for an automated character-set
+check instead of a third prose reminder nobody will re-read while typing a
+new tag string. The live deploy is now fully green end-to-end (`Deploy
+Backend`, `Get API Endpoint`, `Test API Health` all passed against the real
+Lambda package with `py-vapid`/`http-ece` actually installed) - confirmed via
+`gh run view`, not assumed from a successful `git push`.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
