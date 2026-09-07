@@ -18,10 +18,13 @@ from typing import Any
 from urllib.parse import urlparse
 
 import boto3
+import http_ece
 import jwt
 import requests
 from boto3.dynamodb.types import TypeSerializer
 from botocore.exceptions import ClientError
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -29,6 +32,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from jwt import InvalidTokenError, PyJWKClient
 from mangum import Mangum
+from py_vapid import Vapid02 as Vapid
+from py_vapid.utils import b64urldecode, b64urlencode
 from pydantic import BaseModel, Field, field_validator
 
 # archetype_engine.py is deployed as a flat sibling of this file (see
@@ -104,6 +109,7 @@ DAILY_MORAL_CRIME_VOTES_TABLE = os.getenv(
     "moral-torture-machine-daily-moral-crime-votes",
 )
 OPS_ERROR_ALERTS_TABLE = os.getenv("OPS_ERROR_ALERTS_TABLE", "moral-torture-machine-ops-error-alerts")
+PUSH_SUBSCRIPTIONS_TABLE = os.getenv("PUSH_SUBSCRIPTIONS_TABLE", "moral-torture-machine-push-subscriptions")
 # TASK-30/113: same bucket the frontend deploy already syncs to (frontend/terraform),
 # just a dedicated prefix within it for bot-only pre-rendered profile previews.
 FRONTEND_BUCKET_NAME = os.getenv("FRONTEND_BUCKET_NAME", "prod-moral-torture-machine-frontend")
@@ -113,6 +119,15 @@ ANALYTICS_FINGERPRINT_SECRET_SSM_NAME = os.getenv(
     "ANALYTICS_FINGERPRINT_SECRET_SSM_NAME",
     "",
 )
+# TASK-274: web_push channel. The private key is a raw base64url P-256 scalar
+# (py_vapid.Vapid.from_string), not a PEM - see the task's implementation
+# notes for how to generate one.
+VAPID_PRIVATE_KEY_SSM_NAME = os.getenv("VAPID_PRIVATE_KEY_SSM_NAME", "")
+VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "mailto:tommasobersani@gmail.com")
+# TASK-274: fcm channel. Not yet provisioned - no Firebase project exists in
+# this stack. Left empty until TASK-45 creates one and sets this; until then
+# get_fcm_service_account() raises a clear 503 instead of silently no-op-ing.
+FCM_SERVICE_ACCOUNT_SSM_NAME = os.getenv("FCM_SERVICE_ACCOUNT_SSM_NAME", "")
 COGNITO_USER_POOL_ID = os.getenv("COGNITO_USER_POOL_ID", "")
 COGNITO_APP_CLIENT_ID = os.getenv("COGNITO_APP_CLIENT_ID", "")
 COGNITO_APP_CLIENT_IDS = tuple(
@@ -337,6 +352,7 @@ party_rooms_table = dynamodb.Table(PARTY_ROOMS_TABLE)
 party_participants_table = dynamodb.Table(PARTY_PARTICIPANTS_TABLE)
 daily_moral_crime_votes_table = dynamodb.Table(DAILY_MORAL_CRIME_VOTES_TABLE)
 ops_error_alerts_table = dynamodb.Table(OPS_ERROR_ALERTS_TABLE)
+push_subscriptions_table = dynamodb.Table(PUSH_SUBSCRIPTIONS_TABLE)
 ssm_client = boto3.client('ssm', region_name=AWS_REGION)
 sns_client = boto3.client('sns', region_name=AWS_REGION)
 cognito_idp_client = boto3.client('cognito-idp', region_name=AWS_REGION)
@@ -344,6 +360,9 @@ cognito_idp_client = boto3.client('cognito-idp', region_name=AWS_REGION)
 # Cache for API key (retrieved once at cold start)
 _api_key_cache = None
 _analytics_fingerprint_secret_cache = None
+_vapid_private_key_cache = None
+_fcm_service_account_cache: dict[str, Any] | None = None
+_fcm_access_token_cache: dict[str, Any] = {"token": None, "expiresAt": 0}
 _analytics_overview_cache = {}
 _cognito_jwks_client = None
 _burst_windows = defaultdict(deque)
@@ -1121,6 +1140,24 @@ class DailyMoralCrimeVoteRequest(BaseModel):
     scoring values: participation must not affect the moral archetype."""
     dayKey: str = Field(..., min_length=10, max_length=10, pattern=r'^\d{4}-\d{2}-\d{2}$')
     choice: str = Field(..., pattern=r'^(first|second)$')
+
+
+class PushSubscribeRequest(BaseModel):
+    """One device's push registration (TASK-274). web_push carries the
+    browser PushSubscription's own fields; fcm carries the native token -
+    exactly one of the two shapes is required, enforced in the endpoint
+    since it depends on which `channel` was sent."""
+    channel: str = Field(..., pattern=r'^(web_push|fcm)$')
+    endpoint: str | None = Field(default=None, min_length=1, max_length=2000)
+    p256dh: str | None = Field(default=None, min_length=1, max_length=200)
+    auth: str | None = Field(default=None, min_length=1, max_length=200)
+    fcmToken: str | None = Field(default=None, min_length=1, max_length=500)
+
+
+class PushUnsubscribeRequest(BaseModel):
+    channel: str = Field(..., pattern=r'^(web_push|fcm)$')
+    endpoint: str | None = Field(default=None, min_length=1, max_length=2000)
+    fcmToken: str | None = Field(default=None, min_length=1, max_length=500)
 
 # TASK-65: value-level PII guard for analytics properties, independent of
 # the property key name (see validate_properties below).
@@ -3769,6 +3806,336 @@ async def get_party_room(room_code: str, request: Request, language: str = "en")
         response["groupVerdict"] = group_verdict
 
     return response
+
+
+PUSH_SUBSCRIPTION_TTL_SECONDS = 180 * 24 * 3600  # re-subscribing (or any successful send) refreshes it
+
+
+def _push_subscription_id(identifier: str) -> str:
+    """Deterministic id for one device's registration (sha256 of its
+    endpoint for web_push, its token for fcm), so re-subscribing the same
+    device overwrites its own row instead of accumulating duplicates - the
+    idempotency TASK-274 AC#2 asks for."""
+    return hashlib.sha256(identifier.encode("utf-8")).hexdigest()[:32]
+
+
+def get_vapid_private_key() -> str:
+    """Retrieve the VAPID private key (raw base64url P-256 scalar) from SSM,
+    mirroring get_analytics_fingerprint_secret's caching/placeholder pattern."""
+    global _vapid_private_key_cache
+
+    if _vapid_private_key_cache is not None:
+        return _vapid_private_key_cache
+
+    local_key = os.getenv("VAPID_PRIVATE_KEY")
+    if local_key and local_key != "SET_THIS_LATER":
+        _vapid_private_key_cache = local_key
+        return _vapid_private_key_cache
+
+    if not VAPID_PRIVATE_KEY_SSM_NAME:
+        raise HTTPException(status_code=503, detail="Web push is not configured")
+
+    try:
+        response = ssm_client.get_parameter(Name=VAPID_PRIVATE_KEY_SSM_NAME, WithDecryption=True)
+        key = response["Parameter"]["Value"]
+        if not key or key == "SET_THIS_LATER":
+            raise ValueError("VAPID private key has not been initialized")
+        _vapid_private_key_cache = key
+        return _vapid_private_key_cache
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.error(f"Failed to retrieve VAPID private key: {error!s}")
+        raise HTTPException(status_code=503, detail="Web push is not configured") from error
+
+
+def _vapid_signer() -> Vapid:
+    return Vapid.from_string(get_vapid_private_key())
+
+
+def get_vapid_public_key() -> str:
+    """Raw base64url uncompressed P-256 point - the exact shape the
+    browser's pushManager.subscribe({applicationServerKey}) expects
+    (TASK-275). Derived from the private key each call, nothing to keep in
+    sync separately."""
+    public_bytes = _vapid_signer().public_key.public_bytes(
+        Encoding.X962, PublicFormat.UncompressedPoint
+    )
+    return b64urlencode(public_bytes)
+
+
+def get_fcm_service_account() -> dict[str, Any]:
+    """Retrieve the FCM/Firebase service account JSON from SSM. Not yet
+    provisioned as of TASK-274 - no Firebase project exists in this stack
+    yet. TASK-45 (native Android push) creates the project and sets
+    FCM_SERVICE_ACCOUNT_SSM_NAME; until then this raises a clear 503 rather
+    than silently no-op-ing."""
+    global _fcm_service_account_cache
+
+    if _fcm_service_account_cache is not None:
+        return _fcm_service_account_cache
+
+    if not FCM_SERVICE_ACCOUNT_SSM_NAME:
+        raise HTTPException(status_code=503, detail="Native push (FCM) is not configured")
+
+    try:
+        response = ssm_client.get_parameter(Name=FCM_SERVICE_ACCOUNT_SSM_NAME, WithDecryption=True)
+        raw = response["Parameter"]["Value"]
+        if not raw or raw == "SET_THIS_LATER":
+            raise ValueError("FCM service account has not been initialized")
+        account = json.loads(raw)
+        if not account.get("private_key") or not account.get("client_email") or not account.get("project_id"):
+            raise ValueError("FCM service account JSON is missing required fields")
+        _fcm_service_account_cache = account
+        return _fcm_service_account_cache
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.error(f"Failed to retrieve FCM service account: {error!s}")
+        raise HTTPException(status_code=503, detail="Native push (FCM) is not configured") from error
+
+
+def _get_fcm_access_token() -> str:
+    """Exchange the FCM service account for a short-lived OAuth2 bearer
+    token via Google's own JWT-bearer flow (direct HTTP v1 API), reusing the
+    PyJWT/cryptography dependency already installed for Cognito instead of
+    pulling in the much heavier firebase-admin SDK just to sign one
+    assertion."""
+    now = int(time.time())
+    if _fcm_access_token_cache["token"] and _fcm_access_token_cache["expiresAt"] > now + 60:
+        return _fcm_access_token_cache["token"]
+
+    service_account = get_fcm_service_account()
+    claims = {
+        "iss": service_account["client_email"],
+        "scope": "https://www.googleapis.com/auth/firebase.messaging",
+        "aud": "https://oauth2.googleapis.com/token",
+        "iat": now,
+        "exp": now + 3600,
+    }
+    assertion = jwt.encode(claims, service_account["private_key"], algorithm="RS256")
+    try:
+        response = requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                "assertion": assertion,
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException as error:
+        raise HTTPException(status_code=502, detail="Could not obtain an FCM access token") from error
+
+    _fcm_access_token_cache["token"] = payload["access_token"]
+    _fcm_access_token_cache["expiresAt"] = now + int(payload.get("expires_in", 3600))
+    return _fcm_access_token_cache["token"]
+
+
+class PushDeliveryError(Exception):
+    """Raised by a channel sender. `stale=True` means the subscription
+    itself is dead (410/404/UNREGISTERED) and should be pruned, not just
+    logged as a transient failure."""
+
+    def __init__(self, message: str, stale: bool = False):
+        super().__init__(message)
+        self.stale = stale
+
+
+def _send_web_push(subscription: dict[str, Any], title: str, body: str, data: dict[str, Any]) -> None:
+    endpoint = subscription["endpoint"]
+    payload = json.dumps({"title": title, "body": body, "data": data}).encode("utf-8")
+    parsed_endpoint = urlparse(endpoint)
+
+    claims = {
+        "sub": VAPID_SUBJECT,
+        "aud": f"{parsed_endpoint.scheme}://{parsed_endpoint.netloc}",
+        "exp": int(time.time()) + 12 * 3600,
+    }
+    headers = _vapid_signer().sign(claims)
+
+    ephemeral_key = ec.generate_private_key(ec.SECP256R1())
+    encrypted = http_ece.encrypt(
+        payload,
+        salt=None,
+        private_key=ephemeral_key,
+        dh=b64urldecode(subscription["p256dh"].encode("utf-8")),
+        auth_secret=b64urldecode(subscription["authSecret"].encode("utf-8")),
+        version="aes128gcm",
+    )
+
+    headers.update({
+        "Content-Type": "application/octet-stream",
+        "Content-Encoding": "aes128gcm",
+        "TTL": "43200",
+    })
+
+    try:
+        response = requests.post(endpoint, data=encrypted, headers=headers, timeout=10)
+    except requests.RequestException as error:
+        raise PushDeliveryError(str(error)) from error
+
+    if response.status_code in (404, 410):
+        raise PushDeliveryError(f"Push service rejected the subscription ({response.status_code})", stale=True)
+    if response.status_code >= 400:
+        raise PushDeliveryError(f"Push service returned {response.status_code}: {response.text[:200]}")
+
+
+def _send_fcm(subscription: dict[str, Any], title: str, body: str, data: dict[str, Any]) -> None:
+    service_account = get_fcm_service_account()
+    access_token = _get_fcm_access_token()
+    url = f"https://fcm.googleapis.com/v1/projects/{service_account['project_id']}/messages:send"
+    message = {
+        "message": {
+            "token": subscription["fcmToken"],
+            "notification": {"title": title, "body": body},
+            "data": {str(key): str(value) for key, value in data.items()},
+        }
+    }
+    try:
+        response = requests.post(
+            url,
+            json=message,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10,
+        )
+    except requests.RequestException as error:
+        raise PushDeliveryError(str(error)) from error
+
+    if response.status_code == 404 or "UNREGISTERED" in response.text:
+        raise PushDeliveryError(f"FCM rejected the token ({response.status_code})", stale=True)
+    if response.status_code >= 400:
+        raise PushDeliveryError(f"FCM returned {response.status_code}: {response.text[:200]}")
+
+
+def send_push_notification(
+    request: Request,
+    anonymous_user_id: str,
+    title: str,
+    body: str,
+    data: dict[str, Any] | None = None,
+) -> dict[str, int]:
+    """Send one transactional push to every device an identity has
+    registered (TASK-274 AC#3). Meant to be called directly from the
+    endpoint that just produced the news worth notifying about (e.g. a Duel
+    opponent answering, TASK-275/TASK-45) - there is deliberately no
+    scheduler/broadcast path here. No-ops (delivered=0, no exception) for an
+    identity with no subscriptions, since "nobody opted in" is the normal
+    case, not an error.
+    """
+    data = data or {}
+    response = push_subscriptions_table.query(
+        KeyConditionExpression="anonymousUserId = :uid",
+        ExpressionAttributeValues={":uid": anonymous_user_id},
+    )
+    subscriptions = response.get("Items", [])
+
+    delivered = 0
+    failed = 0
+    pruned = 0
+
+    for subscription in subscriptions:
+        channel = subscription.get("channel")
+        try:
+            if channel == "web_push":
+                _send_web_push(subscription, title, body, data)
+            elif channel == "fcm":
+                _send_fcm(subscription, title, body, data)
+            else:
+                continue
+            delivered += 1
+            _track_duel_event(request, "push_delivery_succeeded", {"channel": channel})
+        except PushDeliveryError as error:
+            failed += 1
+            _track_duel_event(request, "push_delivery_failed", {"channel": channel, "stale": error.stale})
+            if error.stale:
+                pruned += 1
+                push_subscriptions_table.delete_item(
+                    Key={
+                        "anonymousUserId": subscription["anonymousUserId"],
+                        "subscriptionId": subscription["subscriptionId"],
+                    }
+                )
+        except HTTPException:
+            # Channel not configured (e.g. FCM before TASK-45 provisions
+            # real credentials) - don't fail the caller's own request over a
+            # notification that couldn't be attempted.
+            failed += 1
+            logger.warning(f"Push channel '{channel}' is not configured; skipped one delivery")
+
+    return {"delivered": delivered, "failed": failed, "pruned": pruned}
+
+
+@app.post("/push/subscribe")
+async def subscribe_to_push(subscribe_request: PushSubscribeRequest, request: Request):
+    """Register (or refresh) one device's push registration (TASK-274).
+    Anonymous-first like every other endpoint; TASK-275 (web) and TASK-45
+    (native Android) are the actual callers - this only stores where a
+    future transactional notification should be sent."""
+    anonymous_user_id = require_anonymous_user_id(request)
+
+    if subscribe_request.channel == "web_push":
+        if not subscribe_request.endpoint or not subscribe_request.p256dh or not subscribe_request.auth:
+            raise HTTPException(status_code=400, detail="web_push requires endpoint, p256dh and auth")
+        identifier = subscribe_request.endpoint
+    else:
+        if not subscribe_request.fcmToken:
+            raise HTTPException(status_code=400, detail="fcm requires fcmToken")
+        identifier = subscribe_request.fcmToken
+
+    now_ms = int(time.time() * 1000)
+    item: dict[str, Any] = {
+        "anonymousUserId": anonymous_user_id,
+        "subscriptionId": _push_subscription_id(identifier),
+        "channel": subscribe_request.channel,
+        "createdAt": now_ms,
+        "lastSeenAt": now_ms,
+        "expirationTime": int(time.time()) + PUSH_SUBSCRIPTION_TTL_SECONDS,
+    }
+    if subscribe_request.channel == "web_push":
+        item["endpoint"] = subscribe_request.endpoint
+        item["p256dh"] = subscribe_request.p256dh
+        item["authSecret"] = subscribe_request.auth
+    else:
+        item["fcmToken"] = subscribe_request.fcmToken
+
+    push_subscriptions_table.put_item(Item=item)
+    _track_duel_event(request, "push_subscribed", {"channel": subscribe_request.channel})
+    return {"subscribed": True, "channel": subscribe_request.channel}
+
+
+@app.post("/push/unsubscribe")
+async def unsubscribe_from_push(unsubscribe_request: PushUnsubscribeRequest, request: Request):
+    """Remove one device's push registration (TASK-274). Idempotent:
+    deleting an already-absent subscription is not an error."""
+    anonymous_user_id = require_anonymous_user_id(request)
+
+    identifier = (
+        unsubscribe_request.endpoint
+        if unsubscribe_request.channel == "web_push"
+        else unsubscribe_request.fcmToken
+    )
+    if not identifier:
+        raise HTTPException(status_code=400, detail="endpoint (web_push) or fcmToken (fcm) is required")
+
+    push_subscriptions_table.delete_item(
+        Key={
+            "anonymousUserId": anonymous_user_id,
+            "subscriptionId": _push_subscription_id(identifier),
+        }
+    )
+    _track_duel_event(request, "push_unsubscribed", {"channel": unsubscribe_request.channel})
+    return {"subscribed": False}
+
+
+@app.get("/push/vapid-public-key")
+async def get_push_vapid_public_key():
+    """The public half of the VAPID keypair, for the browser's
+    pushManager.subscribe({applicationServerKey}) call (TASK-275). Not
+    identity-scoped - a single global constant, safe to expose to anyone,
+    same as any other public key."""
+    return {"key": get_vapid_public_key()}
 
 
 @app.get("/health")

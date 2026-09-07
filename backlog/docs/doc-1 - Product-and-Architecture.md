@@ -373,6 +373,46 @@ dev table, or `/dev` SSM hierarchy.
   from the party session's averages - followed by the personal verdict text.
   A load-tested tuning of the polling rate limit and the abandoned-room
   safety-net timeout is deliberately deferred to `TASK-49`.
+- **Push notifications** (`TASK-274`) add one shared `push_subscriptions`
+  table (PK `anonymousUserId`, SK `subscriptionId` - a sha256 of the
+  device's own endpoint/token, so re-subscribing the same device overwrites
+  its row instead of accumulating duplicates) provisioned 1/1 within the
+  Free Tier, `deletion_protection_enabled` like `users`/`moral_profiles`
+  (real opt-in state, not disposable), and a `channel` field
+  (`web_push`|`fcm`) so both delivery mechanisms share one table instead of
+  two. `POST /push/subscribe`/`/push/unsubscribe` are anonymous-first like
+  every other endpoint; `GET /push/vapid-public-key` is unauthenticated
+  (the VAPID public key is not identity-scoped, safe to expose to anyone).
+  `send_push_notification(request, anonymous_user_id, title, body, data)` is
+  the one generic entry point every future transactional trigger calls
+  (e.g. a Duel opponent answering) - it fans out to every device an identity
+  registered, auto-prunes a subscription the push service reports as dead
+  (410/404/`UNREGISTERED`), and is deliberately not wired to any endpoint
+  yet (no scheduler/broadcast path exists on purpose; `TASK-275`/`TASK-45`
+  are the first real callers). Web Push (RFC 8291/8292) uses `py-vapid` +
+  `http-ece` directly rather than the `pywebpush` wrapper, which forces an
+  unconditional `aiohttp` dependency (plus its own
+  multidict/yarl/frozenlist/attrs/aiosignal tree) into the Lambda package
+  just for a synchronous HTTP POST `requests` already does; both `py-vapid`
+  and `http-ece` need only `cryptography`, already present via
+  `PyJWT[crypto]`. FCM likewise uses the direct HTTP v1 API (a service-account
+  JWT signed with the existing PyJWT/cryptography dependency, exchanged for
+  an OAuth2 bearer token) instead of the much heavier `firebase-admin` SDK.
+  No Firebase project exists in this stack yet - `FCM_SERVICE_ACCOUNT_SSM_NAME`
+  is deliberately left empty, and `get_fcm_service_account()` raises a clear
+  503 rather than silently no-op-ing until `TASK-45` (native Android push)
+  creates one; a send attempt against an unconfigured channel degrades to a
+  failed delivery for that one device, never a 500 for the caller. The VAPID
+  private key follows the same out-of-band SSM pattern as `groq_api_key`
+  (Terraform placeholder + `ignore_changes`, the real value set by a
+  `deploy.yml` step via `aws ssm put-parameter` before `terraform apply`,
+  conditioned on the `VAPID_PRIVATE_KEY` secret actually existing).
+  `push_subscribed`/`push_unsubscribed`/`push_delivery_succeeded`/
+  `push_delivery_failed` are tracked server-side via the existing
+  `_track_duel_event` helper (same legacy `analytics_table` every other
+  server-initiated event already uses); `open`/`click` are inherently
+  client-only (a service worker's own `notificationclick`) and are `TASK-275`
+  /`TASK-45`'s to add, not this table's concern.
 
 ## Analytics contract
 

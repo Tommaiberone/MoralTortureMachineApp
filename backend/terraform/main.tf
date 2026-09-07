@@ -457,6 +457,48 @@ resource "aws_dynamodb_table" "daily_moral_crime_votes" {
 # natural key, since several distinct alerts can share the same
 # (statusCode, pathSignature) coalescing signature over time. TTL keeps this a
 # recent-history audit trail rather than permanent storage.
+# TASK-274: shared subscription store for both push channels - `channel`
+# ('web_push'|'fcm') distinguishes the record shape so TASK-275 (web) and
+# TASK-45 (native Android) reuse the same table instead of two separate
+# ones. subscriptionId is a deterministic hash of the device's own endpoint/
+# token (see _push_subscription_id in backend_fastapi.py), so re-subscribing
+# the same device overwrites its own row rather than accumulating
+# duplicates; anonymousUserId as the partition key lets one identity have
+# several rows (one per device) that a single send fans out to.
+resource "aws_dynamodb_table" "push_subscriptions" {
+  name           = "${var.environment}-${var.stack_name}-push-subscriptions"
+  billing_mode   = "PROVISIONED"
+  read_capacity  = 1
+  write_capacity = 1
+  hash_key       = "anonymousUserId"
+  range_key      = "subscriptionId"
+  # Same reasoning as TASK-253 (aws_dynamodb_table.moral_profiles/users):
+  # this holds real opt-in state, not disposable cache data.
+  deletion_protection_enabled = true
+
+  attribute {
+    name = "anonymousUserId"
+    type = "S"
+  }
+
+  attribute {
+    name = "subscriptionId"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "expirationTime"
+    enabled        = true
+  }
+
+  tags = {
+    Name        = "Moral Torture Machine Push Subscriptions"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+    Purpose     = "Web Push (VAPID) and native FCM device registrations, TASK-274"
+  }
+}
+
 resource "aws_dynamodb_table" "ops_error_alerts" {
   name           = "${var.environment}-${var.stack_name}-ops-error-alerts"
   billing_mode   = "PROVISIONED"
@@ -508,6 +550,30 @@ resource "aws_ssm_parameter" "groq_api_key" {
 moved {
   from = aws_ssm_parameter.analytics_admin_key
   to   = aws_ssm_parameter.analytics_fingerprint_pepper
+}
+
+# TASK-274: raw base64url P-256 private scalar for VAPID (Web Push, RFC
+# 8292), not a PEM. Generate with:
+#   python -c "from py_vapid import Vapid02 as Vapid; from py_vapid.utils import b64urlencode, num_to_bytes; v = Vapid(); v.generate_keys(); print(b64urlencode(num_to_bytes(v.private_key.private_numbers().private_value, 32)))"
+# Same out-of-band update pattern as aws_ssm_parameter.groq_api_key: the
+# deploy workflow overwrites the real value via `aws ssm put-parameter`
+# before `terraform apply`, so this resource's own value is never the
+# source of truth for the live key.
+resource "aws_ssm_parameter" "vapid_private_key" {
+  name        = "/${var.environment}/${var.stack_name}/vapid-private-key"
+  description = "VAPID private key (raw base64url P-256 scalar) for Web Push"
+  type        = "SecureString"
+  value       = var.vapid_private_key
+
+  tags = {
+    Name        = "Moral Torture Machine VAPID Private Key"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+
+  lifecycle {
+    ignore_changes = [value]
+  }
 }
 
 resource "aws_ssm_parameter" "analytics_fingerprint_pepper" {
@@ -1044,7 +1110,8 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           aws_dynamodb_table.party_participants.arn,
           aws_dynamodb_table.daily_moral_crime_votes.arn,
           "${aws_dynamodb_table.daily_moral_crime_votes.arn}/index/*",
-          aws_dynamodb_table.ops_error_alerts.arn
+          aws_dynamodb_table.ops_error_alerts.arn,
+          aws_dynamodb_table.push_subscriptions.arn
         ]
       },
       {
@@ -1061,7 +1128,8 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           aws_dynamodb_table.party_rooms.arn,
           aws_dynamodb_table.party_participants.arn,
           aws_dynamodb_table.daily_moral_crime_votes.arn,
-          aws_dynamodb_table.ops_error_alerts.arn
+          aws_dynamodb_table.ops_error_alerts.arn,
+          aws_dynamodb_table.push_subscriptions.arn
         ]
       },
       {
@@ -1069,7 +1137,8 @@ resource "aws_iam_role_policy" "lambda_permissions" {
         Action = ["ssm:GetParameter"]
         Resource = [
           aws_ssm_parameter.groq_api_key.arn,
-          aws_ssm_parameter.analytics_fingerprint_pepper.arn
+          aws_ssm_parameter.analytics_fingerprint_pepper.arn,
+          aws_ssm_parameter.vapid_private_key.arn
         ]
       },
       {
@@ -1210,19 +1279,26 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE                            = aws_dynamodb_table.dilemmas.name
-      ANALYTICS_TABLE                           = aws_dynamodb_table.user_analytics.name
-      PRODUCT_EVENTS_TABLE                      = aws_dynamodb_table.product_events.name
-      USERS_TABLE                               = aws_dynamodb_table.users.name
-      MORAL_PROFILES_TABLE                      = aws_dynamodb_table.moral_profiles.name
-      CHALLENGES_TABLE                          = aws_dynamodb_table.challenges.name
-      CHALLENGE_PARTICIPANTS_TABLE              = aws_dynamodb_table.challenge_participants.name
-      PARTY_ROOMS_TABLE                         = aws_dynamodb_table.party_rooms.name
-      PARTY_PARTICIPANTS_TABLE                  = aws_dynamodb_table.party_participants.name
-      DAILY_MORAL_CRIME_VOTES_TABLE             = aws_dynamodb_table.daily_moral_crime_votes.name
-      OPS_ERROR_ALERTS_TABLE                    = aws_dynamodb_table.ops_error_alerts.name
-      GROQ_API_KEY_SSM_NAME                     = aws_ssm_parameter.groq_api_key.name
-      ANALYTICS_FINGERPRINT_SECRET_SSM_NAME     = aws_ssm_parameter.analytics_fingerprint_pepper.name
+      DYNAMODB_TABLE                        = aws_dynamodb_table.dilemmas.name
+      ANALYTICS_TABLE                       = aws_dynamodb_table.user_analytics.name
+      PRODUCT_EVENTS_TABLE                  = aws_dynamodb_table.product_events.name
+      USERS_TABLE                           = aws_dynamodb_table.users.name
+      MORAL_PROFILES_TABLE                  = aws_dynamodb_table.moral_profiles.name
+      CHALLENGES_TABLE                      = aws_dynamodb_table.challenges.name
+      CHALLENGE_PARTICIPANTS_TABLE          = aws_dynamodb_table.challenge_participants.name
+      PARTY_ROOMS_TABLE                     = aws_dynamodb_table.party_rooms.name
+      PARTY_PARTICIPANTS_TABLE              = aws_dynamodb_table.party_participants.name
+      DAILY_MORAL_CRIME_VOTES_TABLE         = aws_dynamodb_table.daily_moral_crime_votes.name
+      OPS_ERROR_ALERTS_TABLE                = aws_dynamodb_table.ops_error_alerts.name
+      PUSH_SUBSCRIPTIONS_TABLE              = aws_dynamodb_table.push_subscriptions.name
+      GROQ_API_KEY_SSM_NAME                 = aws_ssm_parameter.groq_api_key.name
+      ANALYTICS_FINGERPRINT_SECRET_SSM_NAME = aws_ssm_parameter.analytics_fingerprint_pepper.name
+      VAPID_PRIVATE_KEY_SSM_NAME            = aws_ssm_parameter.vapid_private_key.name
+      VAPID_SUBJECT                         = "mailto:tommasobersani@gmail.com"
+      # TASK-45 sets this once it creates the Firebase project and its SSM
+      # SecureString; empty until then, and get_fcm_service_account() raises
+      # a clear 503 instead of silently no-op-ing on a send.
+      FCM_SERVICE_ACCOUNT_SSM_NAME              = ""
       COGNITO_USER_POOL_ID                      = aws_cognito_user_pool.users.id
       COGNITO_APP_CLIENT_ID                     = aws_cognito_user_pool_client.web.id
       COGNITO_APP_CLIENT_IDS                    = join(",", [aws_cognito_user_pool_client.web.id, aws_cognito_user_pool_client.android.id])
@@ -1289,8 +1365,12 @@ resource "aws_lambda_function" "retention_sweep" {
       PARTY_PARTICIPANTS_TABLE                = aws_dynamodb_table.party_participants.name
       DAILY_MORAL_CRIME_VOTES_TABLE           = aws_dynamodb_table.daily_moral_crime_votes.name
       OPS_ERROR_ALERTS_TABLE                  = aws_dynamodb_table.ops_error_alerts.name
+      PUSH_SUBSCRIPTIONS_TABLE                = aws_dynamodb_table.push_subscriptions.name
       GROQ_API_KEY_SSM_NAME                   = aws_ssm_parameter.groq_api_key.name
       ANALYTICS_FINGERPRINT_SECRET_SSM_NAME   = aws_ssm_parameter.analytics_fingerprint_pepper.name
+      VAPID_PRIVATE_KEY_SSM_NAME              = aws_ssm_parameter.vapid_private_key.name
+      VAPID_SUBJECT                           = "mailto:tommasobersani@gmail.com"
+      FCM_SERVICE_ACCOUNT_SSM_NAME            = ""
       COGNITO_USER_POOL_ID                    = aws_cognito_user_pool.users.id
       COGNITO_APP_CLIENT_ID                   = aws_cognito_user_pool_client.web.id
       COGNITO_APP_CLIENT_IDS                  = join(",", [aws_cognito_user_pool_client.web.id, aws_cognito_user_pool_client.android.id])

@@ -7,3 +7,10 @@ requests==2.34.2
 uvicorn==0.32.1
 PyJWT[crypto]==2.13.0
 # All dependencies are up to date as of 2026-08-05 (TASK-114/116)
+# TASK-274: Web Push (RFC 8291/8292). py-vapid + http-ece only need
+# cryptography (already present via PyJWT[crypto]) - deliberately not
+# `pywebpush`, which forces an unconditional aiohttp dependency (and its own
+# multidict/yarl/frozenlist/attrs/aiosignal tree) into the Lambda package
+# just for a synchronous HTTP POST that `requests` already does.
+py-vapid==1.9.4
+http-ece==1.2.1

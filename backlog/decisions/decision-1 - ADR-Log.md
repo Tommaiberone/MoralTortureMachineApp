@@ -3996,6 +3996,206 @@ reads against the primary prompt. `TASK-272` (orphaned story-flows script/
 data) and `TASK-249` (broader `/health`-style test coverage) are net-new
 Backlog entries this batch surfaced rather than resolved.
 
+### ADR-121 — Second `analytics-optimize` run: confirmatory read, weekly trend added, `TASK-231`'s 2026-09-15 block still respected (TASK-223)
+
+Context: the user asked for a growth-hacker-style deep read of current
+analytics plus an educational walkthrough (not an expert), prompted by a
+"slowly growing" impression from the admin dashboard, 2026-09-07. Same
+method as `ADR-106`: direct read-only scan of both DynamoDB tables through
+`mtm-analytics-readonly` (confirmed non-root via `sts get-caller-identity`
+first), `build_analytics_overview` reused unmodified, no metric
+reimplemented.
+
+Findings, 30-day window (2026-08-08/2026-09-07, 24,432 events, 983 active
+identities): short-test completion 559/685 = 81.6% (gate >=60%, superato,
+consistent with `ADR-106`'s 80.6%). Result-to-share 59/556 = 10.6% (gate
+>=15%, still not met; in the same 10-14% band every reading since
+`TASK-166`'s first measurement). D1/D7 retention: D1 = 45/977 = 4.6%, D7 =
+2/796 = 0.3% (cohort above the 30-identity floor) - unchanged in substance
+from `ADR-106`'s 0.3% three weeks in; `TASK-58`/`TASK-83` (Open Points
+gating paid acquisition/subscription on this exact metric) remain the
+correct, already-existing escalation, so none was re-added. Viral
+coefficient stayed near zero on every attributed channel (`copy_link` 0.054,
+`whatsapp` 0.083, `facebook` 0.0); the `untagged`/`unknown` buckets with
+completed referrals but no attributed share attempt are pre-`TASK-33`
+traffic (old links created before variant tagging shipped 2026-09-01),
+already explained in `ADR-106`, not a new gap.
+
+The four `TASK-219`-`222` copy experiments were checked but **not**
+evaluated for a winner: `TASK-231` explicitly blocks any conclusion before
+2026-09-15 (14 full days after the 2026-09-01 deploy), and that block still
+applies with 8 days left. Two of the four (`authPromptCopy`,
+`partyCreateCopy`) still show `insufficientSample: true` on every tagged
+variant. The other two now technically clear the naive per-variant sample
+floor - `challengeButtonCopy`'s `rival` variant (33 exposed, 18.2%
+conversion) vs. an `unknown` baseline bucket, and `homeModeCopy`'s two
+tagged variants both cleared (`direct` 67 exposed/82.1%, `hook` 88
+exposed/83.0%, effectively tied) - but no z-test was run and no code was
+touched: `TASK-231`'s own rationale for the wait (evaluate all four plus
+`creativeVariants` together, once, off one clean 14-day window) is itself a
+guard against early-peeking false positives, and a same-magnitude "looks
+significant early" reading is exactly the failure mode that discipline
+exists to prevent. Logged here so the 2026-09-15 run has a same-session
+baseline to compare against, not as a finding to act on now.
+
+New this run - a weekly active-identity trend the user's "slowly growing"
+question actually needed, built by calling `build_analytics_overview` with
+`days=7` at seven successive week-ending timestamps (reusing the same
+function, not a new metric): 176 (w/e 07-27) -> 173 (08-03) -> 245 (08-10)
+-> 210 (08-17) -> 232 (08-24) -> 285 (08-31) -> 210 (09-07, partial day,
+last data point only ~half a day old at scan time so almost certainly an
+undercount). Real but noisy growth, no reliable week-over-week rate
+estimated from 7 points - reported to the user as a range and a caveat, not
+a single trend number.
+
+Decision: no task status changed, no code touched, no new escalation filed
+- this run's gate readings match `ADR-106`'s within noise and the existing
+escalations (`TASK-33`/`156` already High/shipped, `TASK-58`/`83` already
+Open Points) already cover them. `TASK-231` remains the correct vehicle for
+the next real re-check and A/B conclusions, unlocked 2026-09-15.
+
+Consequences: purely a read/decide/explain run. The weekly trend numbers
+above are the first time this repo has a multi-week active-identity series
+in one place; if a future run wants this regularly it's a candidate for a
+small backend rollup rather than a 7x manual re-scan (noted for whoever
+picks up `TASK-231` next, not filed as its own task - too small to be worth
+tracking separately from that run).
+
+### ADR-122 — Skip the formal retention diagnosis, build push notifications directly: `TASK-273` put in standby, `TASK-274`/`TASK-275`/rescoped `TASK-45` filed instead
+
+Context: immediately after `ADR-121`/`TASK-273` filed the D7 diagnosis as a
+spike, the user asked one more targeted question - given the frontend is
+already a PWA-with-manifest, can push notifications actually be built - and
+requested cards be created directly, with `TASK-273` put on standby rather
+than completed first.
+
+Two pieces of real state were checked before answering (same "verify before
+a wrong guess" discipline as `ADR-116`/`118`/`119`/`120`): the frontend has
+`site.webmanifest` but **no service worker anywhere** in `frontend/src` (no
+`navigator.serviceWorker` reference), and no `@capacitor/push-notifications`
+dependency - both push paths (web and native) need building from zero, not
+flipping a flag. A rough OS split of the last 30 days of web identities,
+read directly from legacy-schema `userAgent` strings (not an official
+metric, a one-off classification for this decision only): iOS ~38%,
+Android-browser ~29%, native-Android-app ~16%, desktop ~16%. iOS Safari
+cannot receive Web Push unless the user has installed the PWA to the Home
+Screen on iOS 16.4+ - a real reach cap on the web channel, not a
+implementation gap.
+
+Decision: the user chose to act on `TASK-273`'s strongest early signal
+(Moral Duel: D1 11.4% vs D7 0%, a fast pull-back that doesn't sustain to a
+week) rather than wait for the spike's full acceptance criteria (category
+benchmark, wider-sample confirmation, a ranked lever list). Filed three
+cards instead of completing the diagnosis: `TASK-274` (shared backend -
+one DynamoDB subscription table with a `web_push`/`fcm` channel field, one
+generic send function, privacy-safe delivery/open/opt-out events - so the
+two channels don't duplicate storage or metrics), `TASK-275` (Web Push:
+service worker, opt-in gated behind demonstrated value not first launch,
+explicit no-prompt path for non-installed iOS Safari), and `TASK-45`
+rescoped from its original vague "FCM opt-in" to specifically native
+Android/Capacitor/FCM, its 2026-08-10 deferral note ("reassess only after
+measured organic Daily return") explicitly superseded - Daily never became
+a meaningful first-touch surface (3 identities in 60 days) so that
+condition was never going to be met, while Duel's D1/D7 gap already is a
+clear enough signal. Both `TASK-45` and `TASK-275` share the same initial
+trigger by design (Duel opponent answers/completes) instead of each picking
+its own, and both depend on `TASK-274` instead of building their own
+storage. `TASK-273` itself moved to `Backlog` (standby, not closed) with a
+note on why and what it's still good for later: confirming the push
+experiment actually moved D7, and its still-open ACs (category benchmark,
+wider-sample confirmation) remain an independent solidity check regardless
+of already having acted on one lever.
+
+Consequences: no code touched this run, cards only. `TASK-274`/`275`/rescoped
+`TASK-45` are all `To Do`, not `In Progress` - none of them has been started.
+`TASK-45`'s APK-rebuild consequence and this repo's mandatory pre-rebuild
+warning still apply whenever it's actually implemented; nothing here
+pre-clears that gate. If the Duel-trigger push doesn't move D7 once
+measurable, `TASK-273`'s parked ACs (particularly the category-benchmark
+one) are the right next stop before inventing a second lever from scratch.
+
+### ADR-123 — `TASK-274` implemented: shared push subscription store + generic send function, `py-vapid`/`http-ece` over `pywebpush`, direct FCM HTTP v1 over `firebase-admin`
+
+Context: immediately after `ADR-122` filed `TASK-274`/`275`/rescoped `TASK-45`,
+the user asked to implement `TASK-274` (the shared backend foundation for
+both push channels) directly, 2026-09-07.
+
+Two dependency decisions were made and verified against the real package
+metadata rather than assumed, matching this session's established "check the
+real thing before a wrong guess" discipline: `pip install pywebpush` (tried
+first) forces an unconditional `aiohttp` dependency (confirmed via
+`pip show pywebpush` -> `Requires: aiohttp, cryptography, http-ece, py-vapid,
+requests`) plus aiohttp's own multidict/yarl/frozenlist/attrs/aiosignal tree,
+just to make one synchronous HTTP POST that `requests` (already a dependency)
+already does - uninstalled it and implemented the RFC 8291/8292 web_push flow
+directly against `py-vapid` (VAPID JWT/key handling) + `http-ece` (aes128gcm
+payload encryption), both of which need only `cryptography` (already present
+via `PyJWT[crypto]`, confirmed via `pip show py-vapid`/`http-ece`). The full
+encrypt/decrypt roundtrip (ephemeral ECDH key, HKDF, AES-128-GCM) was verified
+against `http_ece`'s own real API by generating a throwaway subscriber
+keypair and confirming an encrypted payload decrypts back byte-identical
+before trusting the glue code, not by reading the RFC and hoping. For FCM,
+skipped `firebase-admin` (heavier still) entirely in favor of Google's direct
+HTTP v1 API: a service-account JWT signed RS256 with the existing PyJWT
+dependency, exchanged for a bearer token at `oauth2.googleapis.com/token`,
+then a plain `requests.post` to `fcm.googleapis.com/v1/projects/.../messages:send`
+- zero new dependencies for that channel.
+
+Decision: built exactly what `TASK-274`'s AC's describe, with one substitution
+and one addition beyond the literal AC text: AC#3 named "Firebase Admin SDK"
+for the fcm channel; implemented as the direct HTTP v1 API instead for the
+dependency-weight reason above - same capability, noted here rather than
+silently diverging from what the task said. AC#4 asked for privacy-safe
+delivery/open/click/opt-out events; while auditing that AC before marking it
+done, noticed `push_subscribe`/`unsubscribe` had no server-side tracking call
+at all (only `push_delivery_succeeded`/`_failed` did) - added
+`_track_duel_event(request, "push_subscribed"/"push_unsubscribed", {"channel":
+...})` to both endpoints (reusing the same existing helper every other
+server-initiated event already uses, not a new mechanism) rather than leave
+"opt-out" the one category from the AC's own list with no implementation.
+`open`/`click` are correctly left to `TASK-275`/`TASK-45` (inherently
+client-only, a service worker's `notificationclick`). `send_push_notification`
+is written but deliberately not called from anywhere yet - `TASK-274`'s own
+scope note excludes triggers - so `TASK-45`/`TASK-275` are the first real
+callers. `push_subscriptions` is one table shared by both channels
+(`channel` field), `deletion_protection_enabled` like `users`/`moral_profiles`
+per `TASK-253`'s reasoning, provisioned 1/1 within the Free Tier. The VAPID
+private key follows `groq_api_key`'s exact out-of-band pattern (Terraform
+placeholder + `ignore_changes`, a new conditional `deploy.yml` step puts the
+real value from a `VAPID_PRIVATE_KEY` secret before `terraform apply`, skipped
+harmlessly if that secret doesn't exist yet) - full details and the exact key-
+generation command are in `TASK-274`'s implementation notes for whoever sets
+it up. `FCM_SERVICE_ACCOUNT_SSM_NAME` is left empty on purpose: no Firebase
+project exists in this stack, creating one is `TASK-45`'s job, and
+`get_fcm_service_account()` raises a clear 503 rather than a silent no-op
+until it does.
+
+Verification: `backend/.venv`'s real `terraform validate` (isolated from the
+live S3 backend - `.terraform` was moved aside, a throwaway empty-zip
+`lambda_function.zip` placeholder created so `filebase64sha256` could
+evaluate, both removed and the real `.terraform` restored afterward, same
+`personal`/root-avoidance discipline as every other AWS-touching step this
+session) passed clean against the new table/SSM parameter/IAM
+grants/variable, only pre-existing unrelated `range_key` deprecation warnings
+present. `terraform fmt` applied (alignment only, no semantic change). 16 new
+unit tests plus the full existing 203 all pass (219/219,
+`backend/.venv/Scripts/python.exe -m unittest discover`); `py_compile` clean.
+No live SSM/Firebase credentials were created or touched - this run is
+100% local code, Terraform config, and CI workflow, nothing applied.
+
+Consequences: `TASK-274` moved to `Done`, AC#3 checked with its FCM-SDK
+substitution noted above rather than left silently reworded. No `terraform
+apply` or push-to-deploy has happened yet as part of this run; the next push
+to `main` will create the real `push_subscriptions` table and
+`vapid-private-key` SSM parameter (placeholder value) per this repo's
+standing commit/push authorization - web_push sends will 503 until the user
+creates the `VAPID_PRIVATE_KEY` GitHub secret and re-runs the deploy (the CI
+step is written to skip cleanly, not fail, until then). No Android rebuild is
+triggered by this change (backend/Terraform only, nothing in `frontend/` or
+`frontend/android/` touched) so `CLAUDE.md`'s mandatory-APK-rebuild-warning
+does not apply here. `TASK-275` (Web Push/PWA) and `TASK-45` (native Android,
+rescoped by `ADR-122`) are unblocked and are the next natural picks.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
