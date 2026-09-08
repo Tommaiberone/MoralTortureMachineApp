@@ -4221,6 +4221,79 @@ Backend`, `Get API Endpoint`, `Test API Health` all passed against the real
 Lambda package with `py-vapid`/`http-ece` actually installed) - confirmed via
 `gh run view`, not assumed from a successful `git push`.
 
+### ADR-124 — 71 new "everyday life" dilemmas added to `dilemmas_en.json`, EN-only, style-calibrated with the user before writing the batch (`TASK-281`)
+
+Context: the user supplied a classic 45-item ethics-quiz list (magazine/book
+style: found pen, insurance overbilling, a lost wallet, a drunk 2 a.m. taxi
+driver, etc.) — plain Yes/No questions with none of this app's narrative
+stakes, answer framing, or tease copy — and asked for them to be added "and
+others in this style." The existing 44-dilemma catalog (`TASK-201`) skews
+almost entirely toward extreme/cosmic trolley-style stakes (runaway trains,
+plagues, dictatorships); this request was a genuine opportunity to diversify
+into grounded, relatable, lower-stakes territory instead, which the product
+docs (`doc-2`) and `TASK-228`'s dimension-correlation finding both support.
+Two decisions needed the user directly, so both were asked before writing 70
+dilemmas' worth of content on a guess: (1) how many originals to write beyond
+the 45 pasted — resolved as "+25 more," landing on 71 total once the source
+list turned out to be 46 items, not 45; (2) whether to keep the pasted
+dilemmas as plain Yes/No or elevate them into this app's actual format
+(narrative scenario with real consequences, two answers as concrete actions,
+two dark/sarcastic tease lines with emoji, 12 dimension weights) - the user
+confirmed "more complex, more in our style" after reviewing 8 fully-written
+samples in chat first, a checkpoint the user asked for explicitly before any
+file was touched.
+
+Choice: wrote all 71 dilemmas (46 adapted from the user's list + 25 original,
+same everyday-life register: workplace credit theft, a caretaker skimming
+from an elderly relative, an accidental salary-gap discovery, a parent's
+early dementia and the car keys, and similar) in the established schema, then
+merged them into `backend/data/dilemmas_en.json` via a script
+(`build_dilemmas.py`, scratchpad-only, not committed) that: generated 71
+unique 24-char-hex `_id`s via `secrets.token_hex(12)`, checked them against
+every existing EN+IT id for zero collisions, validated all 18 required keys
+present with no extras and all 12 weights in `[0.0, 1.0]` per item, and
+rewrote the file with `json.dump(..., indent=4, ensure_ascii=False)` to match
+the existing file's formatting and literal (non-escaped) emoji byte-for-byte,
+preserving its CRLF line endings. Result: 44 -> 115 EN dilemmas, a pure
+44-line-unchanged/1420-line-added diff, all 115 `dilemma` texts and
+`(firstAnswer, secondAnswer)` pairs confirmed unique. Weights were
+deliberately written to avoid `TASK-228`'s "all six dimensions move in
+lockstep" pattern where possible: several dilemmas here (e.g. the 4 a.m. red
+light with a sister needing the ER, or approaching an unsupervised child at a
+park) keep one or more dimensions nearly flat between the two answers because
+the scenario genuinely doesn't engage that value, rather than swinging all 6
+by default - a partial, incidental step toward `TASK-228`'s goal, not a
+substitute for that task's own correlation re-measurement.
+
+Same EN-only precedent as `TASK-201`/`ADR-090`: `dilemmas_it.json` was not
+touched (confirmed via `git diff`, zero changes), for the same reasoning
+already on record - IT usage under 1% of events, the app forced
+English-only by `TASK-101`. Per `ADR-091`/`ADR-092`, this seed JSON is not
+read at runtime (the backend scans/gets directly against the
+`moral-torture-machine-dilemmas` DynamoDB table); the 71 new dilemmas will
+only reach players once `populate_dynamodb_multilang.py --append-only` runs
+against prod, triggered by the `[populate-db-append]` commit-message marker
+on the commit that ships this content - the non-destructive path `ADR-092`
+built specifically for this situation.
+
+### Consequences
+
+- The dilemma catalog now spans two clearly different registers (cosmic/
+  trolley-style vs. grounded everyday-life) rather than one; future content
+  requests should specify which register is wanted, or a mix.
+- `TASK-228` (measure and fix the 6-dimension correlation problem) remains
+  open and should still re-run its correlation analysis on the new 115-item
+  pool rather than assuming this batch alone resolved it.
+- `TASK-59` (editorial taxonomy: categories, intensity, age suitability) is
+  still not implemented; these 71 dilemmas were classified by feel
+  (everyday/personal vs. the existing catalog's high-stakes register) with no
+  schema field to record that distinction, same gap `TASK-201` already left
+  open.
+- The scratchpad build script was not committed; the same generation
+  approach (id-collision-checked `secrets.token_hex(12)`, full key/range
+  validation before writing) should be recreated rather than assumed to
+  exist if another content batch is added later.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
