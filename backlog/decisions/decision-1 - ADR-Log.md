@@ -4354,13 +4354,144 @@ already-committed historical record.
   count, and via `anonymousUserId` cross-referenced against
   `product_events`/`user_analytics` for rough funnel context) once enough
   traffic accumulates - no new dashboard was built for this smoke test.
-- The account's provisioned DynamoDB capacity has zero remaining Free Tier
-  headroom; `TASK-282` must be resolved before the next feature that wants a
-  new provisioned table or GSI, not discovered again from scratch at that
-  point.
+- The account's provisioned DynamoDB capacity briefly had zero remaining
+  Free Tier headroom; resolved the same day by `ADR-126`/`TASK-282`.
 - An account deletion today does not remove a prior anonymous gamebook
   waitlist signup (nor a push subscription); `TASK-284` is where that gap
   gets a real answer, not this task.
+
+### ADR-126 — `TASK-282` resolved: `push_subscriptions`, `gamebook_waitlist`, `ops_error_alerts` switched to `PAY_PER_REQUEST`, restoring DynamoDB Free Tier headroom
+
+Context: immediately after `ADR-125` filed `TASK-282` as an Open Point (the
+account's provisioned DynamoDB capacity had just reached exactly 25/25
+RCU-WCU, the entire Free Tier, with `gamebook_waitlist`'s addition), the user
+asked for a cost estimate of switching to on-demand billing instead, then
+asked to apply whichever subset seemed "smart." Verified against AWS's
+current official on-demand pricing page (not memory, per `CLAUDE.md`'s Free
+Tier rule) rather than assuming: on-demand mode has *no* free-tier allowance
+for request units - it bills from the very first read/write - unlike
+provisioned's always-free 25 RCU + 25 WCU (confirmed on
+`aws.amazon.com/free/database/`); on-demand's confirmed current US East rate
+is $0.625/million WRU and $0.125/million RRU (`aws.amazon.com/dynamodb/pricing/on-demand/`,
+worked example dated February 2026), eu-west-1 somewhat higher but the exact
+regional row wasn't extractable from the JS-rendered pricing table via
+automated fetch. Cross-referenced against this account's real measured
+traffic (`ADR-106`: 22,969 analytics events / 938 active identities over the
+2026-08-04..09-03 window) to ground the estimate rather than reasoning about
+on-demand pricing in the abstract, landing on an order-of-magnitude
+conclusion: at this app's current traffic, on-demand's actual bill rounds to
+a fraction of a cent per month, regardless of the exact eu-west-1 rate.
+
+Decision: rather than switching every provisioned table (which would trade
+today's genuinely-$0 provisioned bill for a small-but-nonzero one across the
+board), switched only the three tables with near-zero real traffic and no
+documented reason to stay provisioned - `push_subscriptions` (`send_push_notification`
+has no real caller yet per `TASK-274`'s own scope note; live `DescribeTable`
+via the `mtm-ops-readonly` profile confirmed `ItemCount: 0`),
+`gamebook_waitlist` (brand new, zero signups yet), and `ops_error_alerts`
+(write-only on a 4xx/5xx response and read only by the occasional
+ops-alerts-sweep scan, not a request-volume hot path; live `DescribeTable`
+confirmed 12 items / 3015 bytes - genuinely tiny). `party_rooms`/
+`party_participants` and `daily_moral_crime_votes` were deliberately left
+provisioned: `ADR-118` already measured their real polling-driven read cost
+and specifically chose provisioned capacity for that reason, so switching
+them needs the same kind of measurement first, not this task's blanket
+reasoning; `users`/`moral_profiles`/`challenges`/`challenge_participants`
+were also left provisioned since the account is comfortably within the Free
+Tier for them (22/25 RCU-WCU after this change) and they carry real, growing
+product traffic rather than near-zero traffic. This frees exactly 3/3
+RCU-WCU of headroom for the next provisioned table - the "intelligent
+subset" the user asked for rather than an all-or-nothing switch. `TASK-282`'s
+AC#1 (verify the total via AWS Cost Explorer/console, not just Terraform
+source) was completed this session using the scoped read-only
+`mtm-ops-readonly` CLI profile - explicitly *not* the `default` profile,
+which this local environment resolves to **root credentials on an unrelated
+AWS account** (`466133393938`, distinct from this app's real account
+`586250839220`); per `CLAUDE.md`'s "never use root credentials for routine
+development" rule, no command in this session used that profile for
+anything, and the user should be aware a bare `aws` CLI call here silently
+resolves to root rather than erroring.
+
+### Consequences
+
+- `push_subscriptions`/`gamebook_waitlist`/`ops_error_alerts` now bill
+  per-request instead of drawing from the provisioned Free Tier; at today's
+  traffic this is priced in fractions of a cent/month, but it is no longer
+  literally $0 the way a fully-covered provisioned table is - worth
+  reassessing if any of the three ever gets genuinely busy (e.g. once
+  `TASK-275`/`TASK-45` start actually sending pushes).
+- The account has 3/3 RCU-WCU of Free Tier headroom again for the next
+  provisioned table or GSI, without needing another capacity trade-off
+  decision immediately.
+- `party_rooms`/`party_participants`/`daily_moral_crime_votes` staying
+  provisioned means the 22/25 RCU-WCU ceiling will be hit again once enough
+  *new* provisioned tables accumulate; this only bought headroom, it didn't
+  remove the ceiling as a recurring constraint.
+- The local dev environment's default `aws` CLI profile is root on an
+  unrelated account - a standing footgun worth fixing (scoped profile as the
+  default, or removing root credentials from this machine entirely) even
+  though nothing in this session used it.
+
+### ADR-127 — `TASK-276` implemented: automated DynamoDB tag-value guard in CI, after causing the exact bug a 5th time
+
+Context: while implementing `ADR-126` above, `gamebook_waitlist`'s own
+`Purpose` tag (written earlier this same session, `TASK-281`) turned out to
+contain `(TASK-281)` - and the live deploy this session had already pushed
+(commit `ab06794`) failed at `terraform apply` with DynamoDB's
+`ValidationException: The Tag Value provided is invalid`, confirmed via
+`gh run view` on the failed `Deploy Full Stack` run. This is the identical
+failure mode already hit and fixed four times before (`party_rooms`/Duel
+2026-08-02 `ADR-055`, `ops_error_alerts` 2026-08-04 `TASK-137`, the
+multi-week-broken-pipeline incident `TASK-206`, `push_subscriptions`
+2026-09-07 `TASK-274`) - `TASK-276` was already filed after the 4th
+recurrence specifically to prevent a 5th, with AC's written and ready, but
+was still sitting in `Backlog` (never implemented) when this session caused
+exactly that 5th recurrence. Asked the user before proceeding, since CI
+pipeline changes are one of the categories `CLAUDE.md` calls out for
+notify-and-ask rather than autonomous action; the user confirmed.
+
+Decision: fixed the immediate tag (dropped the parenthetical, matching every
+prior fix's pattern: `"...waitlist (TASK-281)"` -> `"...waitlist"`), then
+implemented `TASK-276` as written. Verified DynamoDB's actual allowed
+tag-value character set against AWS's official current documentation rather
+than memory (`TASK-276`'s own AC demanded this): "letters, white space, and
+numbers, plus + - = . _ : /" - confirmed on the "Tagging restrictions in
+DynamoDB" developer guide page, notably *stricter* than the generic AWS
+Resource Groups Tagging API's own documented pattern (`[\s\S]*`, effectively
+unrestricted), which is exactly why this mistake keeps slipping past normal
+review: nothing about generic AWS tagging conventions would flag it.
+`backend/scripts/check_dynamodb_tag_values.py` parses every
+`aws_dynamodb_table` resource block in `backend/terraform/main.tf` (brace-
+counted, not a full HCL parser - this repo's `main.tf` structure is
+regular enough that a general parser dependency isn't justified), checks
+every literal string tag value (skipping non-literal values like
+`Environment = var.environment`, which can't carry hand-typed prose) against
+that character set and the 256-character limit, and exits non-zero with the
+offending table/key/value and reason if anything fails. Verified it both
+ways: a clean run against the current (fixed) `main.tf` passes, and a
+throwaway copy with the exact bug just fixed reproduces the failure with a
+clear message. Wired into `deploy.yml`'s `Backend Lint & Test` job (a new
+"Check DynamoDB tag values" step, right after the existing Python syntax
+check) rather than literally where `TASK-276`'s text suggested ("before
+Build Lambda package" inside `Deploy Backend`): `Backend Lint & Test` has no
+AWS credentials, needs no Lambda package or SSM calls, and already gates
+`Deploy Backend` via `needs:` - so a bad tag now fails in seconds without
+even starting the deploy job, strictly faster than the task's own suggested
+placement.
+
+### Consequences
+
+- A DynamoDB tag value with a disallowed character now fails CI in seconds,
+  before any AWS credentials are even used, instead of failing mid-`terraform
+  apply` in production after the Lambda package is already built.
+- The check only covers `aws_dynamodb_table` resources in
+  `backend/terraform/main.tf`, matching `TASK-276`'s literal scope (other
+  resource types use the more permissive generic AWS tag pattern, and
+  `frontend/terraform` has no DynamoDB resources to check).
+- This was the 5th recurrence of an already-twice-fixed, already-flagged
+  mistake; if a 6th one somehow gets past this guard (e.g. a future
+  DynamoDB resource type this script doesn't parse), that is itself a signal
+  the guard needs broadening, not that the guard was the wrong fix.
 
 ## Consequences
 

@@ -466,12 +466,17 @@ resource "aws_dynamodb_table" "daily_moral_crime_votes" {
 # duplicates; anonymousUserId as the partition key lets one identity have
 # several rows (one per device) that a single send fans out to.
 resource "aws_dynamodb_table" "push_subscriptions" {
-  name           = "${var.environment}-${var.stack_name}-push-subscriptions"
-  billing_mode   = "PROVISIONED"
-  read_capacity  = 1
-  write_capacity = 1
-  hash_key       = "anonymousUserId"
-  range_key      = "subscriptionId"
+  name = "${var.environment}-${var.stack_name}-push-subscriptions"
+  # TASK-282: PAY_PER_REQUEST, not PROVISIONED - real traffic today is near
+  # zero (send_push_notification has no real caller yet per TASK-274's own
+  # scope note), so this table's request cost rounds to $0/month either way;
+  # switching it frees its 1/1 RCU/WCU of Free Tier headroom for a table
+  # that actually needs guaranteed-free provisioned capacity, unlike
+  # party_rooms/party_participants (ADR-118 already measured and tuned their
+  # real polling read cost and deliberately kept them provisioned).
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "anonymousUserId"
+  range_key    = "subscriptionId"
   # Same reasoning as TASK-253 (aws_dynamodb_table.moral_profiles/users):
   # this holds real opt-in state, not disposable cache data.
   deletion_protection_enabled = true
@@ -500,11 +505,13 @@ resource "aws_dynamodb_table" "push_subscriptions" {
 }
 
 resource "aws_dynamodb_table" "gamebook_waitlist" {
-  name           = "${var.environment}-${var.stack_name}-gamebook-waitlist"
-  billing_mode   = "PROVISIONED"
-  read_capacity  = 1
-  write_capacity = 1
-  hash_key       = "email"
+  name = "${var.environment}-${var.stack_name}-gamebook-waitlist"
+  # TASK-282: PAY_PER_REQUEST - same reasoning as push_subscriptions just
+  # above (near-zero real traffic today, so request cost rounds to $0/month
+  # either way; freeing this table's 1/1 RCU/WCU restores Free Tier
+  # headroom).
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "email"
 
   attribute {
     name = "email"
@@ -521,16 +528,20 @@ resource "aws_dynamodb_table" "gamebook_waitlist" {
     Name        = "Moral Torture Machine Gamebook Waitlist"
     Environment = var.environment
     ManagedBy   = "Terraform"
-    Purpose     = "Physical gamebook demand-validation Early Bird email waitlist (TASK-281)"
+    Purpose     = "Physical gamebook demand-validation Early Bird email waitlist"
   }
 }
 
 resource "aws_dynamodb_table" "ops_error_alerts" {
-  name           = "${var.environment}-${var.stack_name}-ops-error-alerts"
-  billing_mode   = "PROVISIONED"
-  read_capacity  = 1
-  write_capacity = 1
-  hash_key       = "alertId"
+  name = "${var.environment}-${var.stack_name}-ops-error-alerts"
+  # TASK-282: PAY_PER_REQUEST - same reasoning as push_subscriptions/
+  # gamebook_waitlist above. Written only on a 4xx/5xx response and read
+  # only by the occasional ops-alerts-sweep scan/admin lookup, not a
+  # per-request hot path, so real volume stays low enough that request cost
+  # rounds to $0/month either way; freeing this table's 1/1 RCU/WCU restores
+  # Free Tier headroom.
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "alertId"
 
   attribute {
     name = "alertId"

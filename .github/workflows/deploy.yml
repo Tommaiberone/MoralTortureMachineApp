@@ -131,6 +131,16 @@ jobs:
           python -m py_compile scripts/populate_dynamodb_multilang.py
           python -m py_compile scripts/populate_story_flows.py
 
+      # TASK-276: catches a DynamoDB tag value terraform apply's real
+      # CreateTable/UpdateTable call would reject (parentheses, commas, etc.)
+      # - `terraform validate` never sees this, since it's an AWS-API-side
+      # restriction, not an HCL schema one. This exact mistake has broken
+      # the deploy 5 times already (ADR-055, TASK-137, TASK-206, TASK-274,
+      # TASK-281/282); this step fails in seconds, before Deploy Backend
+      # even starts, instead of mid-`terraform apply` in production.
+      - name: Check DynamoDB tag values
+        run: python scripts/check_dynamodb_tag_values.py terraform/main.tf
+
       - name: Run backend unit tests
         run: cd .. && python -m unittest backend.tests.test_analytics_models
 

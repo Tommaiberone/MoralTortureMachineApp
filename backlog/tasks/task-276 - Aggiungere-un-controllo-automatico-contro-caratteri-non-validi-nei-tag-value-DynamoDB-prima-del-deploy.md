@@ -3,9 +3,10 @@ id: TASK-276
 title: >-
   Aggiungere un controllo automatico contro caratteri non validi nei tag value
   DynamoDB prima del deploy
-status: Backlog
+status: Done
 assignee: []
 created_date: '2026-09-07 09:04'
+updated_date: '2026-09-08 15:35'
 labels:
   - infra
   - deploy
@@ -30,7 +31,7 @@ Serve un controllo automatico, non un altro promemoria testuale: uno script Pyth
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Script/check che valida i tag value di ogni risorsa DynamoDB in backend/terraform contro il set di caratteri reale documentato da AWS (verificato, non a memoria)
-- [ ] #2 Il check gira come step dedicato in deploy.yml prima di Build Lambda package, cosi' fallisce entro pochi secondi invece che a meta' di un terraform apply reale
-- [ ] #3 Il check viene eseguito anche localmente in questa sessione sui tag esistenti in main.tf per confermare che non ci siano altre violazioni non ancora scoperte
+- [x] #1 Script/check che valida i tag value di ogni risorsa DynamoDB in backend/terraform contro il set di caratteri reale documentato da AWS (verificato, non a memoria)
+- [x] #2 Il check gira come step dedicato in deploy.yml prima di Build Lambda package, cosi' fallisce entro pochi secondi invece che a meta' di un terraform apply reale
+- [x] #3 Il check viene eseguito anche localmente in questa sessione sui tag esistenti in main.tf per confermare che non ci siano altre violazioni non ancora scoperte
 <!-- AC:END -->

@@ -3,9 +3,10 @@ id: TASK-282
 title: >-
   DynamoDB provisioned capacity ha raggiunto il tetto Free Tier 25/25 RCU-WCU
   dopo TASK-281
-status: Open Points
+status: Done
 assignee: []
 created_date: '2026-09-08 14:43'
+updated_date: '2026-09-08 15:35'
 labels: []
 dependencies: []
 priority: high
@@ -21,7 +22,7 @@ TASK-281 ha aggiunto la tabella gamebook_waitlist (PROVISIONED 1/1 RCU/WCU). Som
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Il totale RCU e WCU provisioned attuale e' verificato via AWS Cost Explorer/console, non solo sommando il codice Terraform
-- [ ] #2 Viene decisa una strategia per la prossima tabella/GSI provisioned che serva capacita' aggiuntiva: ridurre la capacita' di una tabella a basso traffico, migrare qualcosa a on-demand, o accettare esplicitamente un'eccezione a pagamento con budget guardrail
-- [ ] #3 doc-1 viene aggiornato con la strategia scelta
+- [x] #1 Il totale RCU e WCU provisioned attuale e' verificato via AWS Cost Explorer/console, non solo sommando il codice Terraform
+- [x] #2 Viene decisa una strategia per la prossima tabella/GSI provisioned che serva capacita' aggiuntiva: ridurre la capacita' di una tabella a basso traffico, migrare qualcosa a on-demand, o accettare esplicitamente un'eccezione a pagamento con budget guardrail
+- [x] #3 doc-1 viene aggiornato con la strategia scelta
 <!-- AC:END -->

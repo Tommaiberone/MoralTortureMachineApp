@@ -376,8 +376,11 @@ dev table, or `/dev` SSM hierarchy.
 - **Push notifications** (`TASK-274`) add one shared `push_subscriptions`
   table (PK `anonymousUserId`, SK `subscriptionId` - a sha256 of the
   device's own endpoint/token, so re-subscribing the same device overwrites
-  its row instead of accumulating duplicates) provisioned 1/1 within the
-  Free Tier, `deletion_protection_enabled` like `users`/`moral_profiles`
+  its row instead of accumulating duplicates), `PAY_PER_REQUEST` billing
+  since `TASK-282` (real traffic is near zero - `send_push_notification` has
+  no real caller yet - so switching off provisioned costs effectively
+  nothing while returning its 1/1 RCU/WCU to the account's Free Tier
+  headroom), `deletion_protection_enabled` like `users`/`moral_profiles`
   (real opt-in state, not disposable), and a `channel` field
   (`web_push`|`fcm`) so both delivery mechanisms share one table instead of
   two. `POST /push/subscribe`/`/push/unsubscribe` are anonymous-first like
@@ -431,17 +434,48 @@ dev table, or `/dev` SSM hierarchy.
   state instead of the form again on a later visit from the same
   device/browser - the same disposable per-device convenience flag pattern
   as `TutorialScreen`'s `tutorial_completed_${mode}`, not identity state.
-  `gamebook_waitlist` is `PROVISIONED` 1/1 RCU/WCU with
-  `deletion_protection_enabled` (real opt-in state, like
-  `users`/`moral_profiles`/`push_subscriptions`), and deliberately has no
-  TTL - a waitlist signup must survive until the smoke test concludes, not
-  expire like disposable device/error data. Adding it brought the account's
-  total `PROVISIONED` capacity to exactly 25/25 RCU and 25/25 WCU - the
-  entire shared DynamoDB Free Tier, with zero headroom left for the next
-  provisioned table or GSI (`TASK-282`). Like `push_subscriptions`, this
-  table is *not* wired into `_collect_account_data`/the account-deletion
-  cascade or the retention-sweep scan (`TASK-284` tracks deciding that
-  question for both tables together, not just this new one).
+  `gamebook_waitlist` has `deletion_protection_enabled` (real opt-in state,
+  like `users`/`moral_profiles`/`push_subscriptions`), and deliberately has
+  no TTL - a waitlist signup must survive until the smoke test concludes,
+  not expire like disposable device/error data. Like `push_subscriptions`,
+  this table is *not* wired into `_collect_account_data`/the
+  account-deletion cascade or the retention-sweep scan (`TASK-284` tracks
+  deciding that question for both tables together, not just this new one).
+
+  Adding this table initially brought the account's total `PROVISIONED`
+  DynamoDB capacity to exactly 25/25 RCU and 25/25 WCU - the entire shared
+  Free Tier, with zero headroom left for the next provisioned table or GSI.
+  `TASK-282` resolved this the same day by switching `gamebook_waitlist`,
+  `push_subscriptions`, and `ops_error_alerts` (the three lowest-traffic
+  provisioned tables, each already 1/1 RCU/WCU, none carrying a documented
+  reason to stay provisioned) to `PAY_PER_REQUEST`: on-demand mode has no
+  free-tier allowance for request units (confirmed on AWS's current pricing
+  page - it bills from the first request, unlike provisioned's always-free
+  25/25 RCU-WCU), but at these three tables' near-zero real volume the
+  actual bill rounds to a fraction of a cent per month either way, and
+  freeing their combined 3/3 RCU-WCU restores real headroom for the next
+  table. `party_rooms`/`party_participants` and `daily_moral_crime_votes`
+  were deliberately left provisioned - `ADR-118` already measured their real
+  polling-driven read cost and chose provisioned capacity for that specific
+  reason, so switching them needs the same kind of measurement first, not
+  this task's blanket reasoning. `users`/`moral_profiles`/`challenges`/
+  `challenge_participants` were also left provisioned since the account is
+  still within the Free Tier for them (22/25 RCU-WCU after this change) and
+  they carry real, growing traffic rather than near-zero traffic.
+- **DynamoDB tag-value CI guard** (`TASK-276`, `ADR-127`) -
+  `backend/scripts/check_dynamodb_tag_values.py` parses every
+  `aws_dynamodb_table` resource in `backend/terraform/main.tf` and rejects
+  any literal string tag value containing a character outside DynamoDB's
+  actual `CreateTable`/`UpdateTable` allowed set (letters, digits,
+  whitespace, `+ - = . _ : /`) - stricter than `terraform validate` (HCL
+  syntax only) or the generic AWS Resource Groups Tagging API, which is why
+  a parenthetical or comma in a `Purpose`/`Name` tag has broken `terraform
+  apply` in production five separate times (`ADR-055`, `TASK-137`,
+  `TASK-206`, `TASK-274`, `TASK-281`/`282`) before this guard existed. Runs
+  as a dedicated step in `deploy.yml`'s `Backend Lint & Test` job, which
+  gates `Deploy Backend` via `needs:` and needs no AWS credentials - so a
+  bad tag now fails in seconds, before the Lambda package is even built,
+  instead of mid-`apply` after SSM/Lambda steps already ran.
 
 ## Analytics contract
 
@@ -754,8 +788,9 @@ dev table, or `/dev` SSM hierarchy.
 - `TASK-104`/`TASK-129`: every 4xx/5xx response (including an uncaught
   exception) emails the existing `ops_alerts` SNS topic (ADR-031) through a
   `notify_ops_of_errors` middleware and also persists one item to the
-  `ops_error_alerts` DynamoDB table (`backend/terraform/main.tf`, provisioned
-  1/1, 30-day TTL), coalesced to at most one notification+row per
+  `ops_error_alerts` DynamoDB table (`backend/terraform/main.tf`,
+  `PAY_PER_REQUEST` since `TASK-282`, 30-day TTL), coalesced to at most one
+  notification+row per
   `(status_code, path signature)` pair per
   `OPS_ERROR_NOTIFICATION_COOLDOWN_SECONDS` (default 600s) per warm Lambda
   container, so an ordinary burst of the same expected 4xx (e.g. a repeated
