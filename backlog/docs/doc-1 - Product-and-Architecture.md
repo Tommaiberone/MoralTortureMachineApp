@@ -413,6 +413,35 @@ dev table, or `/dev` SSM hierarchy.
   server-initiated event already uses); `open`/`click` are inherently
   client-only (a service worker's own `notificationclick`) and are `TASK-275`
   /`TASK-45`'s to add, not this table's concern.
+- **Gamebook waitlist** (`TASK-281`) is a physical-gamebook demand-validation
+  smoke test: a "Classified Dossier: The Gamebook" box on `ResultsScreen`,
+  rendered under the archetype section once `archetype` is set, with an email
+  field and an "Notify Me / Early Access" CTA. `POST /gamebook-waitlist`
+  (anonymous-first like every other endpoint) upserts one `gamebook_waitlist`
+  row keyed by the lowercased/trimmed email itself (not `anonymousUserId` -
+  the point is deduplicating the same person's email across devices/runs,
+  not one row per device), storing `anonymousUserId` and `createdAt` for
+  context; a repeat signup is an idempotent overwrite, not an error.
+  `gamebook_teaser_viewed` fires client-side once the box renders;
+  `gamebook_waitlist_signup` is tracked server-side via `_track_duel_event`
+  on a successful `put_item`, mirroring `push_subscribed`'s pattern rather
+  than also firing a client-side duplicate. The frontend additionally
+  remembers a successful signup in `localStorage`
+  (`mtm_gamebook_waitlist_subscribed`) so the box shows the confirmation
+  state instead of the form again on a later visit from the same
+  device/browser - the same disposable per-device convenience flag pattern
+  as `TutorialScreen`'s `tutorial_completed_${mode}`, not identity state.
+  `gamebook_waitlist` is `PROVISIONED` 1/1 RCU/WCU with
+  `deletion_protection_enabled` (real opt-in state, like
+  `users`/`moral_profiles`/`push_subscriptions`), and deliberately has no
+  TTL - a waitlist signup must survive until the smoke test concludes, not
+  expire like disposable device/error data. Adding it brought the account's
+  total `PROVISIONED` capacity to exactly 25/25 RCU and 25/25 WCU - the
+  entire shared DynamoDB Free Tier, with zero headroom left for the next
+  provisioned table or GSI (`TASK-282`). Like `push_subscriptions`, this
+  table is *not* wired into `_collect_account_data`/the account-deletion
+  cascade or the retention-sweep scan (`TASK-284` tracks deciding that
+  question for both tables together, not just this new one).
 
 ## Analytics contract
 

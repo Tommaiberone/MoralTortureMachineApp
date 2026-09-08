@@ -110,6 +110,7 @@ DAILY_MORAL_CRIME_VOTES_TABLE = os.getenv(
 )
 OPS_ERROR_ALERTS_TABLE = os.getenv("OPS_ERROR_ALERTS_TABLE", "moral-torture-machine-ops-error-alerts")
 PUSH_SUBSCRIPTIONS_TABLE = os.getenv("PUSH_SUBSCRIPTIONS_TABLE", "moral-torture-machine-push-subscriptions")
+GAMEBOOK_WAITLIST_TABLE = os.getenv("GAMEBOOK_WAITLIST_TABLE", "moral-torture-machine-gamebook-waitlist")
 # TASK-30/113: same bucket the frontend deploy already syncs to (frontend/terraform),
 # just a dedicated prefix within it for bot-only pre-rendered profile previews.
 FRONTEND_BUCKET_NAME = os.getenv("FRONTEND_BUCKET_NAME", "prod-moral-torture-machine-frontend")
@@ -353,6 +354,7 @@ party_participants_table = dynamodb.Table(PARTY_PARTICIPANTS_TABLE)
 daily_moral_crime_votes_table = dynamodb.Table(DAILY_MORAL_CRIME_VOTES_TABLE)
 ops_error_alerts_table = dynamodb.Table(OPS_ERROR_ALERTS_TABLE)
 push_subscriptions_table = dynamodb.Table(PUSH_SUBSCRIPTIONS_TABLE)
+gamebook_waitlist_table = dynamodb.Table(GAMEBOOK_WAITLIST_TABLE)
 ssm_client = boto3.client('ssm', region_name=AWS_REGION)
 sns_client = boto3.client('sns', region_name=AWS_REGION)
 cognito_idp_client = boto3.client('cognito-idp', region_name=AWS_REGION)
@@ -1174,6 +1176,13 @@ _IDENTIFYING_ANALYTICS_PROPERTY_KEYS = {
     "room_code",
     "previous_room_code",
 }
+
+
+class GamebookWaitlistRequest(BaseModel):
+    """TASK-281: Early Bird waitlist signup for the physical gamebook demand
+    smoke test on ResultsScreen. Reuses the same shape as _EMAIL_LIKE_PATTERN
+    rather than adding an email-validator dependency for one field."""
+    email: str = Field(..., min_length=5, max_length=254, pattern=_EMAIL_LIKE_PATTERN.pattern)
 
 
 class AnalyticsEvent(BaseModel):
@@ -4127,6 +4136,25 @@ async def unsubscribe_from_push(unsubscribe_request: PushUnsubscribeRequest, req
     )
     _track_duel_event(request, "push_unsubscribed", {"channel": unsubscribe_request.channel})
     return {"subscribed": False}
+
+
+@app.post("/gamebook-waitlist")
+async def join_gamebook_waitlist(waitlist_request: GamebookWaitlistRequest, request: Request):
+    """Record one Early Bird signup for the physical gamebook demand-validation
+    smoke test on ResultsScreen (TASK-281). Anonymous-first like every other
+    endpoint; overwriting an existing email is intentional (idempotent
+    resubmission), not an error - the same put_item shape as
+    subscribe_to_push above."""
+    anonymous_user_id = require_anonymous_user_id(request)
+    email = waitlist_request.email.strip().lower()
+
+    gamebook_waitlist_table.put_item(Item={
+        "email": email,
+        "anonymousUserId": anonymous_user_id,
+        "createdAt": int(time.time() * 1000),
+    })
+    _track_duel_event(request, "gamebook_waitlist_signup", {})
+    return {"subscribed": True}
 
 
 @app.get("/push/vapid-public-key")

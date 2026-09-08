@@ -94,7 +94,15 @@
     "challenge_login_required_text_value": "You've already done a Moral Duel before. Sign in to challenge someone else and keep your comparisons.",
     "challenge_login_required_text_urgency": "You've hit the limit for anonymous Duels. Sign in now to challenge as many people as you want.",
     "challenge_login_required_text_curiosity": "Someone new is one sign-in away from finding out how they compare to you.",
-    "challenge_login_required_button": "Sign in to continue"
+    "challenge_login_required_button": "Sign in to continue",
+    "gamebook_title": "[ CLASSIFIED DOSSIER: THE GAMEBOOK ]",
+    "gamebook_intro": "Your verdict is on file. A physical gamebook built from these dilemmas is under investigation. Join the Early Bird waitlist to be notified first if the case reopens.",
+    "gamebook_email_placeholder": "your@email.com",
+    "gamebook_email_error": "That doesn't look like a real email. Try again.",
+    "gamebook_cta_button": "Notify Me / Early Access",
+    "gamebook_submitting": "Filing your dossier...",
+    "gamebook_success": "Dossier received. You're on the list — we'll reach out if the case reopens.",
+    "gamebook_error": "The file got lost in transit. Please try again."
   },
   "tutorial": {
     "previous": "Previous",

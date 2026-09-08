@@ -4294,6 +4294,74 @@ built specifically for this situation.
   validation before writing) should be recreated rather than assumed to
   exist if another content batch is added later.
 
+### ADR-125 — `TASK-281` implemented: physical-gamebook demand-validation waitlist on ResultsScreen, deduplicated by email rather than device
+
+Context: `TASK-281` asked for a smoke-test lead-capture box on `ResultsScreen`
+("Classified Dossier: The Gamebook") to gauge interest in a physical
+gamebook before committing to production or a Kickstarter campaign, ahead of
+any real investment in that idea.
+
+Decision: implemented as `POST /gamebook-waitlist` (anonymous-first,
+`GamebookWaitlistRequest.email` validated server-side by the same regex
+shape `_EMAIL_LIKE_PATTERN` already uses for the analytics PII guard,
+avoiding a new `email-validator`/pydantic `EmailStr` dependency for one
+field) writing to a new `gamebook_waitlist` table. The hash key is the
+lowercased/trimmed email itself, not `anonymousUserId`: the smoke test wants
+one signal per real person, and a device-keyed table would let the same
+person double up across browsers/reinstalls and inflate the demand read.
+`anonymousUserId`/`createdAt` are stored alongside for context only.
+Analytics: `gamebook_teaser_viewed` fires client-side once the box actually
+renders (gated on `archetype`, same condition as the box);
+`gamebook_waitlist_signup` is tracked server-side via the existing
+`_track_duel_event` helper on a successful `put_item`, matching
+`push_subscribed`'s precedent (ADR-123) rather than adding a second
+client-side `trackEvent` call for the same write and risking a double count
+on retry. The box, form, and confirmation state reuse the existing
+`.results-challenge-*` box/title/intro/url CSS shapes (renamed
+`.results-gamebook-*`) instead of inventing a new panel style for what is
+the app's first real email input, per the repo's reuse-over-duplicate rule.
+A successful signup is also remembered in `localStorage`
+(`mtm_gamebook_waitlist_subscribed`), the same disposable per-device
+convenience-flag pattern `TutorialScreen`'s `tutorial_completed_${mode}`
+already uses, so a later visit shows the confirmation state instead of the
+form again - not routed through the Capacitor `Preferences` wrapper in
+`utils/storage.js`, since this is UI convenience, not identity state.
+`gamebook_waitlist` is `PROVISIONED` 1/1 RCU/WCU with
+`deletion_protection_enabled` (real opt-in state, like
+`users`/`moral_profiles`/`push_subscriptions`) and deliberately no TTL - the
+signups must survive until the smoke test concludes and every entry has
+been reachable, unlike disposable device/error data.
+
+Two gaps were found and routed rather than silently absorbed into this
+task's scope: adding this table brought the account's total `PROVISIONED`
+DynamoDB capacity to exactly 25/25 RCU and 25/25 WCU - the entire shared
+Free Tier, with no headroom left for the next provisioned table or GSI
+(`TASK-282`, Open Points, since the next feature that needs it will require
+a person's decision). And, like `push_subscriptions` before it,
+`gamebook_waitlist` is not wired into `_collect_account_data`/the
+account-deletion cascade or the retention-sweep scan, so an authenticated
+account deletion does not remove a waitlist email signed up while anonymous
+(`TASK-284`, Backlog, covers both tables together rather than only this new
+one). Separately, while adding this entry's ADR number, `ADR-124` immediately
+above was found to cite `(TASK-281)` in its own title/text where the actual
+shipping commit (525b198) says `TASK-280` - filed as `TASK-285` (docs)
+rather than silently rewritten, since it is a correction to an
+already-committed historical record.
+
+### Consequences
+
+- `gamebook_waitlist` demand can now be read directly from the table (signup
+  count, and via `anonymousUserId` cross-referenced against
+  `product_events`/`user_analytics` for rough funnel context) once enough
+  traffic accumulates - no new dashboard was built for this smoke test.
+- The account's provisioned DynamoDB capacity has zero remaining Free Tier
+  headroom; `TASK-282` must be resolved before the next feature that wants a
+  new provisioned table or GSI, not discovered again from scratch at that
+  point.
+- An account deletion today does not remove a prior anonymous gamebook
+  waitlist signup (nor a push subscription); `TASK-284` is where that gap
+  gets a real answer, not this task.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

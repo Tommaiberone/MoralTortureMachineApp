@@ -499,6 +499,32 @@ resource "aws_dynamodb_table" "push_subscriptions" {
   }
 }
 
+resource "aws_dynamodb_table" "gamebook_waitlist" {
+  name           = "${var.environment}-${var.stack_name}-gamebook-waitlist"
+  billing_mode   = "PROVISIONED"
+  read_capacity  = 1
+  write_capacity = 1
+  hash_key       = "email"
+
+  attribute {
+    name = "email"
+    type = "S"
+  }
+
+  # TASK-281: deliberately no TTL, unlike push_subscriptions/ops_error_alerts -
+  # a demand-validation waitlist signup must survive until the smoke test
+  # concludes and every entry has been contacted, not expire like disposable
+  # device/error data.
+  deletion_protection_enabled = true
+
+  tags = {
+    Name        = "Moral Torture Machine Gamebook Waitlist"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+    Purpose     = "Physical gamebook demand-validation Early Bird email waitlist (TASK-281)"
+  }
+}
+
 resource "aws_dynamodb_table" "ops_error_alerts" {
   name           = "${var.environment}-${var.stack_name}-ops-error-alerts"
   billing_mode   = "PROVISIONED"
@@ -1111,7 +1137,8 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           aws_dynamodb_table.daily_moral_crime_votes.arn,
           "${aws_dynamodb_table.daily_moral_crime_votes.arn}/index/*",
           aws_dynamodb_table.ops_error_alerts.arn,
-          aws_dynamodb_table.push_subscriptions.arn
+          aws_dynamodb_table.push_subscriptions.arn,
+          aws_dynamodb_table.gamebook_waitlist.arn
         ]
       },
       {
@@ -1129,7 +1156,8 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           aws_dynamodb_table.party_participants.arn,
           aws_dynamodb_table.daily_moral_crime_votes.arn,
           aws_dynamodb_table.ops_error_alerts.arn,
-          aws_dynamodb_table.push_subscriptions.arn
+          aws_dynamodb_table.push_subscriptions.arn,
+          aws_dynamodb_table.gamebook_waitlist.arn
         ]
       },
       {
@@ -1291,6 +1319,7 @@ resource "aws_lambda_function" "api" {
       DAILY_MORAL_CRIME_VOTES_TABLE         = aws_dynamodb_table.daily_moral_crime_votes.name
       OPS_ERROR_ALERTS_TABLE                = aws_dynamodb_table.ops_error_alerts.name
       PUSH_SUBSCRIPTIONS_TABLE              = aws_dynamodb_table.push_subscriptions.name
+      GAMEBOOK_WAITLIST_TABLE               = aws_dynamodb_table.gamebook_waitlist.name
       GROQ_API_KEY_SSM_NAME                 = aws_ssm_parameter.groq_api_key.name
       ANALYTICS_FINGERPRINT_SECRET_SSM_NAME = aws_ssm_parameter.analytics_fingerprint_pepper.name
       VAPID_PRIVATE_KEY_SSM_NAME            = aws_ssm_parameter.vapid_private_key.name
