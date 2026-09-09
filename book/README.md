@@ -4,7 +4,7 @@ Local tooling only. Not wired into any CI/CD, deploy, `pnpm build:prod`, or
 Terraform. This is design/iteration tooling for the physical gamebook idea
 (waitlist demand test: `TASK-281`) — not a production or Kickstarter
 commitment. Scaffold: `TASK-287`. Chapter/mode design: `TASK-292`. Visual
-design: `TASK-293`.
+design: `TASK-293`. Registry/bleed/ToC/closing-page polish: `TASK-294`.
 
 Interior is confirmed **black & white** for KDP. That still halftones
 grayscale/solid fills correctly (like any B&W book with photos or shaded
@@ -24,10 +24,15 @@ chapter opener prints two QR codes, not one:
   own phone.
 
 Both codes open the *same* five dilemmas — only the QR scanned changes
-whether they're played alone or live with a group. This replaced an
-earlier idea (a QR per dilemma, per mode) that fragmented party play down
-to a single dilemma at a time; five dilemmas per chapter also matches the
-app's own Party Room default (`PARTY_ROOM_DEFAULT_DILEMMAS = 5`).
+whether they're played alone or live with a group. Five dilemmas per
+chapter matches the app's own Party Room default
+(`PARTY_ROOM_DEFAULT_DILEMMAS = 5`).
+
+The book closes with a **Case Closed** page: a "Subject #___" fill-in
+(the numbered-copy idea from early growth brainstorming), and a QR back to
+the site framed as comparing your record against whoever you shared the
+dossier with — the one page that explicitly reconnects the physical object
+to the app's compare/share loop, which nothing earlier in the book did.
 
 **Known gap, not yet built (`TASK-291`, High, To Do):** today neither
 Party Room creation nor solo Evaluation accepts a client-supplied,
@@ -65,9 +70,9 @@ book/.venv/Scripts/python.exe -m pip install segno
 ## Build
 
 ```bash
-# 1. Generate every chapter's QR pair (see solo-slug/party-slug in each
-#    book/chapters/*.typ)
-book/.venv/Scripts/python.exe book/qr/generate_qr.py c1-solo c1-party c2-solo c2-party
+# 1. Generate every QR the book needs (reads book/chapters/registry.json
+#    plus the fixed non-chapter slugs in generate_qr.py's EXTRA_SLUGS)
+book/.venv/Scripts/python.exe book/qr/generate_qr.py
 
 # 2. Compile the whole book - MUST pass --root as the repo root so
 #    template.typ can read backend/data/dilemmas_en.json (dilemma content
@@ -78,36 +83,67 @@ typst compile --root . book/main.typ book/out/mini-book.pdf
 
 `typst watch --root . book/main.typ book/out/mini-book.pdf` recompiles on
 save for fast iteration. A single chapter can also be compiled on its own,
-e.g. `typst compile --root . book/chapters/chapter-01.typ book/out/chapter-01.pdf`.
+e.g. `typst compile --root . book/chapters/chapter-01.typ book/out/chapter-01.pdf`
+(its table of contents entry won't resolve a page number in that case,
+since the label lookup needs the whole book compiled together).
 
 ## Files
 
-- `main.typ` — assembles the title page, instructions, and every chapter
-  into one book PDF, in reading order.
+- `main.typ` — assembles the title page, table of contents, instructions,
+  every chapter, and the closing page into one book PDF, in reading order.
+  Sets the compiled PDF's `title`/`author` metadata.
 - `typst/kdp.typ` — KDP paperback interior geometry (trim, bleed, margins by
   page count), verified against KDP's published help pages, not memory.
   Re-check it if the trim size or final page count changes. Lives under
   `typst/`, not `build/`, so it isn't swept up by the root `.gitignore`'s
   generic `build/` rule meant for compiled output elsewhere.
-- `typst/template.typ` — `chapter-page(...)`, the one shared dossier layout
-  every chapter uses (title, theme intro, the solo/party QR pair, the
-  Exhibit list); also `front-matter-page(...)` for non-chapter pages
-  (title page, instructions), and `find-dilemma(id)`, which reads
+- `typst/template.typ` — the shared dossier visual system:
+  `chapter-page(key: ...)` (reads a chapter's content from the registry
+  below); `front-matter-page(...)` and `full-bleed-page(...)` for
+  non-chapter pages; `find-dilemma(id)`, which reads
   `backend/data/dilemmas_en.json` at compile time and hard-fails if an id
-  doesn't exist there. The visual vocabulary lives here too:
-  `case-band(...)` (reversed content-width header panel), `evidence-tag`
-  (bordered QR card), `exhibit(...)` (reversed Exhibit tag + margin rule),
-  `stamp(...)` (small rotated "ink stamp" accent), `redacted(...)`.
+  doesn't exist; `bleed-band(...)` (the true edge-to-edge header band —
+  see "Bleed" below), `evidence-tag`, `exhibit`, `stamp`, `lede`
+  (a raised-initial accent, not a true wrap-around drop cap), `redacted`.
 - `typst/instructions.typ` — the "How to Open a Case File" front-matter
   page explaining Solo Verdict vs. Convene Tribunal.
-- `chapters/*.typ` — one Case File per chapter, five dilemma `_id`s each,
-  referencing real ids from `backend/data/dilemmas_en.json` — never
-  invented/duplicated text.
-- `qr/generate_qr.py` — generates `qr/<slug>.png` for any slug (pure-Python
-  `segno`, no Pillow/system deps). Generated PNGs are gitignored —
-  regenerate them, don't hand-edit or commit them.
+- `typst/closing.typ` — the "Case Closed" back-matter page.
+- `chapters/registry.json` — **the single source of truth** for every
+  chapter: title, theme intro, stamp text, solo/party QR slugs, and the
+  five real dilemma `_id`s. A chapter file is just
+  `#chapter-page(key: "c1") <chapter-c1>` — the label is what lets the
+  table of contents resolve that chapter's real page number (see below).
+  In spirit, this is the same shape `TASK-291`'s eventual backend mapping
+  should share, so the book and the backend can't define two different
+  "chapter c1" sets.
+- `qr/generate_qr.py` — reads the registry and generates every chapter's
+  QR pair plus any fixed non-chapter slugs (`EXTRA_SLUGS`, e.g. the
+  closing page's) in one run; pass specific slugs as arguments to
+  regenerate only those. Generated PNGs are gitignored — regenerate them,
+  don't hand-edit or commit them.
 
-## Known follow-ups (not blocking this scaffold)
+## Bleed
+
+`bleed-band(...)` and `full-bleed-page(...)` draw true edge-to-edge black
+via Typst's `page(background: ...)`, which lays out against the *full
+physical page* regardless of body margins (verified empirically: a
+background rect's corner pixels land exactly on the physical page edge).
+Earlier design notes (superseded) worried this needed recto/verso-aware
+placement under this book's mirrored (`binding: left`) margins; that
+concern only applies to art that's deliberately asymmetric (bleeding one
+side but not the mirrored side). A symmetric full-width/full-page graphic
+like these needs no such awareness — KDP's interior file uses one uniform
+physical page size for the whole book regardless of odd/even, so it bleeds
+correctly on every page unconditionally.
+
+The one real subtlety: reserving space so body text doesn't collide with
+a *repeating* band on a chapter's later pages must happen via the actual
+page margin (`kdp-page`'s `extra-top` parameter), not a one-time `v()`
+spacer in the content flow — a flow-level spacer is consumed once and
+leaves page 2+ of a multi-page chapter colliding with the band, which is
+exactly the bug this went through before landing on `extra-top`.
+
+## Known follow-ups
 
 - `TASK-291` (above) — the QR codes don't functionally work yet.
 - Fonts are Typst's bundled OFL fonts (Libertinus Serif, DejaVu Sans Mono) —
@@ -115,13 +151,6 @@ e.g. `typst compile --root . book/chapters/chapter-01.typ book/out/chapter-01.pd
   every font to be embeddable and most commercial Windows fonts restrict
   that. Swap for a licensed display/stamp font later only if it's
   confirmed embeddable.
-- Dossier art direction (`TASK-293`) is reversed-panel/evidence-tag based
-  (`case-band`, `evidence-tag`, `exhibit`, `stamp` in `typst/template.typ`)
-  but deliberately content-width, not true edge-to-edge bleed — getting
-  bleed art right on mirrored (`binding: left`) margins needs knowing, per
-  page, whether it's recto or verso, and misjudging that would misalign
-  art against the trim on a real print run. A verified bleed pass is a
-  later step, not attempted here.
 - Cover file (spine width, KDP's separate cover template) is out of scope
   here — build it against KDP's own generated template once a real page
   count exists.

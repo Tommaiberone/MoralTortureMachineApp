@@ -4710,6 +4710,91 @@ correctly across the title page, instructions, and both chapters.
   `TASK-291`'s backend gap (the QR codes still don't functionally work)
   is unaffected by this purely visual change.
 
+### ADR-131 — `TASK-294` implemented: chapter registry, true edge-to-edge bleed, table of contents, page numbers, closing page - and `ADR-130`'s bleed caution corrected
+
+Context: after reviewing `ADR-130`'s demo, the user asked for an explanation
+of every design decision so far plus concrete proposals for further work,
+then said to implement all of the proposals in one pass: page numbers, PDF
+metadata, keeping each Exhibit's question/answers together across page
+breaks, a closing page reconnecting the book to the app's compare/share
+loop, a table of contents, a registry unifying each chapter's content
+(instead of ids repeated by hand per chapter file), a script generating
+every QR in one command, true edge-to-edge bleed art, per-chapter stamp
+variety, and a decorative initial on each chapter's theme intro.
+
+Before implementing the bleed item, `ADR-129`/`ADR-130`'s earlier caution
+("true bleed needs recto/verso-aware placement, deferred") was checked
+empirically rather than carried forward as settled: a minimal Typst file
+using `page(background: place(top+left, rect(...)))` was compiled and
+rendered to PNG, and its corner pixels landed exactly on the physical page
+edge regardless of the page's mirrored `binding: left` margins. This
+showed the earlier concern was real only for art that's deliberately
+*asymmetric* (bleeding one physical side but not the other); a symmetric
+full-width or full-page graphic needs no recto/verso awareness at all,
+because KDP's interior file uses one uniform physical page size for the
+entire book regardless of odd/even - correcting course based on evidence
+rather than defending the earlier (overly cautious) decision.
+
+Decision: `book/chapters/registry.json` became the single source of truth
+per chapter (title, theme intro, stamp text, solo/party QR slugs, the five
+dilemma `_id`s); a chapter file collapsed to
+`#chapter-page(key: "c1") <chapter-c1>`, with `chapter-page` doing the
+registry lookup internally - `qr/generate_qr.py` reads the same registry
+to regenerate every QR in one run instead of slugs listed by hand,
+directly setting up what `TASK-291`'s AC#3 will need (book and eventual
+backend reading the same mapping shape). `typst/kdp.typ`'s `kdp-page`
+gained an `extra-top` parameter so a bleed band's reserved space lives in
+the real page margin, applied automatically to every page in scope - the
+first implementation instead used a one-time `v()` spacer in the content
+flow, which is consumed once and left a chapter's second page colliding
+with the repeating band (garbled overlapping text, caught by rendering
+every page to PNG and reading it, same verification discipline as every
+prior ADR in this book's history, not skipped under time pressure).
+Page numbers are a shared `page-footer` in `template.typ`, suppressed only
+on the title page (full-bleed black; a default footer would be invisible
+against it). The table of contents iterates the registry and resolves
+each chapter's real page number via `query(label("chapter-" + key))` +
+`counter(page).at(...)`, not a hardcoded number, so it can't silently go
+stale as chapters are added or content length shifts pagination - verified
+by confirming its printed numbers changed correctly (6→7 for chapter 2)
+once the `extra-top` fix added a page to chapter 1. `exhibit(...)` gained
+`breakable: false`. `typst/closing.typ` is a new back-matter page: a
+"Subject #___" blank (the numbered-copy self-marketing idea from the
+earliest brainstorm on this feature, not previously reflected in any
+actual content) and an `evidence-tag` QR framed around returning to the
+app to compare records - the first page in the book that explicitly closes
+the loop back to the product rather than ending cold after the last
+chapter. `lede(...)` (raised, enlarged first letter) and per-chapter
+`stamp` text (registry field, "Open"/"Urgent" for the two demo chapters)
+round out the visual variety requested.
+
+Verified by recompiling `book/main.typ`, rendering all pages to PNG, and
+reading every one: `MediaBox` unchanged at 6.125x9.25in (10 pages now, up
+from 6, entirely from the correct `extra-top` reservation costing more
+room per page - not a regression), corner pixels of the title page and
+every chapter's band confirmed at the true physical edge, no more
+overlapping/garbled text, and PDF `/Title`/`/Author` confirmed present
+(the title's em dash forced Typst to emit it as a UTF-16 hex string,
+which needed a second, broader regex to find - not evidence it was
+missing).
+
+### Consequences
+
+- The book's per-chapter content now has exactly one place that can drift
+  (`registry.json`); a future chapter is data, not a new code pattern to
+  copy and adapt.
+- Bleed art is confirmed safe under this book's margin scheme for
+  symmetric graphics; an *asymmetric* bleed element (touching only one
+  physical edge) would still need the recto/verso awareness `ADR-129`
+  originally flagged - that risk was narrowed, not eliminated wholesale.
+- Reserving background-band space via the real page margin
+  (`kdp-page`'s `extra-top`) rather than flow spacing is now the pattern
+  for any future repeating full-bleed element; copying the old `v()`
+  spacer approach would reintroduce the exact bug this ADR fixed.
+- The book still isn't functional end to end - `TASK-291` remains the
+  hard prerequisite before any printed QR does what the book now more
+  convincingly tells the reader it does.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

@@ -1,4 +1,4 @@
-#import "template.typ": front-matter-page, case-band, redacted
+#import "template.typ": front-matter-page, redacted
 
 #let procedure-panel(tag, label, body) = block(
   width: 100%,
@@ -7,15 +7,15 @@
 )[
   #text(font: "DejaVu Sans Mono", size: 7pt, tracking: 1.5pt, fill: luma(40%))[#tag]
   #v(0.5em)
-  #text(font: "DejaVu Sans Mono", size: 9pt, weight: "bold", tracking: 1pt, upper(label))
+  #text(font: "DejaVu Sans Mono", size: 9pt, weight: "bold", tracking: 1pt)[#upper(label)]
   #v(0.5em)
   #body
 ]
 
-#front-matter-page(page-count: 24)[
-  #case-band(kicker: "Intake Protocol", title: "How to Open a Case File")
-  #v(1.2em)
-
+#front-matter-page(
+  page-count: 24,
+  band: (kicker: "Intake Protocol", title: "How to Open a Case File"),
+)[
   Every chapter in this dossier is a *Case File*: five linked dilemmas,
   one theme, one moment where the file is opened. Nothing in it changes
   depending on how you open it - the same five dilemmas are waiting either

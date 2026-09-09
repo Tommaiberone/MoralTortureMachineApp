@@ -42,12 +42,21 @@
 // margins measured from the trim line) and yields the body inside it.
 // page-count drives which margin-table row applies - pass the book's real
 // expected page count once it is known; defaults to the smallest row.
-#let kdp-page(page-count: 24, body) = {
+//
+// `extra-top` adds to the top margin on every page in scope - used to
+// reserve space for a full-bleed header band drawn via page(background:).
+// This must live in the real page margin, not a one-time `v()` spacer in
+// the body flow: content that overflows onto a second page within the
+// same background scope gets a fresh margin automatically, whereas a
+// flow-level spacer is consumed once and leaves later pages colliding
+// with the repeating band.
+#let kdp-page(page-count: 24, extra-top: 0pt, body) = {
+  let m = margins-for-page-count(page-count)
   set page(
     width: page-width,
     height: page-height,
     binding: left,
-    margin: margins-for-page-count(page-count),
+    margin: (inside: m.inside, outside: m.outside, top: m.top + extra-top, bottom: m.bottom),
   )
   body
 }

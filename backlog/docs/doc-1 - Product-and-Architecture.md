@@ -442,20 +442,20 @@ dev table, or `/dev` SSM hierarchy.
   account-deletion cascade or the retention-sweep scan (`TASK-284` tracks
   deciding that question for both tables together, not just this new one).
 
-- **`book/` (`TASK-287`/`TASK-292`/`TASK-293`)** is a standalone local Typst print
-  pipeline for the physical gamebook's "Case File" content, living at the
-  repo root alongside `frontend`/`backend`/`backlog` - not part of the
-  shipped web/native app, not wired into `pnpm build:prod`, CI/CD
-  (`.github/workflows/`), or Terraform. It exists to let content/layout
-  iteration happen at zero cost while `gamebook_waitlist` demand is still
-  being measured; it is tooling, not a production or Kickstarter
-  commitment. `typst/kdp.typ` (named `typst/`, not `build/`, so it isn't
-  swept up by the root `.gitignore`'s generic `build/` rule meant for
-  compiled output elsewhere) encodes Amazon KDP's paperback interior
-  geometry (6x9in trim, 0.125in bleed only on the outer/top/bottom edges,
-  margins scaling with page count 24-828) verified against KDP's published
-  help pages, not memory - re-check it before a real print run in case
-  Amazon's numbers moved.
+- **`book/` (`TASK-287`/`TASK-292`/`TASK-293`/`TASK-294`)** is a standalone
+  local Typst print pipeline for the physical gamebook's "Case File"
+  content, living at the repo root alongside `frontend`/`backend`/`backlog`
+  - not part of the shipped web/native app, not wired into
+  `pnpm build:prod`, CI/CD (`.github/workflows/`), or Terraform. It exists
+  to let content/layout iteration happen at zero cost while
+  `gamebook_waitlist` demand is still being measured; it is tooling, not a
+  production or Kickstarter commitment. `typst/kdp.typ` (named `typst/`,
+  not `build/`, so it isn't swept up by the root `.gitignore`'s generic
+  `build/` rule meant for compiled output elsewhere) encodes Amazon KDP's
+  paperback interior geometry (6x9in trim, 0.125in bleed only on the
+  outer/top/bottom edges, margins scaling with page count 24-828) verified
+  against KDP's published help pages, not memory - re-check it before a
+  real print run in case Amazon's numbers moved.
 
   Each chapter is a **Case File**: five dilemmas sharing one theme, opened
   by two QR codes printed side by side, not one - "Solo Verdict" (a
@@ -464,35 +464,62 @@ dev table, or `/dev` SSM hierarchy.
   narrator reads each Exhibit aloud and turns the page, everyone else
   follows on their own phone). Both codes open the *same* five dilemmas;
   five was chosen to match the app's own `PARTY_ROOM_DEFAULT_DILEMMAS`.
-  `typst/template.typ`'s `chapter-page(...)` is the one shared dossier
-  layout every `chapters/*.typ` file uses (repo convention: shared pattern
-  over per-page copy-paste styling) - `front-matter-page(...)` covers
-  non-chapter pages (title page, `typst/instructions.typ`). Its
-  `find-dilemma(id)` reads `backend/data/dilemmas_en.json` at compile time
-  via Typst's `json()` - chapters reference real dilemma `_id`s, never
-  retyped text, so the book and the app's live content can't drift apart.
-  `qr/generate_qr.py` generates one QR PNG per slug with pure-Python
-  `segno` (no Pillow/system deps); generated PNGs and the compiled PDF
-  output are gitignored, regenerated from source on demand. Fonts are
+  `book/chapters/registry.json` is the single source of truth per chapter
+  (title, theme intro, stamp text, solo/party QR slugs, the five real
+  dilemma `_id`s) - a chapter file is just
+  `#chapter-page(key: "c1") <chapter-c1>`; `typst/template.typ`'s
+  `chapter-page(key:)` reads that entry, and its `find-dilemma(id)` reads
+  `backend/data/dilemmas_en.json` at compile time via Typst's `json()` -
+  chapters reference real dilemma `_id`s, never retyped text, so the book
+  and the app's live content can't drift apart. In spirit, the registry is
+  the shape `TASK-291`'s eventual backend mapping should share, so the
+  book and the backend can't define two different "chapter c1" sets.
+  `qr/generate_qr.py` reads the registry and (re)generates every chapter's
+  QR pair plus any fixed non-chapter slugs (`EXTRA_SLUGS`, e.g. the
+  closing page's `closing`) in one run; generated PNGs and the compiled
+  PDF output are gitignored, regenerated from source on demand. Fonts are
   deliberately Typst's bundled OFL fonts (Libertinus Serif, DejaVu Sans
   Mono) rather than a Windows-supplied commercial font, since KDP requires
   every embedded font to allow commercial embedding. `main.typ` assembles
-  the title page, instructions, and every chapter into one book PDF. See
-  `book/README.md` for the build commands.
+  a full-bleed title page, a table of contents (page numbers resolved via
+  each chapter's Typst label + `counter(page).at(...)`, not hardcoded),
+  instructions, every chapter, and a closing "Case Closed" page (a
+  "Subject #___" fill-in plus a QR framed as returning to compare your
+  record against whoever you shared the dossier with - the one page that
+  explicitly reconnects the physical object to the app's compare/share
+  loop) into one book PDF, and sets the compiled PDF's `title`/`author`
+  metadata. Every page shows a centered page number except the title page
+  (suppressed - its background is full-bleed black, and a default footer
+  would be invisible against it). Each `exhibit(...)` block uses
+  `breakable: false` so a dilemma's question and answers can't split
+  across a page break. See `book/README.md` for the build commands.
 
   Interior is confirmed black & white for KDP - which still halftones
   grays/solid fills correctly, not just pure 1-bit - so `typst/template.typ`
   leans on reversed (white-on-black) panels for its visual system:
-  `case-band(...)` (a full-content-width reversed header, used for the
-  chapter header and the title page), `evidence-tag(...)` (a bordered QR
-  card), `exhibit(...)` (a reversed "EXHIBIT N" tag with a left margin
-  rule per dilemma), and `stamp(...)` (a small rotated bordered accent).
-  Deliberately *not* attempted: true edge-to-edge bleed art - with mirrored
-  (`binding: left`) margins, a page's inside/outside resolve to opposite
-  physical sides depending on whether it's recto or verso, and getting
-  that offset wrong would misalign bleed art against the trim on a real
-  print run; every reversed panel is full content-width instead, a safer
-  option pending a verified bleed pass later.
+  `bleed-band(...)` (a true edge-to-edge reversed header, used for the
+  chapter header and, full-page, for the title page via
+  `full-bleed-page(...)`), `evidence-tag(...)` (a bordered QR card),
+  `exhibit(...)` (a reversed "EXHIBIT N" tag with a left margin rule per
+  dilemma), `stamp(...)` (a small rotated bordered accent, varying per
+  chapter via the registry's `stamp` field), and `lede(...)` (an enlarged,
+  bolded first letter on each chapter's theme intro - a lightweight raised
+  initial, not a true multi-line wrap-around drop cap, which Typst has no
+  built-in primitive for). Bleed art (`bleed-band`/`full-bleed-page`) is
+  drawn via Typst's `page(background: ...)`, verified empirically to lay
+  out against the *full physical page* regardless of body margins -
+  superseding `TASK-293`'s earlier caution that true bleed needed
+  recto/verso-aware placement under this book's mirrored (`binding: left`)
+  margins: that concern only applies to art that's deliberately asymmetric
+  (bleeding one side but not the mirrored side), not to a symmetric
+  full-width/full-page graphic, which KDP's uniform-per-book physical page
+  size renders correctly on every page regardless of odd/even. The one
+  real subtlety was reserving space for a *repeating* band across a
+  chapter's later pages: that has to live in the actual top margin
+  (`kdp-page`'s `extra-top` parameter), not a one-time `v()` spacer in the
+  content flow, which is consumed once and left page 2+ of a multi-page
+  chapter colliding with the band on first attempt - fixed before this
+  shipped, not left half-working.
 
   **Not yet functional** (`TASK-291`, High, To Do): the QR codes are
   placeholders. Neither `create_party_room` nor solo Evaluation's
