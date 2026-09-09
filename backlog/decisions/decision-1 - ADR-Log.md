@@ -4493,6 +4493,88 @@ placement.
   DynamoDB resource type this script doesn't parse), that is itself a signal
   the guard needs broadening, not that the guard was the wrong fix.
 
+### ADR-128 — `TASK-287` implemented: standalone Typst print pipeline scaffold for the gamebook (`book/`), Typst chosen over WeasyPrint/LaTeX
+
+Context: after `TASK-281` shipped the physical-gamebook demand-validation
+waitlist (`ADR-125`), a brainstorm session designed the book's actual
+gameplay (a hybrid of solo reading and Party-Room-hosted group play, one QR
+per multi-dilemma "Case File" rather than per dilemma or per mode) and then
+asked how to author it toward Amazon KDP print-on-demand in a way Claude
+Code can directly read/write/rebuild. Two renderer options were compared:
+WeasyPrint (HTML/CSS, would sit next to the existing Python backend
+tooling) versus Typst (a standalone typesetting compiler). Typst was chosen:
+no native GTK/Pango/cairo dependency chain to fight on the user's Windows
+dev machine (a real, concrete blocker WeasyPrint would hit here), better
+default long-form book typography, explicit/auditable page geometry, and it
+avoids reintroducing a headless-browser dependency into a repo that already
+avoids Playwright/Puppeteer for cost/token reasons elsewhere (a CSS+headless
+-Chrome print route would have reintroduced exactly that). KDP's actual
+current interior formatting spec was fetched from Amazon's live help pages
+rather than assumed from memory (bleed 0.125in on outer/top/bottom edges
+only, margins scaling with page count 24-828, 6x9in as the common trim, a
+6x9in trim becomes a 6.125x9.25in bled page canvas per KDP's own worked
+example, no crop marks/white border in the submitted file, fonts must be
+fully embeddable, RGB accepted with KDP converting internally though CMYK
+with SWOP v2 is more predictable for color-critical art) - the same
+verify-don't-assume discipline this log already applies to AWS pricing.
+
+Decision: scaffolded `book/` at the repo root (sibling to
+`frontend`/`backend`/`backlog`, not touching `pnpm build:prod`, CI/CD, or
+Terraform - verified none of `.github/workflows/*.yml`, the root/frontend
+package manifests, or Terraform reference it). Source lives under
+`typst/`, not `build/` - the root `.gitignore` has a generic `build/` rule
+for compiled output elsewhere, which would have silently swallowed a
+`book/build/` source folder, so this was caught via `git add -n` and the
+folder renamed rather than patching the shared root `.gitignore`.
+`typst/kdp.typ` encodes the verified KDP geometry as a
+`kdp-page(page-count, body)` helper (Typst's native two-sided
+`margin: (inside/outside/...)` + `binding: left` handles mirrored gutter
+margins without manual odd/even logic). `typst/template.typ`
+defines one shared `case-page(...)` dossier layout instead of per-case
+copy-pasted styling (matching this repo's reuse-over-duplicate convention,
+`TASK-214`/`ADR-095`), plus `find-dilemma(id)` which reads
+`backend/data/dilemmas_en.json` via Typst's built-in `json()` at compile
+time and hard-fails (`assert`) if an id doesn't exist - case files reference
+real dilemma `_id`s, never retyped text, so book and app content cannot
+silently drift apart. `qr/generate_qr.py` generates one QR PNG per case's
+`qr-slug` with pure-Python `segno` (no Pillow/system-library dependency).
+Fonts are Typst's own bundled OFL fonts (Libertinus Serif, DejaVu Sans Mono)
+rather than a Windows-supplied commercial font, since KDP requires every
+embedded font to allow commercial embedding and most Windows system fonts
+restrict that. `case-001.typ` (two real dilemmas pulled from
+`dilemmas_en.json`) was compiled end-to-end and its output PDF's `MediaBox`
+verified at exactly 6.125x9.25in - KDP's exact published number, not an
+approximation. Compiled PDFs and generated QR PNGs are gitignored
+(regenerable build output); `book/.venv` (a venv separate from
+`backend/.venv`, holding only `segno`) is also gitignored, keeping this
+tooling's dependencies from mixing into the backend Lambda's real
+requirements.
+
+### Consequences
+
+- The book's content pipeline is entirely plain-text (Typst/Python/Markdown-
+  free), so further case files can be drafted, reviewed as git diffs, and
+  rebuilt in seconds (`typst watch`) without any DTP tool neither side of
+  this collaboration can inspect or edit.
+- Because dilemma text is pulled live from `backend/data/dilemmas_en.json`
+  at compile time, editing or removing a dilemma the book references will
+  break the book's build loudly (an `assert` failure) rather than silently
+  leaving stale text in print artwork - a deliberate coupling, not an
+  oversight.
+- This is tooling only: no print run, Kickstarter commitment, or spend
+  exists yet, and none is implied by this ADR. `TASK-281`'s waitlist demand
+  signal (currently unmeasured - the smoke test only just shipped) still
+  gates any actual production decision.
+- Known follow-ups deliberately left out of this scaffold's scope: the QR
+  block can overflow onto its own page for a longer case (seen on
+  `case-001`), no bespoke dossier art direction (stamps, torn-paper
+  textures) exists yet beyond the `redacted()` helper, and the KDP cover
+  file (spine width depends on final page count) still needs to be built
+  against KDP's own generated cover template once a real page count exists.
+- KDP's formatting requirements are Amazon's to change; `typst/kdp.typ`'s
+  numbers should be re-verified against KDP's live help pages before an
+  actual print submission, not trusted as permanently fixed from this ADR.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
