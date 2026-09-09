@@ -442,31 +442,53 @@ dev table, or `/dev` SSM hierarchy.
   account-deletion cascade or the retention-sweep scan (`TASK-284` tracks
   deciding that question for both tables together, not just this new one).
 
-- **`book/` (`TASK-287`)** is a standalone local Typst print pipeline for the
-  physical gamebook's "Case File" content, living at the repo root alongside
-  `frontend`/`backend`/`backlog` - not part of the shipped web/native app, not
-  wired into `pnpm build:prod`, CI/CD (`.github/workflows/`), or Terraform.
-  It exists to let content/layout iteration happen at zero cost while
-  `gamebook_waitlist` demand is still being measured; it is tooling, not a
-  production or Kickstarter commitment. `typst/kdp.typ` (named `typst/`, not
-  `build/`, so it isn't swept up by the root `.gitignore`'s generic `build/`
-  rule meant for compiled output elsewhere) encodes Amazon KDP's
-  paperback interior geometry (6x9in trim, 0.125in bleed only on the
-  outer/top/bottom edges, margins scaling with page count 24-828) verified
-  against KDP's published help pages, not memory - re-check it before a real
-  print run in case Amazon's numbers moved. `typst/template.typ`'s
-  `case-page(...)` is the one shared dossier layout every `cases/*.typ` case
-  file uses (repo convention: shared pattern over per-page copy-paste
-  styling), and its `find-dilemma(id)` reads `backend/data/dilemmas_en.json`
-  at compile time via Typst's `json()` - case files reference real dilemma
-  `_id`s, never retyped text, so the book and the app's live content can't
-  drift apart. `qr/generate_qr.py` generates one QR PNG per case's `qr-slug`
-  with pure-Python `segno` (no Pillow/system deps); generated PNGs and the
-  compiled PDF output are gitignored, regenerated from source on demand.
-  Fonts are deliberately Typst's bundled OFL fonts (Libertinus Serif, DejaVu
-  Sans Mono) rather than a Windows-supplied commercial font, since KDP
-  requires every embedded font to allow commercial embedding. See
+- **`book/` (`TASK-287`/`TASK-292`)** is a standalone local Typst print
+  pipeline for the physical gamebook's "Case File" content, living at the
+  repo root alongside `frontend`/`backend`/`backlog` - not part of the
+  shipped web/native app, not wired into `pnpm build:prod`, CI/CD
+  (`.github/workflows/`), or Terraform. It exists to let content/layout
+  iteration happen at zero cost while `gamebook_waitlist` demand is still
+  being measured; it is tooling, not a production or Kickstarter
+  commitment. `typst/kdp.typ` (named `typst/`, not `build/`, so it isn't
+  swept up by the root `.gitignore`'s generic `build/` rule meant for
+  compiled output elsewhere) encodes Amazon KDP's paperback interior
+  geometry (6x9in trim, 0.125in bleed only on the outer/top/bottom edges,
+  margins scaling with page count 24-828) verified against KDP's published
+  help pages, not memory - re-check it before a real print run in case
+  Amazon's numbers moved.
+
+  Each chapter is a **Case File**: five dilemmas sharing one theme, opened
+  by two QR codes printed side by side, not one - "Solo Verdict" (a
+  single-player Evaluation session with those five dilemmas) and "Convene
+  Tribunal" (a Party Room with the same five, for a table of people; one
+  narrator reads each Exhibit aloud and turns the page, everyone else
+  follows on their own phone). Both codes open the *same* five dilemmas;
+  five was chosen to match the app's own `PARTY_ROOM_DEFAULT_DILEMMAS`.
+  `typst/template.typ`'s `chapter-page(...)` is the one shared dossier
+  layout every `chapters/*.typ` file uses (repo convention: shared pattern
+  over per-page copy-paste styling) - `front-matter-page(...)` covers
+  non-chapter pages (title page, `typst/instructions.typ`). Its
+  `find-dilemma(id)` reads `backend/data/dilemmas_en.json` at compile time
+  via Typst's `json()` - chapters reference real dilemma `_id`s, never
+  retyped text, so the book and the app's live content can't drift apart.
+  `qr/generate_qr.py` generates one QR PNG per slug with pure-Python
+  `segno` (no Pillow/system deps); generated PNGs and the compiled PDF
+  output are gitignored, regenerated from source on demand. Fonts are
+  deliberately Typst's bundled OFL fonts (Libertinus Serif, DejaVu Sans
+  Mono) rather than a Windows-supplied commercial font, since KDP requires
+  every embedded font to allow commercial embedding. `main.typ` assembles
+  the title page, instructions, and every chapter into one book PDF. See
   `book/README.md` for the build commands.
+
+  **Not yet functional** (`TASK-291`, High, To Do): the QR codes are
+  placeholders. Neither `create_party_room` nor solo Evaluation's
+  `get_dilemma` currently accepts a caller-supplied, fixed list of dilemma
+  ids - `create_party_room` always calls `_pick_random_dilemma_base_ids`
+  (`random.sample` over the full pool), and `get_dilemma` returns one
+  random dilemma at a time, excluding only what's already been seen. A
+  printed chapter's QR cannot reliably reopen its own five dilemmas until
+  both flows gain a way to start from a fixed, ordered set instead of
+  random selection.
 
   Adding this table initially brought the account's total `PROVISIONED`
   DynamoDB capacity to exactly 25/25 RCU and 25/25 WCU - the entire shared

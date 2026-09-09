@@ -4575,6 +4575,79 @@ requirements.
   numbers should be re-verified against KDP's live help pages before an
   actual print submission, not trusted as permanently fixed from this ADR.
 
+### ADR-129 — `TASK-292` implemented: gamebook chapters redesigned as five-dilemma Case Files opened by two QR codes (solo/party), superseding `ADR-128`'s single-QR `case-page`; `TASK-291` filed for the backend gap this exposed
+
+Context: after `ADR-128` scaffolded the Typst pipeline with a single QR
+per Case File, a follow-up brainstorm compared two ways to combine solo and
+group play in one physical book without a separate "Summons Card" object.
+The user chose a specific direction: chapters of five dilemmas grouped by
+theme, with two QR codes printed at the top of each chapter - one opening
+a solo Evaluation session, the other creating a Party Room - both against
+the identical five-dilemma set. This avoids the earlier rejected design
+(a QR per dilemma per mode, which fragmented group play down to a single
+dilemma at a time) and happens to match the app's own
+`PARTY_ROOM_DEFAULT_DILEMMAS = 5` exactly, so the chapter size wasn't
+picked arbitrarily.
+
+While writing the demo content, checking how the QR codes would actually
+need to work exposed a real gap: `backend_fastapi.py`'s `create_party_room`
+(`~L3262`) always sources its dilemma set via `_pick_random_dilemma_base_ids`
+(`~L3090`, `random.sample` over the full pool by count only), and solo
+Evaluation's `get_dilemma` (`~L5274`) returns one random dilemma at a time,
+excluding only what the client says it has already seen. Neither path
+accepts a caller-supplied, fixed, ordered dilemma-id list.
+`get_dilemmas_by_ids` (`~L2436`) exists but is scoped to replaying a Duel
+invitee's already-stored set, not seeding a brand-new session. Filed as
+`TASK-291` (High, To Do) rather than silently treated as already solved -
+without it, scanning a chapter's QR would open a *different* random five
+dilemmas each time, not the five actually printed on the page, breaking
+the book's central mechanic.
+
+Decision: `book/typst/template.typ`'s single-QR `case-page(...)` was
+replaced outright with `chapter-page(...)` (five dilemmas, a `mode-select`
+QR pair built from a shared `qr-block` helper) rather than kept alongside
+it - the old design is fully superseded, not an alternative still in use,
+so keeping both would have left a stale pattern next to the current one.
+`book/cases/case-001.typ` was deleted; content now lives under
+`book/chapters/*.typ`. Two real chapters were written as the demo:
+"The Honesty Tax" (found/overpaid money nobody would ever trace back to
+you - a pen, loose change, a found wallet, a self-checkout overpayment, a
+padded repair invoice) and "The Loyalty Clause" (protecting someone you
+know versus an obligation to the truth - a cheating partner witnessed, a
+struggling friend/lawyer, a corner-cutting colleague, a friend requesting
+interview questions), five real dilemma `_id`s each pulled from
+`backend/data/dilemmas_en.json`, chosen after reading all 115 dilemmas'
+full text (not just the preview) to confirm real thematic coherence rather
+than guessing from a truncated list. `book/typst/instructions.typ` (a new
+`front-matter-page(...)` front-matter helper, distinct from
+`chapter-page(...)`, for pages with no dossier chrome) explains both modes
+in dossier voice while staying functionally precise: what a Case File is,
+which QR does what, and that a code only ever reopens its own five
+dilemmas. `book/main.typ` assembles a title page, the instructions page,
+and both chapters into one compiled book, `book/out/mini-book.pdf` -
+verified end to end: every page's `MediaBox` is exactly 6.125x9.25in (the
+same KDP-verified geometry from `ADR-128`), and each page was rendered to
+PNG and read to confirm the two-QR layout, Exhibit numbering, and page
+breaks all render correctly with no overflow.
+
+### Consequences
+
+- The book's chapter mechanic (two QR, one dilemma set) is fully specified
+  and demonstrated in Typst, but is not yet backed by real functionality -
+  `TASK-291` is a hard prerequisite before any printed QR would do what the
+  book tells the reader it does. Treat the current `book/out/mini-book.pdf`
+  as a design/print proof only.
+- `chapter-page(...)` is now the only chapter layout in the codebase;
+  future chapters should extend it rather than reintroducing a per-dilemma
+  or single-QR pattern that was deliberately rejected twice (once in
+  conversation, once by this ADR's removal of `case-page`).
+- Five dilemmas per chapter is now a soft content constraint tying the
+  book's structure to `PARTY_ROOM_MIN_DILEMMAS..MAX_DILEMMAS` (3-12) and
+  specifically the app's default of 5 - a future chapter deliberately
+  sized differently is still possible (`chapter-page`'s `dilemma-ids` takes
+  any length) but should stay inside that range so a Party Room can host it
+  once `TASK-291` lands.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
