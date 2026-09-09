@@ -442,7 +442,7 @@ dev table, or `/dev` SSM hierarchy.
   account-deletion cascade or the retention-sweep scan (`TASK-284` tracks
   deciding that question for both tables together, not just this new one).
 
-- **`book/` (`TASK-287`/`TASK-292`/`TASK-293`/`TASK-294`/`TASK-295`)** is a standalone
+- **`book/` (`TASK-287`/`TASK-292`/`TASK-293`/`TASK-294`/`TASK-295`/`TASK-297`)** is a standalone
   local Typst print pipeline for the physical gamebook's "Case File"
   content, living at the repo root alongside `frontend`/`backend`/`backlog`
   - not part of the shipped web/native app, not wired into
@@ -531,7 +531,20 @@ dev table, or `/dev` SSM hierarchy.
   reproducing the actual shape of the app's `.btn-yes`/`.btn-no` -
   `frontend/src/styles/shared.css`: `flex: 1`, `border-radius: 0`, a 2px
   border, `gap: 10px` - not their color, since this interior is black &
-  white).
+  white). Each answer box is a `grid.cell(stroke: ...)`, not a `box` with
+  `height: 100%` - the latter was tried first for making both boxes match
+  the taller answer's height and instead resolved its percentage against
+  the page's available height in that auto-sized flow position, inflating
+  the book from 16 to 26 pages; `grid.cell` strokes the cell's actual
+  allocated area, which the grid already sizes to the row's tallest
+  content. The answer text itself renders in Shadows Into Light
+  (`book/fonts/`, OFL-licensed, checked into the repo as a source asset
+  with its license file alongside it - same embeddable-font rule as every
+  other font in this book, never a Windows-supplied commercial face) for
+  a genuine pencil-handwriting look; the `A`/`B` tag stays in the
+  systematic mono face. Compiling requires `--font-path book/fonts` from
+  here on (a missing font path only warns and silently substitutes a
+  fallback, not a hard error - easy to miss without checking the output).
 
   **Not yet functional** (`TASK-291`, High, To Do): the QR codes are
   placeholders. Neither `create_party_room` nor solo Evaluation's

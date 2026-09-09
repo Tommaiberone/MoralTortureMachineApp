@@ -4850,6 +4850,75 @@ confirmed to have updated correctly (4, 10) for the new, longer pagination.
   artwork replaces `image-placeholder(...)`'s call with an actual
   `image(...)`, not a redesign of the page.
 
+### ADR-133 — `TASK-297` implemented: pencil-handwriting answer font, equal-height answer boxes via `grid.cell` after a `box(height: 100%)` attempt inflated the book
+
+Context: the user asked for the two answers on each dilemma page to look
+hand-written in pencil, and for the two answer boxes to always be the same
+height (today they weren't - a longer answer wrapping to two lines left
+its box visibly taller than the other one's).
+
+For the pencil look, no bundled Typst font or already-installed Windows
+font fit: this book has deliberately avoided Windows-supplied commercial
+fonts throughout (`ADR-128` onward) because KDP requires every embedded
+font to allow commercial embedding and most Windows system fonts restrict
+that, and Typst's own bundled fonts (Libertinus Serif, DejaVu Sans Mono,
+New Computer Modern) are not handwriting faces. Rather than bend that
+rule for one element, a genuine OFL-licensed handwriting font (Shadows
+Into Light, from Google Fonts' `google/fonts` GitHub repo, `ofl/`
+directory) was downloaded and checked into `book/fonts/` with its
+`OFL.txt` alongside it - the same embeddability guarantee as every other
+font in this book, just sourced rather than bundled.
+
+For equal-height boxes, the first attempt wrapped each answer in a `box`
+with `height: 100%` inside the `grid(columns: (1fr, 1fr))` cell, expecting
+100% to resolve against the grid row's height (the taller answer). It
+compiled without error but inflated the whole book from 16 to 26 pages -
+caught immediately by the same page-count-and-PNG-render verification
+habit this book's history has relied on throughout, not assumed correct
+because it compiled. The percentage was resolving against the page's
+available height in that auto-sized flow position, not the row, so every
+answer box tried to fill most of the remaining page.
+
+Decision: switched to `grid.cell(stroke: 2pt, inset: 0.9em, ...)` per
+answer instead of a `box`. `grid.cell` strokes and fills the cell's actual
+allocated area, and the grid already sizes an auto row to its tallest
+cell's natural content height, so both answers end up equal height as a
+direct consequence of how the grid lays out rather than a manual
+percentage fighting an ambiguous reference frame. The `A`/`B` tag keeps
+the systematic mono face (a quick, legible reference for the table); only
+the answer text itself switches to Shadows Into Light, at a larger size
+(15pt vs. the body's 10.5pt) since handwriting faces generally need more
+size to stay comfortably legible than a normal text face does. Compiling
+now requires `--font-path book/fonts`, documented in `book/README.md`
+alongside a new "Editor setup" section recording the `.vscode/settings.json`
+content needed locally (`tinymist.fontPaths`, alongside the already-local
+`tinymist.rootPath` from `ADR-128`) - that file stays gitignored per the
+repo's existing convention, so this is written down rather than assumed
+carried forward automatically for the next clone or machine.
+
+Verified by recompiling: page count back to 16 (not 26), `MediaBox`
+unchanged, and multiple dilemma pages across both chapters rendered to
+PNG and read to confirm the pencil font displays correctly and both
+answer boxes visibly match in height even where one answer wraps to two
+lines and the other doesn't.
+
+### Consequences
+
+- `book/fonts/` is now a real, versioned dependency of this pipeline, not
+  purely Typst-bundled fonts - a future contributor building the book
+  needs `--font-path book/fonts` (or the equivalent Tinymist setting) or
+  the pencil font silently falls back to something else with only a
+  warning, not a build failure.
+- `grid.cell` (not `box` with a percentage height) is now the pattern for
+  any future "make grid cells match a shared height" need in this
+  codebase - the `box(height: 100%)` failure mode (silently inflating
+  page count, not erroring) is exactly the kind of mistake worth avoiding
+  by copying the working pattern instead of re-deriving it.
+- Every font this book uses is now itemized with its embeddability
+  rationale in one of two places: Typst's own bundled OFL fonts, or a
+  checked-in `book/fonts/` file with its license alongside it - no font
+  in this pipeline is a Windows-supplied commercial face.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

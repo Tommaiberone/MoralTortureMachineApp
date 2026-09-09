@@ -126,18 +126,31 @@
 // border-radius: 0 (sharp corners, not rounded), a 2px border, side by
 // side with a small gap - reproduced here as a two-column grid of
 // square-cornered bordered boxes rather than the app's color-coded fill,
-// since this interior is black & white ink.
-#let answer-button(tag, label) = box(width: 100%, stroke: 2pt, inset: 0.9em)[
+// since this interior is black & white ink. Each answer is a
+// `grid.cell(stroke: ...)` rather than a `box` with `height: 100%`: a
+// percentage height inside a `box` resolves against the *page's*
+// available height in an auto-sized flow position, not the grid row
+// (confirmed the hard way - it inflated the book from 16 to 26 pages).
+// `grid.cell` draws its stroke against the cell's actual allocated area,
+// which the grid already sizes to the row's tallest content, so both
+// answers end up the same height without that trap.
+//
+// The answer text itself uses Shadows Into Light (`book/fonts/`, OFL -
+// same embeddable-font requirement as every other font in this book),
+// a genuine pencil/handwriting-style face, standing in for the reader
+// marking their own choice by hand; the A/B tag stays in the systematic
+// mono face so it's still a quick reference at the table.
+#let answer-button-content(tag, label) = [
   #text(font: "DejaVu Sans Mono", size: 7pt, tracking: 1.5pt, fill: luma(40%))[#tag]
   #v(0.4em)
-  #align(center, text(weight: "bold", label))
+  #align(center, text(font: "Shadows Into", size: 15pt, label))
 ]
 
 #let answer-buttons(first, second) = grid(
   columns: (1fr, 1fr),
   column-gutter: 10pt,
-  answer-button("A", first),
-  answer-button("B", second),
+  grid.cell(stroke: 2pt, inset: 0.9em, answer-button-content("A", first)),
+  grid.cell(stroke: 2pt, inset: 0.9em, answer-button-content("B", second)),
 )
 
 // One dilemma, one page: an Exhibit tag + title, an image placeholder,

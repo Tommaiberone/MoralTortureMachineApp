@@ -5,7 +5,7 @@ Terraform. This is design/iteration tooling for the physical gamebook idea
 (waitlist demand test: `TASK-281`) — not a production or Kickstarter
 commitment. Scaffold: `TASK-287`. Chapter/mode design: `TASK-292`. Visual
 design: `TASK-293`. Registry/bleed/ToC/closing-page polish: `TASK-294`.
-Per-dilemma page layout: `TASK-295`.
+Per-dilemma page layout: `TASK-295`. Pencil answer font: `TASK-297`.
 
 Interior is confirmed **black & white** for KDP. That still halftones
 grayscale/solid fills correctly (like any B&W book with photos or shaded
@@ -75,6 +75,28 @@ python -m venv book/.venv
 book/.venv/Scripts/python.exe -m pip install segno
 ```
 
+Fonts (`book/fonts/`) are already checked into the repo as source assets
+(OFL-licensed, embeddable), not downloaded per-machine — nothing to
+install there.
+
+## Editor setup (VS Code + Tinymist)
+
+`.vscode/settings.json` isn't versioned (the root `.gitignore` treats
+`.vscode/` as local editor state), so re-add it once per clone/machine:
+
+```json
+{
+  "tinymist.rootPath": "${workspaceFolder}",
+  "tinymist.fontPaths": ["${workspaceFolder}/book/fonts"]
+}
+```
+
+Without `rootPath`, the in-editor preview defaults its root to `book/`
+and can't resolve the `/backend/...` and `/book/...` absolute paths this
+book's Typst files use. Without `fontPaths`, the pencil-handwriting
+answer font silently falls back to a default face in the preview only
+(the CLI build already gets it via `--font-path`, see below).
+
 ## Build
 
 ```bash
@@ -85,12 +107,17 @@ book/.venv/Scripts/python.exe book/qr/generate_qr.py
 # 2. Compile the whole book - MUST pass --root as the repo root so
 #    template.typ can read backend/data/dilemmas_en.json (dilemma content
 #    is pulled live from the app's own data, never retyped by hand, so
-#    book and app can't drift).
-typst compile --root . book/main.typ book/out/mini-book.pdf
+#    book and app can't drift), and --font-path so the pencil-handwriting
+#    answer font in book/fonts/ resolves (without it Typst falls back to
+#    a default font with only a warning, not an error - easy to miss).
+typst compile --root . --font-path book/fonts book/main.typ book/out/mini-book.pdf
 ```
 
-`typst watch --root . book/main.typ book/out/mini-book.pdf` recompiles on
-save for fast iteration. A single chapter can also be compiled on its own,
+`typst watch --root . --font-path book/fonts book/main.typ book/out/mini-book.pdf`
+recompiles on save for fast iteration. VS Code's Tinymist preview reads
+`--font-path` from `tinymist.fontPaths` in `.vscode/settings.json` (local,
+gitignored like the rest of `.vscode/` - see "Editor setup" below).
+A single chapter can also be compiled on its own,
 e.g. `typst compile --root . book/chapters/chapter-01.typ book/out/chapter-01.pdf`
 (its table of contents entry won't resolve a page number in that case,
 since the label lookup needs the whole book compiled together).
@@ -134,6 +161,12 @@ since the label lookup needs the whole book compiled together).
   closing page's) in one run; pass specific slugs as arguments to
   regenerate only those. Generated PNGs are gitignored — regenerate them,
   don't hand-edit or commit them.
+- `fonts/` — checked-in, OFL-licensed font files (a license file sits next
+  to each font, per the OFL's own redistribution terms), not something
+  downloaded per machine. Currently just Shadows Into Light (used for the
+  answer buttons' pencil-handwriting look) - like every other font this
+  book uses, deliberately not a Windows-supplied commercial font, since
+  KDP requires every embedded font to allow commercial embedding.
 
 ## Bleed
 
