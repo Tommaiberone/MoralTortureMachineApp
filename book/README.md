@@ -3,7 +3,13 @@
 Local tooling only. Not wired into any CI/CD, deploy, `pnpm build:prod`, or
 Terraform. This is design/iteration tooling for the physical gamebook idea
 (waitlist demand test: `TASK-281`) — not a production or Kickstarter
-commitment. Scaffold: `TASK-287`. Chapter/mode design: `TASK-292`.
+commitment. Scaffold: `TASK-287`. Chapter/mode design: `TASK-292`. Visual
+design: `TASK-293`.
+
+Interior is confirmed **black & white** for KDP. That still halftones
+grayscale/solid fills correctly (like any B&W book with photos or shaded
+boxes) — it only means no color ink, not "no gray or black". The
+reversed (white-on-black) panels below lean on that.
 
 ## Design
 
@@ -88,7 +94,10 @@ e.g. `typst compile --root . book/chapters/chapter-01.typ book/out/chapter-01.pd
   Exhibit list); also `front-matter-page(...)` for non-chapter pages
   (title page, instructions), and `find-dilemma(id)`, which reads
   `backend/data/dilemmas_en.json` at compile time and hard-fails if an id
-  doesn't exist there.
+  doesn't exist there. The visual vocabulary lives here too:
+  `case-band(...)` (reversed content-width header panel), `evidence-tag`
+  (bordered QR card), `exhibit(...)` (reversed Exhibit tag + margin rule),
+  `stamp(...)` (small rotated "ink stamp" accent), `redacted(...)`.
 - `typst/instructions.typ` — the "How to Open a Case File" front-matter
   page explaining Solo Verdict vs. Convene Tribunal.
 - `chapters/*.typ` — one Case File per chapter, five dilemma `_id`s each,
@@ -106,9 +115,13 @@ e.g. `typst compile --root . book/chapters/chapter-01.typ book/out/chapter-01.pd
   every font to be embeddable and most commercial Windows fonts restrict
   that. Swap for a licensed display/stamp font later only if it's
   confirmed embeddable.
-- No bespoke dossier art direction yet (stamps, redacted-bar visuals beyond
-  the `redacted()` helper, torn-paper textures) — this scaffold proves the
-  pipeline, geometry, and chapter mechanic, not the final visual design.
+- Dossier art direction (`TASK-293`) is reversed-panel/evidence-tag based
+  (`case-band`, `evidence-tag`, `exhibit`, `stamp` in `typst/template.typ`)
+  but deliberately content-width, not true edge-to-edge bleed — getting
+  bleed art right on mirrored (`binding: left`) margins needs knowing, per
+  page, whether it's recto or verso, and misjudging that would misalign
+  art against the trim on a real print run. A verified bleed pass is a
+  later step, not attempted here.
 - Cover file (spine width, KDP's separate cover template) is out of scope
   here — build it against KDP's own generated template once a real page
   count exists.

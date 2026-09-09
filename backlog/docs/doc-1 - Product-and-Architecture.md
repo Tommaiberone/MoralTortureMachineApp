@@ -442,7 +442,7 @@ dev table, or `/dev` SSM hierarchy.
   account-deletion cascade or the retention-sweep scan (`TASK-284` tracks
   deciding that question for both tables together, not just this new one).
 
-- **`book/` (`TASK-287`/`TASK-292`)** is a standalone local Typst print
+- **`book/` (`TASK-287`/`TASK-292`/`TASK-293`)** is a standalone local Typst print
   pipeline for the physical gamebook's "Case File" content, living at the
   repo root alongside `frontend`/`backend`/`backlog` - not part of the
   shipped web/native app, not wired into `pnpm build:prod`, CI/CD
@@ -479,6 +479,20 @@ dev table, or `/dev` SSM hierarchy.
   every embedded font to allow commercial embedding. `main.typ` assembles
   the title page, instructions, and every chapter into one book PDF. See
   `book/README.md` for the build commands.
+
+  Interior is confirmed black & white for KDP - which still halftones
+  grays/solid fills correctly, not just pure 1-bit - so `typst/template.typ`
+  leans on reversed (white-on-black) panels for its visual system:
+  `case-band(...)` (a full-content-width reversed header, used for the
+  chapter header and the title page), `evidence-tag(...)` (a bordered QR
+  card), `exhibit(...)` (a reversed "EXHIBIT N" tag with a left margin
+  rule per dilemma), and `stamp(...)` (a small rotated bordered accent).
+  Deliberately *not* attempted: true edge-to-edge bleed art - with mirrored
+  (`binding: left`) margins, a page's inside/outside resolve to opposite
+  physical sides depending on whether it's recto or verso, and getting
+  that offset wrong would misalign bleed art against the trim on a real
+  print run; every reversed panel is full content-width instead, a safer
+  option pending a verified bleed pass later.
 
   **Not yet functional** (`TASK-291`, High, To Do): the QR codes are
   placeholders. Neither `create_party_room` nor solo Evaluation's

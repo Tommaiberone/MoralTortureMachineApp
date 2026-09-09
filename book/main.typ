@@ -3,17 +3,24 @@
 //   typst compile --root <repo root> book/main.typ book/out/mini-book.pdf
 // See book/README.md.
 
-#import "typst/template.typ": front-matter-page, stamp-header
+#import "typst/template.typ": front-matter-page
 
 #front-matter-page(page-count: 24)[
-  #v(2.5in)
-  #align(center)[
-    #stamp-header("Property of the Subject")
+  #v(1.4in)
+  #block(
+    width: 100%,
+    height: 5in,
+    fill: black,
+    inset: 1.5em,
+  )[
+    #set align(center + horizon)
+    #set text(fill: white)
+    #text(font: "DejaVu Sans Mono", size: 9pt, tracking: 3pt)[PROPERTY OF THE SUBJECT]
+    #v(1.2em)
+    #text(size: 27pt, weight: "bold", tracking: 1pt)[MORAL TORTURE MACHINE]
     #v(1em)
-    #text(size: 28pt, weight: "bold", tracking: 2pt)[MORAL TORTURE MACHINE]
-    #v(0.5em)
-    #line(length: 40%, stroke: 0.4pt)
-    #v(0.5em)
+    #line(length: 35%, stroke: 0.5pt + white)
+    #v(1em)
     #text(size: 14pt, style: "italic")[The Gamebook]
   ]
 ]

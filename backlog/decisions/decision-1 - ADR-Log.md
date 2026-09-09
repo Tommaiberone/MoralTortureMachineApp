@@ -4648,6 +4648,68 @@ breaks all render correctly with no overflow.
   any length) but should stay inside that range so a Party Room can host it
   once `TASK-291` lands.
 
+### ADR-130 — `TASK-293` implemented: reversed-panel/evidence-tag visual system for the gamebook, confirmed black & white interior, edge-to-edge bleed art deliberately deferred
+
+Context: after seeing the `ADR-129` mini-book demo, the user confirmed a
+black & white KDP interior (settling the open question from that ADR) and
+asked directly for the visual design to be "much better - right now it's
+a bit bare." KDP's B&W paperback printing still halftones grays and solid
+black fills correctly (it means no color ink, not 1-bit line art), which
+opened the door to a bolder reversed-color (white-on-black) system without
+introducing any color-ink cost question.
+
+Decision: added a small, reusable visual vocabulary to
+`book/typst/template.typ` rather than one-off styling per page:
+`case-band(...)` (a full-content-width reversed panel used for every
+chapter's running header and, larger, for `main.typ`'s title page),
+`evidence-tag(...)` (a bordered QR card with an identifying tag, replacing
+the old plain `qr-block`), `exhibit(...)` (a reversed "EXHIBIT N" tag with
+a left margin rule running the height of that dilemma's block, replacing a
+thin divider line), and `stamp(...)` (a small rotated bordered accent used
+once per chapter next to the theme intro). `book/typst/instructions.typ`
+was updated to match, turning its Solo Verdict / Convene Tribunal
+explanations into two bordered `procedure-panel` cards instead of plain
+sequential paragraphs, and its `redacted()` placeholder was reworded so
+the redaction reads as an in-fiction censored protocol name instead of a
+random black box with no referent.
+
+Deliberately not attempted: true edge-to-edge bleed art (e.g. a header
+band running into the physical page edge rather than stopping at the
+content margin). This book's pages use mirrored margins
+(`binding: left`, `margin: (inside:, outside:)`, from `ADR-128`), so a
+page's inside/outside resolve to opposite physical left/right sides
+depending on whether it's recto or verso - placing bleed-precise art
+correctly would need the render to know that parity per page and offset
+accordingly, and getting it wrong would misalign art against the trim on
+a real print run, not just look slightly off on screen. Every reversed
+panel here is full content-width (between the margins) instead - still a
+strong visual upgrade, with zero risk of a trim misalignment. A verified
+recto/verso-aware bleed pass is left as later, deliberate work.
+
+Verified by recompiling `book/main.typ` and rendering all 6 pages to PNG
+for visual inspection (as with `ADR-129`): every `MediaBox` unchanged at
+6.125x9.25in, no content overflow, and the new panels/tags/rules render
+correctly across the title page, instructions, and both chapters.
+
+### Consequences
+
+- The book now has a distinct, consistent visual identity (reversed
+  panels, evidence tags, margin-ruled exhibits) built from four reusable
+  functions rather than per-page one-offs - a future chapter automatically
+  inherits it by calling `chapter-page(...)`, nothing to re-style by hand.
+- Black & white interior is now a confirmed decision, not an open
+  question - `book/typst/kdp.typ`'s geometry was already correct for it
+  (KDP's bleed/margin numbers don't depend on ink color), so nothing there
+  needed to change, only the content design built on top of it.
+- Edge-to-edge bleed art remains unimplemented by design, not by
+  oversight - anyone extending this book's visual system should keep
+  panels content-width unless they also solve the recto/verso parity
+  problem this ADR flagged, not copy a bleed offset that happens to look
+  right on one page.
+- This is still tooling/design only: no print run or spend exists, and
+  `TASK-291`'s backend gap (the QR codes still don't functionally work)
+  is unaffected by this purely visual change.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
