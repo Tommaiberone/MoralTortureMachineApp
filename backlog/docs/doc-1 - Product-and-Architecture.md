@@ -453,7 +453,7 @@ dev table, or `/dev` SSM hierarchy.
   account-deletion cascade or the retention-sweep scan (`TASK-284` tracks
   deciding that question for both tables together, not just this new one).
 
-- **`book/` (`TASK-287`/`TASK-292`/`TASK-293`/`TASK-294`/`TASK-295`/`TASK-297`/`TASK-298`)** is a standalone
+- **`book/` (`TASK-287`/`TASK-292`/`TASK-293`/`TASK-294`/`TASK-295`/`TASK-297`/`TASK-298`/`TASK-299`)** is a standalone
   local Typst print pipeline for the physical gamebook's "Case File"
   content, living at the repo root alongside `frontend`/`backend`/`backlog`
   - not part of the shipped web/native app, not wired into
@@ -548,14 +548,12 @@ dev table, or `/dev` SSM hierarchy.
   the page's available height in that auto-sized flow position, inflating
   the book from 16 to 26 pages; `grid.cell` strokes the cell's actual
   allocated area, which the grid already sizes to the row's tallest
-  content. The answer text itself renders in Shadows Into Light
-  (`book/fonts/`, OFL-licensed, checked into the repo as a source asset
-  with its license file alongside it - same embeddable-font rule as every
-  other font in this book, never a Windows-supplied commercial face) for
-  a genuine pencil-handwriting look; the `A`/`B` tag stays in the
-  systematic mono face. Compiling requires `--font-path book/fonts` from
-  here on (a missing font path only warns and silently substitutes a
-  fallback, not a hard error - easy to miss without checking the output).
+  content, so both boxes stay equal height. The answer text itself is
+  plain bold body text, no tag above it - a pencil-handwriting font
+  (Shadows Into Light, `TASK-297`) and an `A`/`B` tag were tried and
+  rejected on sight (`TASK-299`); `book/fonts/` and every `--font-path`
+  reference were removed along with it, so compiling no longer needs that
+  flag.
 
   `typst/colophon.typ` (edition/copyright/an honest ISBN placeholder - no
   real one exists until an actual print run) sits right after the title

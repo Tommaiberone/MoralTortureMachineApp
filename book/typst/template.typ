@@ -135,22 +135,16 @@
 // which the grid already sizes to the row's tallest content, so both
 // answers end up the same height without that trap.
 //
-// The answer text itself uses Shadows Into Light (`book/fonts/`, OFL -
-// same embeddable-font requirement as every other font in this book),
-// a genuine pencil/handwriting-style face, standing in for the reader
-// marking their own choice by hand; the A/B tag stays in the systematic
-// mono face so it's still a quick reference at the table.
-#let answer-button-content(tag, label) = [
-  #text(font: "DejaVu Sans Mono", size: 7pt, tracking: 1.5pt, fill: luma(40%))[#tag]
-  #v(0.4em)
-  #align(center, text(font: "Shadows Into", size: 15pt, label))
-]
+// A pencil-handwriting font for the answer text (with a small A/B tag
+// above each) was tried and rejected on sight - reverted to plain bold
+// body text, no tag.
+#let answer-button-content(label) = align(center, text(weight: "bold", label))
 
 #let answer-buttons(first, second) = grid(
   columns: (1fr, 1fr),
   column-gutter: 10pt,
-  grid.cell(stroke: 2pt, inset: 0.9em, answer-button-content("A", first)),
-  grid.cell(stroke: 2pt, inset: 0.9em, answer-button-content("B", second)),
+  grid.cell(stroke: 2pt, inset: 0.9em, answer-button-content(first)),
+  grid.cell(stroke: 2pt, inset: 0.9em, answer-button-content(second)),
 )
 
 // One dilemma, one page: an Exhibit tag + title, an image placeholder,

@@ -5021,6 +5021,41 @@ hardcoded that needed manual updating for the new page.
   page-specific footer content - a bare page number remains the default,
   matching front/back-matter pages that aren't "inside" anything.
 
+### ADR-136 — `TASK-299` reverted `ADR-133`'s pencil-handwriting answer font and `A`/`B` tags on sight
+
+Context: the user looked at `ADR-133`'s pencil-handwriting answer text and
+said plainly it was ugly, asking for the previous look back, and for the
+`A`/`B` tags above each answer to go too. Not every design experiment in
+this book's history has been kept - this one wasn't.
+
+Decision: `answer-button-content` (`template.typ`) dropped its `tag`
+parameter and the `Shadows Into Light` font, back to plain bold body text
+(Libertinus Serif), centered, no label above it. `book/fonts/` (the
+`.ttf` and its `OFL.txt`) was deleted outright rather than left as an
+unused asset, since nothing else in the book referenced that font.
+Every `--font-path book/fonts` mention was removed from `book/README.md`
+and `.vscode/settings.json` along with it, so compiling no longer needs
+that flag and doesn't warn about a missing font. `ADR-133`'s other half -
+`grid.cell(stroke: ...)` instead of `box(height: 100%)` for equal-height
+answer boxes - was kept; the complaint was specifically about the pencil
+font and the tags, not the equal-height fix, and undoing it would have
+reintroduced the mismatched-height boxes that fix solved.
+
+Verified by recompiling without `--font-path`: no font warning, 17 pages
+unchanged, `MediaBox` unchanged, and both answer boxes on a page with
+different-length answers still rendered the same height.
+
+### Consequences
+
+- Not every design change in this project's history survives - this ADR
+  records that `ADR-133`'s font choice specifically didn't, so a future
+  session doesn't need to rediscover that it was tried and rejected by
+  re-adding it.
+- `book/fonts/` is empty of committed assets again; if a future font need
+  arises, the sourcing/licensing/`--font-path` pattern `ADR-133` set up is
+  still the right one to reuse, just pointed at a different, better-liked
+  font file.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
