@@ -453,7 +453,7 @@ dev table, or `/dev` SSM hierarchy.
   account-deletion cascade or the retention-sweep scan (`TASK-284` tracks
   deciding that question for both tables together, not just this new one).
 
-- **`book/` (`TASK-287`/`TASK-292`/`TASK-293`/`TASK-294`/`TASK-295`/`TASK-297`)** is a standalone
+- **`book/` (`TASK-287`/`TASK-292`/`TASK-293`/`TASK-294`/`TASK-295`/`TASK-297`/`TASK-298`)** is a standalone
   local Typst print pipeline for the physical gamebook's "Case File"
   content, living at the repo root alongside `frontend`/`backend`/`backlog`
   - not part of the shipped web/native app, not wired into
@@ -556,6 +556,17 @@ dev table, or `/dev` SSM hierarchy.
   systematic mono face. Compiling requires `--font-path book/fonts` from
   here on (a missing font path only warns and silently substitutes a
   fallback, not a hard error - easy to miss without checking the output).
+
+  `typst/colophon.typ` (edition/copyright/an honest ISBN placeholder - no
+  real one exists until an actual print run) sits right after the title
+  page, a standard book convention this dossier didn't have before. The
+  title page also carries the "Subject #___" fill-in the closing page
+  already had, so a reader claims the copy at the front, not only the
+  back. `page-footer(...)` (`template.typ`) takes an optional `label:` -
+  `chapter-page` passes its chapter's title so every chapter page's footer
+  reads "<TITLE> --- N ---" instead of a bare number, letting a reader
+  flipping mid-book tell which Case File they're in; front/back-matter
+  pages call it with no label.
 
   **Not yet functional** (`TASK-291`, High, To Do): the QR codes are
   placeholders. Neither `create_party_room` nor solo Evaluation's

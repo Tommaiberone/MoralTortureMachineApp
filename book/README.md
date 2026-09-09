@@ -6,6 +6,7 @@ Terraform. This is design/iteration tooling for the physical gamebook idea
 commitment. Scaffold: `TASK-287`. Chapter/mode design: `TASK-292`. Visual
 design: `TASK-293`. Registry/bleed/ToC/closing-page polish: `TASK-294`.
 Per-dilemma page layout: `TASK-295`. Pencil answer font: `TASK-297`.
+Colophon/running footer/title-page Subject #: `TASK-298`.
 
 Interior is confirmed **black & white** for KDP. That still halftones
 grayscale/solid fills correctly (like any B&W book with photos or shaded
@@ -36,11 +37,15 @@ app's `.btn-yes`/`.btn-no` (`frontend/src/styles/shared.css`: equal width,
 sharp square corners, a 2px border, side by side with a small gap), not
 their color coding, since this interior is black & white.
 
-The book closes with a **Case Closed** page: a "Subject #___" fill-in
-(the numbered-copy idea from early growth brainstorming), and a QR back to
-the site framed as comparing your record against whoever you shared the
-dossier with — the one page that explicitly reconnects the physical object
-to the app's compare/share loop, which nothing earlier in the book did.
+The title page carries a "Subject #___" fill-in too (the numbered-copy
+idea from early growth brainstorming) — claimed at the front, not only at
+the back. The book closes with a **Case Closed** page: the same fill-in
+again, and a QR back to the site framed as comparing your record against
+whoever you shared the dossier with — the one page that explicitly
+reconnects the physical object to the app's compare/share loop, which
+nothing earlier in the book did. Every chapter page's footer shows that
+chapter's title alongside the page number, so flipping through the middle
+of the book still tells you which Case File you're in.
 
 **Known gap, not yet built (`TASK-291`, High, To Do):** today neither
 Party Room creation nor solo Evaluation accepts a client-supplied,
@@ -145,6 +150,9 @@ since the label lookup needs the whole book compiled together).
 - `typst/instructions.typ` — the "How to Open a Case File" front-matter
   page explaining Solo Verdict vs. Convene Tribunal.
 - `typst/closing.typ` — the "Case Closed" back-matter page.
+- `typst/colophon.typ` — the edition/copyright page (right after the title
+  page): honest about what's still a placeholder (no real ISBN exists
+  until there's an actual print run, `TASK-281`) rather than inventing one.
 - `chapters/registry.json` — **the single source of truth** for every
   chapter: title, theme intro, stamp text, solo/party QR slugs, and its
   five dilemmas as `{id, title}` (the real dilemma `_id` from

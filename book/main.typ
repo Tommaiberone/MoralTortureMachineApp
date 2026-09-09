@@ -20,8 +20,15 @@
     #line(length: 35%, stroke: 0.5pt + white)
     #v(1em)
     #text(size: 14pt, style: "italic")[The Gamebook]
+    #v(2.4em)
+    #text(font: "DejaVu Sans Mono", size: 8pt, tracking: 1pt)[SUBJECT \#]
+    #h(0.5em)
+    #box(width: 1.6in, height: 1.1em, stroke: (bottom: 0.6pt + white))
   ]
 ]
+#pagebreak()
+
+#include "typst/colophon.typ"
 #pagebreak()
 
 // Table of contents - built from the same registry every chapter reads,

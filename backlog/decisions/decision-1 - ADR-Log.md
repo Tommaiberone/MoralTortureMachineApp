@@ -4981,6 +4981,46 @@ including on a narrow/mobile viewport.
   scope was the homepage banner specifically; extending the teaser to those
   end-of-mode screens is unscoped future work if wanted.
 
+### ADR-135 — `TASK-298` implemented: colophon page, running chapter-title footer, title-page Subject #
+
+Context: three small proposals from the earlier suggestions round were
+approved together ("Ok per i tuoi suggerimenti"): a copyright/edition
+page (a standard book convention this dossier lacked entirely - it went
+straight from the title page to the table of contents), a footer showing
+which chapter a page belongs to instead of a bare page number, and the
+title page carrying the same "Subject #___" fill-in the closing page
+already had, so ownership is claimed at the front as well as the back.
+
+Decision: `typst/colophon.typ` is a new, minimal front-matter page (no
+band, small gray mono text) with edition/year, a copyright line, and an
+honest `ISBN: to be assigned at print submission` rather than a fabricated
+number - consistent with this book's standing rule of marking unfinished
+pieces as placeholders (the image placeholder, `TASK-291`'s non-functional
+QR codes) instead of faking completeness. `page-footer` (`template.typ`)
+changed from a bare context value to a function taking an optional
+`label:`; `chapter-page` passes its chapter's title, rendering
+"<TITLE> --- N ---", while `front-matter-page` keeps calling it with no
+label (plain page number) - front/back matter doesn't need a running
+chapter reference since it isn't inside one. The title page's black
+background got the same white-stroked "SUBJECT #___" line style as the
+closing page's black-on-white version, same field, inverted for its
+background.
+
+Verified by recompiling: 17 pages (up one for the colophon), `MediaBox`
+unchanged, and the table of contents' resolved page numbers confirmed to
+have shifted correctly (5, 11 - one more than `ADR-132`'s 4, 10) purely
+from the existing label + `counter(page).at(...)` mechanism, with nothing
+hardcoded that needed manual updating for the new page.
+
+### Consequences
+
+- The book's front matter now reads as a complete book opening (title,
+  colophon, table of contents, instructions) rather than jumping straight
+  from cover to contents.
+- `page-footer`'s `label:` parameter is the pattern for any future
+  page-specific footer content - a bare page number remains the default,
+  matching front/back-matter pages that aren't "inside" anything.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

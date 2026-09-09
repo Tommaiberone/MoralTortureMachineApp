@@ -195,11 +195,22 @@
   ],
 )
 
-// Standard footer: a plain centered page number. Suppressed on the title
-// page (its background is full-bleed black, and a default dark footer
-// would be invisible against it).
-#let page-footer = context [
-  #align(center, text(font: "DejaVu Sans Mono", size: 8pt, fill: luma(45%))[#counter(page).display()])
+// Standard footer: a centered page number, plus a running chapter title
+// when inside one (`label:`) so a reader flipping the book can tell which
+// Case File a page belongs to without hunting back for its opener. Front
+// matter/back matter pages call it with no label - just the number.
+// Suppressed entirely on the title page (its background is full-bleed
+// black, and a default dark footer would be invisible against it).
+#let page-footer(label: none) = context [
+  #align(center)[
+    #if label != none {
+      text(font: "DejaVu Sans Mono", size: 7pt, fill: luma(55%), tracking: 1pt)[#upper(label)]
+      h(0.6em)
+      text(font: "DejaVu Sans Mono", size: 7pt, fill: luma(45%))[--- #counter(page).display() ---]
+    } else {
+      text(font: "DejaVu Sans Mono", size: 8pt, fill: luma(45%))[#counter(page).display()]
+    }
+  ]
 ]
 
 // A page that is entirely black, edge to edge (true full-page bleed, not
@@ -223,7 +234,7 @@
 #let front-matter-page(page-count: 24, show-footer: true, band: none, body) = {
   kdp-page(page-count: page-count, extra-top: if band != none { bleed-band-height } else { 0pt }, {
     set page(
-      footer: if show-footer { page-footer } else { none },
+      footer: if show-footer { page-footer() } else { none },
       background: if band != none { bleed-band(kicker: band.at("kicker", default: none), title: band.title) },
     )
     set text(font: "Libertinus Serif", size: 10.5pt)
@@ -242,7 +253,7 @@
   let c = chapters-registry.at(key)
   kdp-page(page-count: page-count, extra-top: bleed-band-height, {
     set page(
-      footer: page-footer,
+      footer: page-footer(label: c.title),
       background: bleed-band(kicker: "Case File No. " + str(c.number), title: c.title),
     )
     set text(font: "Libertinus Serif", size: 10.5pt)
