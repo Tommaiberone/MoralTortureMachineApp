@@ -102,7 +102,8 @@
     "gamebook_cta_button": "Notify Me / Early Access",
     "gamebook_submitting": "Filing your dossier...",
     "gamebook_success": "Dossier received. You're on the list — we'll reach out if the case reopens.",
-    "gamebook_error": "The file got lost in transit. Please try again."
+    "gamebook_error": "The file got lost in transit. Please try again.",
+    "gamebook_dismiss": "Dismiss gamebook notice"
   },
   "tutorial": {
     "previous": "Previous",

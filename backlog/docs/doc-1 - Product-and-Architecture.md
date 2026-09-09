@@ -95,6 +95,17 @@ dev table, or `/dev` SSM hierarchy.
   `--choice-b-text`, never the raw `--text-danger`/`--choice-a`/`--choice-b`
   border-oriented tokens, which measure below WCAG AA contrast as text color
   (ADR-044, `TASK-102`/`107`/`202`).
+- `frontend/src/components/GamebookWaitlist.jsx` (+ `.css`) is the single
+  "Classified Dossier: The Gamebook" waitlist widget (email capture, submit
+  to `POST /gamebook-waitlist`, per-device already-subscribed flag,
+  `gamebook_teaser_viewed`/`gamebook_waitlist_signup` analytics), extracted
+  by `TASK-296` from the inline version `TASK-281` first shipped in
+  `ResultsScreen`. It takes `variant` (`card` for `ResultsScreen`'s
+  full-width end-of-mode box, `banner` for `HomeScreen`'s floating,
+  dismissible teaser) and `surface` (an analytics dimension, not a visual
+  one) props; a screen that needs this widget renders the component with the
+  variant it needs rather than copying the form/fetch/localStorage logic
+  again.
 
 ## Identity and authentication
 

@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import SEO from '../components/SEO';
 import AuthButton from '../components/AuthButton';
+import { GamebookWaitlist } from '../components/GamebookWaitlist';
 import { combineSchemas, getWebApplicationSchema, getFAQSchema, getHowToSchema } from '../utils/structuredData';
 import { trackEvent } from '../utils/analytics';
 import { getAnonymousUserId } from '../utils/session';
@@ -140,6 +141,11 @@ const HomeScreen = () => {
         <p className="home-warning">
           {t('home.warning_footer')}
         </p>
+
+        {/* TASK-296: floating, dismissible teaser for the physical gamebook -
+            reuses the same waitlist widget as ResultsScreen's end-of-mode
+            dossier card (TASK-281), see components/GamebookWaitlist. */}
+        <GamebookWaitlist surface="home" variant="banner" dismissible />
       </div>
   );
 };

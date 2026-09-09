@@ -4919,6 +4919,68 @@ lines and the other doesn't.
   checked-in `book/fonts/` file with its license alongside it - no font
   in this pipeline is a Windows-supplied commercial face.
 
+### ADR-134 — `TASK-296` implemented: floating homepage banner advertising the gamebook, by extracting the ResultsScreen dossier widget into a shared component instead of duplicating it
+
+Context: the user asked for a floating banner on `HomeScreen` promoting the
+in-progress physical gamebook, explicitly pointing at "what's already there
+at the end of the modes" - the "Classified Dossier: The Gamebook" email
+waitlist box `TASK-281` shipped inline inside `ResultsScreen.jsx` (the only
+screen that had it; Party Room and Daily Moral Crime don't route through
+`ResultsScreen` and never had it).
+
+Options considered: (a) copy the box's JSX/state/fetch/localStorage logic
+into `HomeScreen.jsx` as a second implementation; (b) extract the existing
+widget into a shared component and render it in both places with a variant
+prop. Per `CLAUDE.md`'s "reuse and unify over duplicating" rule, (a) would
+have created exactly the kind of same-widget-two-places drift the rule
+exists to prevent, so (b) was chosen.
+
+Choice: new `frontend/src/components/GamebookWaitlist.jsx` (+ `.css`) holds
+the email validation, `POST /gamebook-waitlist` submit, per-device
+already-subscribed flag (`mtm_gamebook_waitlist_subscribed`), and
+`gamebook_teaser_viewed`/`gamebook_waitlist_signup` analytics calls that
+used to live only in `ResultsScreen`. It takes `variant` (`card` | `banner`)
+for layout and `surface` (`results` | `home`) purely as an analytics
+dimension, `results.gamebook_teaser_viewed`/`_signup` events. `ResultsScreen`
+now renders `<GamebookWaitlist surface="results" variant="card" />` in place
+of its old inline block (byte-for-byte same visible behavior). `HomeScreen`
+renders `<GamebookWaitlist surface="home" variant="banner" dismissible />`:
+a `position: fixed` strip pinned to the viewport bottom (offset by
+`--safe-area-inset-bottom`, the token `index.css` already applies app-wide,
+for Android/notch devices), closable with an `×` button. Dismissal and
+"already on the waitlist" are both stored in `localStorage`
+(`mtm_gamebook_banner_dismissed`, reusing the existing subscribed flag) so
+the banner does not resurface on every reload, and does not advertise a
+signup to someone who already completed it on this device via either
+surface. A new `gamebook_teaser_dismissed` event (with the same `surface`
+property) records closes without a signup.
+
+Verified with `pnpm lint` and `pnpm build:prod` (both clean); no live
+browser check was performed per `CLAUDE.md`'s dev-workflow rule against
+launching browser-automation tooling in this repo - the user should confirm
+the floating banner visually on `/` (positioning against the safe-area
+inset, overlap with the existing bottom warning text) at least once,
+including on a narrow/mobile viewport.
+
+### Consequences
+
+- Any future screen that wants this waitlist widget renders
+  `GamebookWaitlist` with the variant/surface it needs; the email
+  capture/submit/analytics logic must not be copied a third time.
+- `gamebook_teaser_viewed`/`gamebook_waitlist_signup` events now carry a
+  `surface` property (`results` or `home`); any dashboard/report reading
+  these events unfiltered will now see combined counts from both surfaces
+  and should filter or group by `surface` to compare them.
+- The banner's dismiss/already-subscribed state lives in `localStorage`
+  (device-scoped, not account-scoped) - clearing site data or switching
+  browser/device brings the banner back even for a previously-subscribed or
+  previously-dismissing user, same tradeoff the pre-existing
+  `mtm_gamebook_waitlist_subscribed` flag already had on `ResultsScreen`.
+- Party Room and Daily Moral Crime still do not show any gamebook
+  promotion, since they never routed through `ResultsScreen` and TASK-296's
+  scope was the homepage banner specifically; extending the teaser to those
+  end-of-mode screens is unscoped future work if wanted.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

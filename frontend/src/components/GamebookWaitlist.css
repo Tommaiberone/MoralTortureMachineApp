@@ -1,0 +1,181 @@
+/* TASK-296: shared "Classified Dossier: The Gamebook" waitlist widget,
+   extracted from ResultsScreen.css (TASK-281). .gamebook-waitlist carries
+   the shape/copy common to both variants; .gamebook-waitlist-card and
+   .gamebook-waitlist-banner only override layout/sizing. */
+.gamebook-waitlist {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background-color: var(--creepy-charcoal);
+  border: 2px solid var(--horror-crimson);
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.9);
+}
+
+.gamebook-waitlist-title {
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  font-family: var(--font-family);
+  color: var(--text-danger-readable);
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.gamebook-waitlist-intro {
+  font-family: var(--font-family);
+  line-height: 1.6;
+  color: var(--text-normal);
+  text-align: center;
+}
+
+.gamebook-waitlist-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.gamebook-waitlist-input {
+  width: 100%;
+  max-width: 320px;
+  padding: 12px;
+  font-family: var(--font-family);
+  font-size: 15px;
+  color: var(--text-highlight);
+  background-color: var(--creepy-dark-gray);
+  border: 2px solid var(--creepy-fog);
+  text-align: center;
+}
+
+.gamebook-waitlist-input:focus {
+  outline: none;
+  border-color: var(--text-dim);
+}
+
+.gamebook-waitlist-input:disabled {
+  opacity: 0.6;
+}
+
+.gamebook-waitlist-button {
+  width: 100%;
+  max-width: 320px;
+}
+
+.gamebook-waitlist-error {
+  margin: 0;
+  color: var(--text-danger-readable);
+  font-family: var(--font-family);
+  font-size: 14px;
+  text-align: center;
+}
+
+.gamebook-waitlist-success {
+  font-family: var(--font-family);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-normal);
+  text-align: center;
+  margin: 0;
+}
+
+/* Card variant: the full-width dossier box at the end of ResultsScreen. */
+.gamebook-waitlist-card {
+  margin-top: 40px;
+  width: 90%;
+  max-width: 600px;
+  padding: 25px;
+}
+
+.gamebook-waitlist-card .gamebook-waitlist-title {
+  font-size: 21px;
+  margin-bottom: 16px;
+}
+
+.gamebook-waitlist-card .gamebook-waitlist-intro {
+  font-size: 15px;
+  margin-bottom: 20px;
+}
+
+/* Banner variant: HomeScreen's floating, dismissible teaser. Fixed to the
+   viewport bottom (offset by the device safe area, same token index.css
+   already applies app-wide) so it never depends on how tall the page's own
+   content happens to be. */
+.gamebook-waitlist-banner {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + var(--safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 500;
+  width: calc(100% - 24px);
+  max-width: 380px;
+  padding: 14px 30px 16px 16px;
+  animation: gamebook-banner-in 0.4s ease-out;
+}
+
+@keyframes gamebook-banner-in {
+  from {
+    transform: translate(-50%, 24px);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+}
+
+.gamebook-waitlist-banner .gamebook-waitlist-title {
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.gamebook-waitlist-banner .gamebook-waitlist-intro {
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.gamebook-waitlist-banner .gamebook-waitlist-form {
+  gap: 10px;
+}
+
+.gamebook-waitlist-banner .gamebook-waitlist-input,
+.gamebook-waitlist-banner .gamebook-waitlist-button {
+  max-width: none;
+  padding: 10px;
+  font-size: 14px;
+}
+
+.gamebook-waitlist-close {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  background: none;
+  border: none;
+  padding: 6px 10px;
+  font-family: var(--font-family);
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.gamebook-waitlist-close:hover {
+  color: var(--text-highlight);
+}
+
+@media (max-width: 480px) {
+  .gamebook-waitlist-card {
+    width: 100%;
+    padding: 18px;
+    margin-top: 30px;
+  }
+
+  .gamebook-waitlist-card .gamebook-waitlist-title {
+    font-size: 18px;
+    margin-bottom: 15px;
+  }
+
+  .gamebook-waitlist-banner {
+    width: calc(100% - 16px);
+    bottom: calc(10px + var(--safe-area-inset-bottom));
+  }
+}

@@ -5,6 +5,7 @@ import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Responsi
 import { useTranslation } from 'react-i18next';
 import { getAnonymousUserId, getApiHeaders, getAuthenticatedApiHeaders } from '../utils/session';
 import SEO from '../components/SEO';
+import { GamebookWaitlist } from '../components/GamebookWaitlist';
 import { trackEvent } from '../utils/analytics';
 import { trackGoogleAnalyticsEvent } from '../utils/googleAnalytics';
 import { shareOrDownloadCard } from '../utils/shareCard';
@@ -15,13 +16,6 @@ import './ResultsScreen.css';
 
 // TASK-221: which invite CTA copy actually gets a challenge created.
 const CHALLENGE_BUTTON_COPY_VARIANTS = ['baseline', 'rival', 'direct'];
-
-// TASK-281: same lightweight per-device "already done this" flag as
-// TutorialScreen/HomeScreen's `tutorial_completed_${mode}`, not the
-// Capacitor Preferences wrapper in utils/storage.js - this is a disposable
-// UI convenience (hide an already-submitted form), not identity state.
-const GAMEBOOK_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const GAMEBOOK_WAITLIST_STORAGE_KEY = 'mtm_gamebook_waitlist_subscribed';
 
 const ResultsScreen = () => {
   const location = useLocation();
@@ -36,11 +30,7 @@ const ResultsScreen = () => {
   const [creatingChallenge, setCreatingChallenge] = useState(false);
   const [challengeError, setChallengeError] = useState('');
   const [challengeLoginRequired, setChallengeLoginRequired] = useState(false);
-  const [gamebookEmail, setGamebookEmail] = useState('');
-  const [gamebookEmailError, setGamebookEmailError] = useState('');
-  const [gamebookStatus, setGamebookStatus] = useState('idle'); // idle | submitting | success | error
   const resultTracked = useRef(false);
-  const gamebookTeaserTracked = useRef(false);
   const hasResults = Boolean(answers && answers.length > 0);
 
   // Aggregate the answers to compute average values for each category
@@ -90,27 +80,6 @@ const ResultsScreen = () => {
     });
     trackGoogleAnalyticsEvent('result_viewed');
   }, [answers, hasResults, challengeButtonVariant]);
-
-  // TASK-281: a prior signup (this device, any past run) skips straight to
-  // the confirmation state instead of showing the form again.
-  useEffect(() => {
-    try {
-      if (localStorage.getItem(GAMEBOOK_WAITLIST_STORAGE_KEY) === 'true') {
-        setGamebookStatus('success');
-      }
-    } catch {
-      // Best-effort - a blocked/unavailable localStorage just re-shows the form.
-    }
-  }, []);
-
-  // TASK-281: fires once the dossier box actually renders (gated on
-  // `archetype`, same as the box itself below), not on every ResultsScreen
-  // mount.
-  useEffect(() => {
-    if (!archetype || gamebookTeaserTracked.current) return;
-    gamebookTeaserTracked.current = true;
-    trackEvent('gamebook_teaser_viewed');
-  }, [archetype]);
 
   useEffect(() => {
     // Block browser back button
@@ -230,35 +199,6 @@ const ResultsScreen = () => {
     }
   };
 
-  const handleGamebookSubmit = async (event) => {
-    event.preventDefault();
-    const email = gamebookEmail.trim();
-    if (!GAMEBOOK_EMAIL_PATTERN.test(email)) {
-      setGamebookEmailError(t('results.gamebook_email_error'));
-      return;
-    }
-    setGamebookEmailError('');
-    setGamebookStatus('submitting');
-    try {
-      const API_URL = import.meta.env.VITE_API_URL;
-      const response = await fetch(`${API_URL}/gamebook-waitlist`, {
-        method: 'POST',
-        headers: getApiHeaders(),
-        body: JSON.stringify({ email }),
-      });
-      if (!response.ok) throw new Error(`gamebook waitlist signup failed: ${response.status}`);
-      try {
-        localStorage.setItem(GAMEBOOK_WAITLIST_STORAGE_KEY, 'true');
-      } catch {
-        // Best-effort - the confirmation still shows for this render either way.
-      }
-      setGamebookStatus('success');
-    } catch (error) {
-      console.error('Error joining gamebook waitlist:', error);
-      setGamebookStatus('error');
-    }
-  };
-
   if (!hasResults) {
     return (
       <div className="results-gradient-background">
@@ -356,40 +296,7 @@ const ResultsScreen = () => {
           </div>
         )}
 
-        {archetype && (
-          <div className="results-gamebook-container">
-            <h2 className="results-gamebook-title">{t('results.gamebook_title')}</h2>
-            <p className="results-gamebook-intro">{t('results.gamebook_intro')}</p>
-            {gamebookStatus === 'success' ? (
-              <p className="results-gamebook-success">{t('results.gamebook_success')}</p>
-            ) : (
-              <form className="results-gamebook-form" onSubmit={handleGamebookSubmit} noValidate>
-                <input
-                  type="email"
-                  className="results-gamebook-input"
-                  placeholder={t('results.gamebook_email_placeholder')}
-                  aria-label={t('results.gamebook_email_placeholder')}
-                  value={gamebookEmail}
-                  onChange={(event) => {
-                    setGamebookEmail(event.target.value);
-                    if (gamebookEmailError) setGamebookEmailError('');
-                  }}
-                  disabled={gamebookStatus === 'submitting'}
-                  required
-                />
-                <button
-                  type="submit"
-                  className="btn-primary results-gamebook-button"
-                  disabled={gamebookStatus === 'submitting'}
-                >
-                  {gamebookStatus === 'submitting' ? t('results.gamebook_submitting') : t('results.gamebook_cta_button')}
-                </button>
-                {gamebookEmailError && <p role="alert" className="results-gamebook-error">{gamebookEmailError}</p>}
-                {gamebookStatus === 'error' && <p role="alert" className="results-gamebook-error">{t('results.gamebook_error')}</p>}
-              </form>
-            )}
-          </div>
-        )}
+        {archetype && <GamebookWaitlist surface="results" variant="card" />}
 
         {archetype && (
           <div className="results-challenge-container">
