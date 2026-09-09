@@ -94,23 +94,66 @@
   ),
 )
 
-// A reversed tag marking one Exhibit, plus a left rule running the height
-// of that exhibit's block - a "flagged in the folder" margin cue.
-// `breakable: false` keeps each exhibit's question and answers together on
-// one page rather than splitting mid-dilemma across a page break.
-#let exhibit(n, body) = block(
-  stroke: (left: 1.2pt + black),
-  inset: (left: 1em, rest: 0pt),
-  above: 1.1em,
-  below: 0pt,
-  breakable: false,
-)[
-  #box(fill: black, inset: (x: 0.5em, y: 0.3em))[
-    #text(font: "DejaVu Sans Mono", size: 8pt, weight: "bold", fill: white, tracking: 1pt)[EXHIBIT #n]
-  ]
-  #v(0.5em)
-  #body
+// A reversed tag marking one Exhibit.
+#let exhibit-tag(n) = box(fill: black, inset: (x: 0.5em, y: 0.3em))[
+  #text(font: "DejaVu Sans Mono", size: 8pt, weight: "bold", fill: white, tracking: 1pt)[EXHIBIT #n]
 ]
+
+// A bordered placeholder standing in for a photograph, since no artwork
+// exists yet - corner brackets like a viewfinder, framed as evidence not
+// yet entered into the record rather than looking like a broken image.
+#let image-placeholder(height: 2.5in) = box(width: 100%, height: height, stroke: 0.8pt)[
+  #place(center + horizon, text(
+    font: "DejaVu Sans Mono", size: 8pt, tracking: 2pt, fill: luma(55%),
+  )[PHOTOGRAPHIC EVIDENCE --- PENDING])
+  #let corner(x, y) = place(
+    if y == top { top } else { bottom } + if x == left { left } else { right },
+    box(width: 0.3in, height: 0.3in, stroke: (
+      top: if y == top { 1pt } else { 0pt },
+      bottom: if y == bottom { 1pt } else { 0pt },
+      left: if x == left { 1pt } else { 0pt },
+      right: if x == right { 1pt } else { 0pt },
+    )),
+  )
+  #corner(left, top)
+  #corner(right, top)
+  #corner(left, bottom)
+  #corner(right, bottom)
+]
+
+// One answer, styled after the webapp's actual `.btn-yes`/`.btn-no`
+// buttons (frontend/src/styles/shared.css): flex: 1 (equal width),
+// border-radius: 0 (sharp corners, not rounded), a 2px border, side by
+// side with a small gap - reproduced here as a two-column grid of
+// square-cornered bordered boxes rather than the app's color-coded fill,
+// since this interior is black & white ink.
+#let answer-button(tag, label) = box(width: 100%, stroke: 2pt, inset: 0.9em)[
+  #text(font: "DejaVu Sans Mono", size: 7pt, tracking: 1.5pt, fill: luma(40%))[#tag]
+  #v(0.4em)
+  #align(center, text(weight: "bold", label))
+]
+
+#let answer-buttons(first, second) = grid(
+  columns: (1fr, 1fr),
+  column-gutter: 10pt,
+  answer-button("A", first),
+  answer-button("B", second),
+)
+
+// One dilemma, one page: an Exhibit tag + title, an image placeholder,
+// the dilemma text, and the two answers as webapp-style rectangular
+// buttons. Called once per entry in a chapter's `dilemmas` registry list.
+#let exhibit-page(n, title, dilemma) = {
+  exhibit-tag(n)
+  h(0.6em)
+  text(size: 15pt, weight: "bold", title)
+  v(0.9em)
+  image-placeholder()
+  v(0.9em)
+  dilemma.dilemma
+  v(1em)
+  answer-buttons(dilemma.firstAnswer, dilemma.secondAnswer)
+}
 
 // Full-bleed header band - drawn as a page *background*, which Typst lays
 // out against the full physical page regardless of body margins (verified
@@ -198,18 +241,13 @@
     v(1.2em)
 
     mode-select(solo-slug: c.soloSlug, party-slug: c.partySlug)
-    v(1.3em)
 
-    for (i, id) in c.dilemmaIds.enumerate() {
-      let d = find-dilemma(id)
-      exhibit(str(i + 1), [
-        #d.dilemma
-        #v(0.6em)
-        #list(
-          [*A.* #d.firstAnswer],
-          [*B.* #d.secondAnswer],
-        )
-      ])
+    // One dilemma per page (AC: image placeholder + webapp-style answer
+    // buttons need the room) - pagebreak before each entry, including the
+    // first, separates every Exhibit from the opener and from each other.
+    for (i, entry) in c.dilemmas.enumerate() {
+      pagebreak()
+      exhibit-page(str(i + 1), entry.title, find-dilemma(entry.id))
     }
   })
 }

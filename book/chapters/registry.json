@@ -6,12 +6,12 @@
     "themeIntro": "Nobody is watching. No camera, no witness, no ledger that will ever trace back to you. That is the whole file.",
     "soloSlug": "c1-solo",
     "partySlug": "c1-party",
-    "dilemmaIds": [
-      "ff17a739213221e7f8c043a2",
-      "d79f5805acda6ce3c4e373c3",
-      "49b0bdaae2f53e5ad3da9878",
-      "d4c00488a99cacdd2a22b76a",
-      "266cd2a23b20baf1bb788df4"
+    "dilemmas": [
+      { "id": "ff17a739213221e7f8c043a2", "title": "The Lounge Pen" },
+      { "id": "d79f5805acda6ce3c4e373c3", "title": "The Payphone Return" },
+      { "id": "49b0bdaae2f53e5ad3da9878", "title": "The Sidewalk Wallet" },
+      { "id": "d4c00488a99cacdd2a22b76a", "title": "The Self-Checkout Glitch" },
+      { "id": "266cd2a23b20baf1bb788df4", "title": "The Padded Invoice" }
     ]
   },
   "c2": {
@@ -21,12 +21,12 @@
     "themeIntro": "Someone you know is about to be hurt by the truth, or by your silence. There is no third option in this file - only who pays.",
     "soloSlug": "c2-solo",
     "partySlug": "c2-party",
-    "dilemmaIds": [
-      "72328ca1590ea2ba93c532c1",
-      "d70e41cc1f5118fc2895864c",
-      "de8dea47c292ec5a795c40b0",
-      "74d8775b1ba112e4c610f752",
-      "bfb1c4aa421707d88db2cafd"
+    "dilemmas": [
+      { "id": "72328ca1590ea2ba93c532c1", "title": "The Witness" },
+      { "id": "d70e41cc1f5118fc2895864c", "title": "The Peace Offering" },
+      { "id": "de8dea47c292ec5a795c40b0", "title": "The Unraveling Counsel" },
+      { "id": "74d8775b1ba112e4c610f752", "title": "The Medication Error" },
+      { "id": "bfb1c4aa421707d88db2cafd", "title": "The Interview Leak" }
     ]
   }
 }

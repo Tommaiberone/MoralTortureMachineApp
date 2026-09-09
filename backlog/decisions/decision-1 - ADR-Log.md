@@ -4795,6 +4795,61 @@ missing).
   hard prerequisite before any printed QR does what the book now more
   convincingly tells the reader it does.
 
+### ADR-132 — `TASK-295` implemented: one dilemma per page, with a title, an image placeholder, and webapp-style answer buttons
+
+Context: reviewing `ADR-131`'s demo, the user asked for a specific,
+concrete layout change (not another open-ended "improve it"): one dilemma
+per page instead of several packed onto a chapter's shared pages, a
+bordered placeholder for a future photograph, and the two answers shown as
+"two rectangular buttons side by side, like in the webapp" - then, mid-turn,
+added that each dilemma also needs its own title. Rather than guess the
+webapp's actual button shape, `frontend/src/styles/shared.css` was read
+directly: `.btn-yes`/`.btn-no` are `flex: 1` (equal width), `border-radius:
+0` (square corners, not rounded), a 2px border, inside a `.button-row`
+with `gap: 10px` - the color coding (`--choice-a`/`--choice-b`) doesn't
+translate to a black & white interior, but the shape does.
+
+Decision: `book/chapters/registry.json`'s per-chapter `dilemmaIds` (bare
+id strings) became `dilemmas` (`{id, title}` objects) - `dilemmas_en.json`
+has no title field, so a dilemma's page title is book-only presentation
+content, not duplicated/invented app data, kept in the one place
+(`registry.json`) already responsible for everything about the book that
+isn't the dilemma's own text. `chapter-page` now inserts `pagebreak()`
+before every dilemma (including the first, separating it from the
+chapter-opener page), calling a new `exhibit-page(n, title, dilemma)` that
+replaces the old stacked-with-a-left-rule `exhibit(...)`: an `EXHIBIT N`
+tag next to the title, `image-placeholder(...)` (a bordered box with
+corner brackets and "PHOTOGRAPHIC EVIDENCE - PENDING", framed as evidence
+not yet entered into the record rather than looking like a broken image),
+the dilemma text, then `answer-buttons(...)` - a two-column grid of
+square-cornered bordered boxes matching the app's verified shape, each
+carrying a small `A`/`B` tag plus the full answer text bolded (the app's
+button label is the answer text itself; the `A`/`B` tag is a print-only
+addition for a table to reference verbally during a Tribunal session,
+which the app doesn't need).
+
+Verified by recompiling `book/main.typ`: 16 pages (up from 10, expected -
+each dilemma is deliberately a full page now), `MediaBox` unchanged at
+6.125x9.25in, every page rendered to PNG and read - both chapters' opener
+page (QR pair only, no dilemmas), first Exhibit, and last Exhibit checked
+for overflow (none found; the longest dilemma text plus its answers still
+fit one page in both chapters), and the table of contents' page numbers
+confirmed to have updated correctly (4, 10) for the new, longer pagination.
+
+### Consequences
+
+- A chapter's page count is no longer implicit from how much text happens
+  to fit together - it's exactly 1 (opener) + 5 (one per dilemma), so
+  adding or shortening a chapter's content has a direct, predictable page
+  budget instead of one that depends on where line breaks happen to land.
+- `registry.json`'s `dilemmas` shape (`{id, title}` per entry) is now the
+  contract a future chapter must follow; `TASK-291`'s eventual backend
+  mapping only needs the `id`s from it, not the book-only `title`s.
+- The image placeholder makes clear, in the artifact itself, that
+  photography/illustration is unstarted work - a future task adding real
+  artwork replaces `image-placeholder(...)`'s call with an actual
+  `image(...)`, not a redesign of the page.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

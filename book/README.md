@@ -5,6 +5,7 @@ Terraform. This is design/iteration tooling for the physical gamebook idea
 (waitlist demand test: `TASK-281`) — not a production or Kickstarter
 commitment. Scaffold: `TASK-287`. Chapter/mode design: `TASK-292`. Visual
 design: `TASK-293`. Registry/bleed/ToC/closing-page polish: `TASK-294`.
+Per-dilemma page layout: `TASK-295`.
 
 Interior is confirmed **black & white** for KDP. That still halftones
 grayscale/solid fills correctly (like any B&W book with photos or shaded
@@ -27,6 +28,13 @@ Both codes open the *same* five dilemmas — only the QR scanned changes
 whether they're played alone or live with a group. Five dilemmas per
 chapter matches the app's own Party Room default
 (`PARTY_ROOM_DEFAULT_DILEMMAS = 5`).
+
+Each dilemma gets its own page: a title, a bordered image placeholder
+(no artwork exists yet), the dilemma text, and its two answers as
+webapp-style rectangular buttons — reproducing the actual shape of the
+app's `.btn-yes`/`.btn-no` (`frontend/src/styles/shared.css`: equal width,
+sharp square corners, a 2px border, side by side with a small gap), not
+their color coding, since this interior is black & white.
 
 The book closes with a **Case Closed** page: a "Subject #___" fill-in
 (the numbered-copy idea from early growth brainstorming), and a QR back to
@@ -99,18 +107,23 @@ since the label lookup needs the whole book compiled together).
   generic `build/` rule meant for compiled output elsewhere.
 - `typst/template.typ` — the shared dossier visual system:
   `chapter-page(key: ...)` (reads a chapter's content from the registry
-  below); `front-matter-page(...)` and `full-bleed-page(...)` for
-  non-chapter pages; `find-dilemma(id)`, which reads
-  `backend/data/dilemmas_en.json` at compile time and hard-fails if an id
-  doesn't exist; `bleed-band(...)` (the true edge-to-edge header band —
-  see "Bleed" below), `evidence-tag`, `exhibit`, `stamp`, `lede`
-  (a raised-initial accent, not a true wrap-around drop cap), `redacted`.
+  below, then puts one dilemma per page via `exhibit-page(...)` with a
+  `pagebreak()` before each); `front-matter-page(...)` and
+  `full-bleed-page(...)` for non-chapter pages; `find-dilemma(id)`, which
+  reads `backend/data/dilemmas_en.json` at compile time and hard-fails if
+  an id doesn't exist; `bleed-band(...)` (the true edge-to-edge header
+  band — see "Bleed" below), `evidence-tag`, `image-placeholder(...)`,
+  `answer-buttons(...)`, `stamp`, `lede` (a raised-initial accent, not a
+  true wrap-around drop cap), `redacted`.
 - `typst/instructions.typ` — the "How to Open a Case File" front-matter
   page explaining Solo Verdict vs. Convene Tribunal.
 - `typst/closing.typ` — the "Case Closed" back-matter page.
 - `chapters/registry.json` — **the single source of truth** for every
-  chapter: title, theme intro, stamp text, solo/party QR slugs, and the
-  five real dilemma `_id`s. A chapter file is just
+  chapter: title, theme intro, stamp text, solo/party QR slugs, and its
+  five dilemmas as `{id, title}` (the real dilemma `_id` from
+  `dilemmas_en.json` plus the book's own title for that Exhibit's page —
+  `dilemmas_en.json` has no title field, so this is book-only content, not
+  duplicated app data). A chapter file is just
   `#chapter-page(key: "c1") <chapter-c1>` — the label is what lets the
   table of contents resolve that chapter's real page number (see below).
   In spirit, this is the same shape `TASK-291`'s eventual backend mapping

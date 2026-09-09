@@ -442,7 +442,7 @@ dev table, or `/dev` SSM hierarchy.
   account-deletion cascade or the retention-sweep scan (`TASK-284` tracks
   deciding that question for both tables together, not just this new one).
 
-- **`book/` (`TASK-287`/`TASK-292`/`TASK-293`/`TASK-294`)** is a standalone
+- **`book/` (`TASK-287`/`TASK-292`/`TASK-293`/`TASK-294`/`TASK-295`)** is a standalone
   local Typst print pipeline for the physical gamebook's "Case File"
   content, living at the repo root alongside `frontend`/`backend`/`backlog`
   - not part of the shipped web/native app, not wired into
@@ -520,6 +520,18 @@ dev table, or `/dev` SSM hierarchy.
   content flow, which is consumed once and left page 2+ of a multi-page
   chapter colliding with the band on first attempt - fixed before this
   shipped, not left half-working.
+
+  Each dilemma (registry entry now `{id, title}`, not a bare id -
+  `dilemmas_en.json` has no title field, so a dilemma's page title is
+  book-only content) gets its own page via `chapter-page`'s
+  `pagebreak()`-before-each loop and `exhibit-page(...)`:
+  `image-placeholder(...)` (a bordered box with viewfinder-style corner
+  brackets standing in for artwork that doesn't exist yet) and
+  `answer-buttons(...)` (two square-cornered bordered boxes side by side,
+  reproducing the actual shape of the app's `.btn-yes`/`.btn-no` -
+  `frontend/src/styles/shared.css`: `flex: 1`, `border-radius: 0`, a 2px
+  border, `gap: 10px` - not their color, since this interior is black &
+  white).
 
   **Not yet functional** (`TASK-291`, High, To Do): the QR codes are
   placeholders. Neither `create_party_room` nor solo Evaluation's
