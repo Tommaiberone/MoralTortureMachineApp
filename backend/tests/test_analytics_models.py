@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, Mock, patch
 
+from botocore.exceptions import ClientError
 from fastapi import HTTPException
 from pydantic import ValidationError
 from starlette.requests import Request
@@ -25,16 +26,21 @@ from backend.src.backend_fastapi import (  # noqa: E402
     MORAL_DUEL_ANALYTICS_STAGES,
     PARTY_ROOM_ANALYTICS_STAGES,
     PARTY_ROOM_HOST_ACTION_EVENTS,
+    RECENT_ACTIVITY_WINDOW_HOURS,
     _analytics_day_key,
     _apply_daily_aggregate_increments,
     _consume_burst_window,
     _escape_analytics_aggregate_segment,
     _identity_active_days_from_daily_sets,
     _identity_funnel_from_stage_identities,
+    _masked_identity,
     _network_fingerprint,
+    _query_recent_rows,
     _rate_limit_participant_source,
     _rate_limit_rules_for_request,
     _rate_limit_source,
+    _read_recent_activity_rows,
+    _recent_activity_day_keys,
     _scalar_aggregate_increments,
     _set_aggregate_increments,
     _unescape_analytics_aggregate_segment,
@@ -618,6 +624,111 @@ class AnalyticsDailyAggregateTests(unittest.TestCase):
         self.assertTrue(any(row["completedReferrals"] > 0 for row in scan_only["viralCoefficient"]))
         self.assertTrue(any(row["completedReferrals"] > 0 for row in scan_only["creativeVariants"]))
         self.assertTrue(any(row["exposed"] > 0 for row in scan_only["copyExperiments"]["homeModeCopy"]))
+
+
+class AnalyticsRecentActivityWindowTests(unittest.TestCase):
+    """TASK-300.3/ADR-137: abuseMonitoring/recentEvents read a short fixed
+    window via a date-bounded Query (DayIndex GSI) instead of the full
+    `days`-scoped Scan the rest of the dashboard uses."""
+
+    def test_day_keys_span_the_recent_window_across_a_utc_midnight(self):
+        # 2026-09-10T01:00:00Z minus 48h lands on 2026-09-08, so the window
+        # must include all three calendar days in between.
+        now_ms = int(datetime(2026, 9, 10, 1, 0, tzinfo=timezone.utc).timestamp() * 1000)
+        self.assertEqual(
+            _recent_activity_day_keys(now_ms),
+            ["2026-09-08", "2026-09-09", "2026-09-10"],
+        )
+
+    def test_query_recent_rows_uses_the_day_index_and_paginates(self):
+        table = Mock()
+        table.query.side_effect = [
+            {"Items": [{"eventId": "e1"}], "LastEvaluatedKey": {"eventId": "e1"}},
+            {"Items": [{"eventId": "e2"}]},
+        ]
+        rows = _query_recent_rows(table, "DayIndex", "occurredAt", ["2026-09-10"], 1000, 2000)
+
+        self.assertEqual(rows, [{"eventId": "e1"}, {"eventId": "e2"}])
+        self.assertEqual(table.query.call_count, 2)
+        first_call = table.query.call_args_list[0].kwargs
+        self.assertEqual(first_call["IndexName"], "DayIndex")
+        second_call = table.query.call_args_list[1].kwargs
+        self.assertEqual(second_call["ExclusiveStartKey"], {"eventId": "e1"})
+
+    def test_read_recent_activity_rows_tolerates_missing_product_events_table(self):
+        now_ms = 1785369600000
+        # The 48h window spans more than one UTC calendar day, so the table
+        # gets queried (DayIndex) once per day key - return the row on the
+        # first call only, matching a real Query that would find it on
+        # whichever single day it actually occurred.
+        day_count = len(_recent_activity_day_keys(now_ms))
+        legacy_table = Mock()
+        legacy_table.query.side_effect = [
+            {"Items": [{"actionType": "vote_cast"}]},
+            *[{"Items": []} for _ in range(day_count - 1)],
+        ]
+        product_table = Mock()
+        product_table.query.side_effect = ClientError(
+            {"Error": {"Code": "ResourceNotFoundException", "Message": "no table"}}, "Query",
+        )
+        with (
+            patch.object(backend_module, "analytics_table", legacy_table),
+            patch.object(backend_module, "product_events_table", product_table),
+        ):
+            legacy_rows, product_rows = _read_recent_activity_rows(now_ms)
+
+        self.assertEqual(legacy_rows, [{"actionType": "vote_cast"}])
+        self.assertEqual(product_rows, [])
+
+    def test_track_analytics_event_writes_a_day_key_for_the_new_index(self):
+        analytics_table = Mock()
+        with (
+            patch.object(backend_module, "analytics_table", analytics_table),
+            patch.object(backend_module, "analytics_daily_aggregates_table", Mock()),
+            patch.object(backend_module, "_network_fingerprint", return_value=None),
+        ):
+            track_analytics_event(session_id="session-1", action_type="vote_cast")
+
+        stored = analytics_table.put_item.call_args.kwargs["Item"]
+        self.assertIn("dayKey", stored)
+        self.assertEqual(stored["dayKey"], _analytics_day_key(stored["timestamp"]))
+
+    def test_abuse_monitoring_and_recent_events_use_the_recent_window_not_the_days_scan(self):
+        """build_analytics_overview must compute abuseMonitoring/recentEvents
+        from recent_activity_rows, not from the (possibly much larger,
+        days-scoped) events list - and must label the window it actually
+        used."""
+        now_ms = 1785369600000
+        old_ms = now_ms - 10 * 24 * 60 * 60 * 1000  # outside the 48h window
+        recent_ms = now_ms - 1000  # inside the 48h window
+
+        # A row far outside the recent window - only reachable via the full
+        # days-scoped Scan input, must NOT show up in abuseMonitoring/recentEvents.
+        legacy_rows = [
+            {"sessionId": "s-old", "timestamp": old_ms, "actionType": "vote_cast",
+             "anonymousUserId": "user-old", "platform": "web"},
+        ]
+        product_rows = []
+        recent_legacy_rows = [
+            {"sessionId": "s-recent", "timestamp": recent_ms, "actionType": "vote_cast",
+             "anonymousUserId": "user-recent", "platform": "web"},
+        ]
+        recent_product_rows = []
+
+        overview = build_analytics_overview(
+            legacy_rows=legacy_rows, product_rows=product_rows, days=30, now_ms=now_ms, platform="all",
+            recent_activity_rows=(recent_legacy_rows, recent_product_rows),
+        )
+
+        self.assertEqual(overview["abuseMonitoring"]["windowHours"], RECENT_ACTIVITY_WINDOW_HOURS)
+        self.assertEqual(overview["recentEventsWindowHours"], RECENT_ACTIVITY_WINDOW_HOURS)
+        self.assertEqual(overview["abuseMonitoring"]["summary"]["observedIdentities"], 1)
+        self.assertEqual(len(overview["recentEvents"]), 1)
+        # The masked identity for "user-old" must not appear anywhere.
+        self.assertNotIn(
+            _masked_identity("user-old"),
+            [event["identity"] for event in overview["recentEvents"]],
+        )
 
 
 class AnalyticsOverviewTests(unittest.TestCase):

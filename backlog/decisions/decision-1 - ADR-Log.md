@@ -5342,6 +5342,75 @@ daily_aggregates`'s code did not need to change for this - `boto3`'s
   working - the coverage-sweep test added here guards exactly this, but
   only for registries it knows to check.
 
+### ADR-140 — `TASK-300.3` implemented: `abuseMonitoring`/`recentEvents` read a short fixed window via a new date-bounded GSI, not the `days`-scoped Scan
+
+Context: `ADR-137`'s category C - `build_abuse_monitoring` and `recentEvents`
+need raw event rows verbatim (per-identity minute-level sequence; the
+newest 60 events with properties) and cannot be pre-aggregated without
+losing the reason either exists. Neither needs the full `days` window (up
+to 90) the rest of the dashboard supports, only a short recent one.
+
+Decision: neither `user_analytics` (hash `sessionId`, range `timestamp`)
+nor `product_events` (hash `eventId`) has a Query-able access pattern for
+"every row across all sessions/events in the last N hours" - their existing
+GSIs are keyed by `actionType`/`anonymousUserId`, not time alone. Added a
+new sparse `DayIndex` GSI to each (hash `dayKey`, range `timestamp`/
+`occurredAt`), backed by a `dayKey` attribute `track_analytics_event`/
+`ingest_analytics_events` now write alongside the raw row (reusing
+`ADR-138`'s `_analytics_day_key`). `RECENT_ACTIVITY_WINDOW_HOURS = 48`;
+`_read_recent_activity_rows` Queries just the (2-3) day-key buckets the
+window touches, never a Scan. Both tables are already `PAY_PER_REQUEST`
+(pre-existing, audited exception pending `TASK-88`), so the new GSI needed
+no capacity planning.
+
+A row written before this deploy has no `dayKey` and is therefore absent
+from the new index - a deliberate, accepted gap (not a bug to backfill):
+`abuseMonitoring`/`recentEvents` only ever look at the last 48 hours, so
+the gap self-heals within 48 hours of deploy as fresh `dayKey`-tagged rows
+accumulate. This is different from `TASK-300.4`'s backfill obligation,
+which exists because the aggregate tables need to cover the dashboard's
+full up-to-90-day history, not a 48-hour rolling window.
+
+`build_analytics_overview` takes the recent rows as a new optional
+`recent_activity_rows` param (normalized the same way as the days-scoped
+`events`, still respecting the `platform` filter - only `days` is ignored)
+and computes `abuseMonitoring`/`recentEvents` from them instead of `events`
+when present, falling back to `events` otherwise (existing unit tests, or a
+transient Query error the endpoint already tolerates the same way it
+tolerates every other optional read here). The response now names the
+window it actually used (`abuseMonitoring.windowHours`,
+top-level `recentEventsWindowHours`) rather than leaving the frontend to
+hardcode or guess it; `AnalyticsAdminScreen.jsx` renders a note under each
+panel's heading using that value, so the copy can never drift from the
+real window either.
+
+`analytics_overview` (the endpoint) still calls `_scan_all_rows` for both
+tables in this step - `dataQuality`, `summary`, and the category A/B
+fallback path still need it - so wall-clock latency does not yet improve
+from this task alone; `TASK-300.5` removes the Scans once nothing depends
+on them.
+
+Verified by 5 new tests (day-key span across a UTC-midnight boundary, GSI
+Query pagination via a mocked table, graceful `ResourceNotFoundException`
+handling, `dayKey` present on a real `track_analytics_event` write, and an
+end-to-end check that a row only reachable via the days-scoped Scan does
+*not* leak into `abuseMonitoring`/`recentEvents` while a row inside the
+recent window does) plus the full existing suite (224 backend tests) and a
+production frontend build.
+
+### Consequences
+
+- `abuseMonitoring`/`recentEvents` no longer widen when a wider `days`
+  period is selected - by design, not a regression to fix; the UI says so
+  explicitly now instead of silently doing it.
+- `dayKey` is a small, permanent addition to every future raw analytics
+  row; it does not change TTL, export, or deletion behavior, all of which
+  key off other attributes.
+- The next and final step, `TASK-300.5`, can now remove `_scan_all_rows`
+  entirely once `dataQuality`/`summary` also stop depending on it - this
+  task deliberately did not touch those two, keeping its own diff scoped to
+  category C only.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

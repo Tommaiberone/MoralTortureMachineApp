@@ -260,6 +260,7 @@
     "abuseReason_high_period_volume": "High period volume",
     "recentEvents": "Recent events",
     "recentDescription": "Pseudonymized identities and non-sensitive properties.",
+    "fixedRecentWindow": "Always shows the last {{hours}} hours, regardless of the period selected above.",
     "generatedAt": "Updated",
     "time": "Time",
     "event": "Event",

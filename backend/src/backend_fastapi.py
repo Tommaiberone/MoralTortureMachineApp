@@ -21,6 +21,7 @@ import boto3
 import http_ece
 import jwt
 import requests
+from boto3.dynamodb.conditions import Key
 from boto3.dynamodb.types import TypeSerializer
 from botocore.exceptions import ClientError
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -1019,7 +1020,10 @@ def track_analytics_event(
             'timestamp': timestamp,
             'actionType': action_type,
             'language': resolved_language,
-            'expirationTime': expiration_time
+            'expirationTime': expiration_time,
+            # TASK-300.3/ADR-137: sparse GSI hash key for the bounded-recent
+            # Query abuseMonitoring/recentEvents use instead of a full Scan.
+            'dayKey': _analytics_day_key(timestamp),
         }
 
         # Add optional fields
@@ -4311,6 +4315,9 @@ async def ingest_analytics_events(batch: AnalyticsBatchRequest, request: Request
                     "timeZone": event.timeZone,
                     "expirationTime": expiration_time,
                     "properties": json.dumps(event.properties, separators=(",", ":")),
+                    # TASK-300.3/ADR-137: sparse GSI hash key for the
+                    # bounded-recent Query abuseMonitoring/recentEvents use.
+                    "dayKey": _analytics_day_key(event.occurredAt),
                 }
                 if not event.timeZone:
                     item.pop("timeZone")
@@ -4704,6 +4711,78 @@ def _scan_all_rows(dynamodb_table) -> list[dict[str, Any]]:
             break
         scan_kwargs["ExclusiveStartKey"] = last_key
     return rows
+
+
+# TASK-300.3/ADR-137 category C: abuseMonitoring and recentEvents need raw
+# event rows verbatim (per-identity minute-level sequence for the former,
+# the newest 60 events with their properties for the latter) and cannot be
+# pre-aggregated without losing the reason either exists - but neither needs
+# the full `days` window (up to 90) the rest of the dashboard supports, only
+# a short, fixed, recent one. RECENT_ACTIVITY_WINDOW_HOURS is that window,
+# read via a date-bounded Query (never a Scan) against each raw table's
+# sparse `DayIndex` GSI (hash `dayKey`, range `timestamp`/`occurredAt`) -
+# `dayKey` is written by track_analytics_event/ingest_analytics_events
+# (reusing _analytics_day_key) starting with this task, so a row written
+# before this deploy has no `dayKey` and is simply absent from the index;
+# that self-heals within RECENT_ACTIVITY_WINDOW_HOURS as fresh rows
+# accumulate, and never affects the raw row itself, its TTL, or export/
+# deletion (which key off other attributes entirely).
+RECENT_ACTIVITY_WINDOW_HOURS = 48
+
+
+def _recent_activity_day_keys(now_ms: int) -> list[str]:
+    window_start_ms = now_ms - RECENT_ACTIVITY_WINDOW_HOURS * 60 * 60 * 1000
+    start_date = datetime.fromtimestamp(window_start_ms / 1000, tz=timezone.utc).date()
+    end_date = datetime.fromtimestamp(now_ms / 1000, tz=timezone.utc).date()
+    day_keys = []
+    current = start_date
+    while current <= end_date:
+        day_keys.append(current.isoformat())
+        current += timedelta(days=1)
+    return day_keys
+
+
+def _query_recent_rows(
+    dynamodb_table,
+    gsi_name: str,
+    sort_key_name: str,
+    day_keys: list[str],
+    cutoff_ms: int,
+    now_ms: int,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for day_key in day_keys:
+        query_kwargs: dict[str, Any] = {
+            "IndexName": gsi_name,
+            "KeyConditionExpression": (
+                Key("dayKey").eq(day_key) & Key(sort_key_name).between(cutoff_ms, now_ms)
+            ),
+        }
+        while True:
+            response = dynamodb_table.query(**query_kwargs)
+            rows.extend(response.get("Items", []))
+            last_key = response.get("LastEvaluatedKey")
+            if not last_key:
+                break
+            query_kwargs["ExclusiveStartKey"] = last_key
+    return rows
+
+
+def _read_recent_activity_rows(now_ms: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Returns (legacy_rows, product_rows) for just RECENT_ACTIVITY_WINDOW_HOURS,
+    for abuseMonitoring/recentEvents - see the constant's own comment."""
+    cutoff_ms = now_ms - RECENT_ACTIVITY_WINDOW_HOURS * 60 * 60 * 1000
+    day_keys = _recent_activity_day_keys(now_ms)
+    legacy_rows = _query_recent_rows(analytics_table, "DayIndex", "timestamp", day_keys, cutoff_ms, now_ms)
+    try:
+        product_rows = _query_recent_rows(
+            product_events_table, "DayIndex", "occurredAt", day_keys, cutoff_ms, now_ms
+        )
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") != "ResourceNotFoundException":
+            raise
+        product_rows = []
+    return legacy_rows, product_rows
 
 
 # TASK-300.1/ADR-137: fetch every requested day's write-time aggregate item in
@@ -5552,6 +5631,7 @@ def build_analytics_overview(
     registered_users: int | None = None,
     daily_moral_crime_aggregates: list[dict[str, Any]] | None = None,
     aggregate_items: list[dict[str, Any]] | None = None,
+    recent_activity_rows: tuple[list[dict[str, Any]], list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     """Build privacy-safe aggregates used by both the web and Android dashboard.
 
@@ -5687,8 +5767,30 @@ def build_analytics_overview(
     exact_events = platform_resolution_counts["exact"]
     anonymous_events = sum(1 for event in events if event["anonymousUserId"])
     time_zone_events = sum(1 for event in events if event["timeZone"] != "unknown")
+
+    # TASK-300.3/ADR-137: abuseMonitoring/recentEvents intentionally ignore
+    # the caller's `days` window - they always look at the last
+    # RECENT_ACTIVITY_WINDOW_HOURS, via recent_activity_rows (a bounded
+    # Query, never the full-history events list above), still respecting
+    # the platform filter like every other panel. Falls back to `events`
+    # only for callers that don't pass recent_activity_rows (existing unit
+    # tests, or a days window already narrower than the recent one).
+    if recent_activity_rows is not None:
+        recent_legacy_rows, recent_product_rows = recent_activity_rows
+        recent_activity_events = [
+            normalize_analytics_event(row, source)
+            for source, rows in (("legacy", recent_legacy_rows), ("product", recent_product_rows))
+            for row in rows
+        ]
+        if platform != "all":
+            recent_activity_events = [
+                event for event in recent_activity_events if event["platform"] == platform
+            ]
+    else:
+        recent_activity_events = events
+
     recent_events = []
-    for event in sorted(events, key=lambda row: row["occurredAt"], reverse=True)[:60]:
+    for event in sorted(recent_activity_events, key=lambda row: row["occurredAt"], reverse=True)[:60]:
         recent_events.append({
             "occurredAt": event["occurredAt"],
             "eventName": event["eventName"],
@@ -5700,7 +5802,8 @@ def build_analytics_overview(
             "identity": _masked_identity(event["identity"]),
             "properties": event["properties"],
         })
-    abuse_monitoring = build_abuse_monitoring(events)
+    abuse_monitoring = build_abuse_monitoring(recent_activity_events)
+    abuse_monitoring["windowHours"] = RECENT_ACTIVITY_WINDOW_HOURS
     interaction_breakdowns = build_interaction_breakdowns(events)
 
     if set_aggregates is not None:
@@ -5795,6 +5898,7 @@ def build_analytics_overview(
             for dilemma_id, count in dilemma_counts.most_common(12)
         ],
         "recentEvents": recent_events,
+        "recentEventsWindowHours": RECENT_ACTIVITY_WINDOW_HOURS,
         "abuseMonitoring": abuse_monitoring,
         "dailyMoralCrime": daily_moral_crime,
         "partyRoom": party_room,
@@ -5882,6 +5986,17 @@ async def analytics_overview(
             logger.warning("Unable to read analytics daily aggregates: %s", str(error))
             aggregate_items = None
 
+        try:
+            # TASK-300.3/ADR-137: abuseMonitoring/recentEvents read a short
+            # fixed window via a date-bounded Query (DayIndex GSI), never
+            # the full Scan above - a transient issue here falls back to
+            # the still-fetched, days-scoped `events` inside
+            # build_analytics_overview rather than hiding the dashboard.
+            recent_activity_rows = _read_recent_activity_rows(now_ms)
+        except ClientError as error:
+            logger.warning("Unable to read recent activity rows: %s", str(error))
+            recent_activity_rows = None
+
         overview = build_analytics_overview(
             legacy_rows,
             product_rows,
@@ -5891,6 +6006,7 @@ async def analytics_overview(
             registered_users=registered_users,
             daily_moral_crime_aggregates=daily_moral_crime_aggregates,
             aggregate_items=aggregate_items,
+            recent_activity_rows=recent_activity_rows,
         )
         _analytics_overview_cache[cache_key] = {"createdAt": time.time(), "value": overview}
         return overview

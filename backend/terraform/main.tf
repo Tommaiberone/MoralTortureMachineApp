@@ -72,10 +72,27 @@ resource "aws_dynamodb_table" "user_analytics" {
     type = "S"
   }
 
+  # TASK-300.3/ADR-137: written by track_analytics_event alongside the raw
+  # row (backend_fastapi.py's _analytics_day_key), so abuseMonitoring/
+  # recentEvents can Query a short fixed recent window instead of Scanning
+  # the whole table. Sparse index - rows written before this existed have no
+  # dayKey and are simply absent from it.
+  attribute {
+    name = "dayKey"
+    type = "S"
+  }
+
   # Global Secondary Index to query by action type across all sessions
   global_secondary_index {
     name            = "ActionTypeIndex"
     hash_key        = "actionType"
+    range_key       = "timestamp"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = "DayIndex"
+    hash_key        = "dayKey"
     range_key       = "timestamp"
     projection_type = "ALL"
   }
@@ -127,6 +144,13 @@ resource "aws_dynamodb_table" "product_events" {
     type = "N"
   }
 
+  # TASK-300.3/ADR-137: same purpose as user_analytics' own dayKey above -
+  # written by ingest_analytics_events, sparse, self-healing.
+  attribute {
+    name = "dayKey"
+    type = "S"
+  }
+
   global_secondary_index {
     name            = "AnonymousUserIndex"
     hash_key        = "anonymousUserId"
@@ -139,6 +163,13 @@ resource "aws_dynamodb_table" "product_events" {
     hash_key        = "actionType"
     range_key       = "occurredAt"
     projection_type = "KEYS_ONLY"
+  }
+
+  global_secondary_index {
+    name            = "DayIndex"
+    hash_key        = "dayKey"
+    range_key       = "occurredAt"
+    projection_type = "ALL"
   }
 
   ttl {

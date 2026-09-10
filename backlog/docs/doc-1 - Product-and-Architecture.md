@@ -803,6 +803,23 @@ dev table, or `/dev` SSM hierarchy.
   `abuseMonitoring`, `recentEvents`, `dataQuality`, `summary`, and
   `daily.sessions` are the only fields still fully Scan-derived, pending
   `TASK-300.3`/`.5`.
+
+  `TASK-300.3` (ADR-140) moves `abuseMonitoring`/`recentEvents` off the
+  `days`-scoped Scan too - neither needs it, both need only a short fixed
+  recent window (`RECENT_ACTIVITY_WINDOW_HOURS = 48`) read via a new sparse
+  `DayIndex` GSI on `user_analytics`/`product_events` (hash `dayKey`, range
+  `timestamp`/`occurredAt`), Queried per day-key bucket instead of a full
+  Scan. `dayKey` is written by `track_analytics_event`/
+  `ingest_analytics_events` alongside every raw row from this deploy
+  forward; a row from before it has no `dayKey` and is simply absent from
+  the index, which self-heals within 48 hours since neither panel ever
+  looks further back than that. The response now names the window it used
+  (`abuseMonitoring.windowHours`, top-level `recentEventsWindowHours`) and
+  `AnalyticsAdminScreen.jsx` renders it explicitly so the two panels'
+  independence from the `days` selector is visible, not just documented.
+  `analytics_overview` still calls `_scan_all_rows` for `dataQuality`/
+  `summary` and the category A/B fallback path in this step - removing the
+  Scans entirely is `TASK-300.5`.
 - Abuse monitoring groups events using a server-generated, HMAC-peppered network
   pseudonym where available, falling back to anonymous or session identity. The
   dashboard returns only a short derived mask, behavioral counts, thresholds,

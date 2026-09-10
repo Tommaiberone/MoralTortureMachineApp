@@ -144,7 +144,12 @@ const AnalyticsAdminScreen = () => {
     },
     thresholds: {},
     anomalies: [],
+    windowHours: 48,
   };
+  // TASK-300.3: abuseMonitoring/recentEvents always look at a short fixed
+  // recent window, independent of the days selector - the backend names
+  // that window explicitly so this label never drifts from the real value.
+  const recentEventsWindowHours = data.recentEventsWindowHours ?? 48;
   const abuseCards = [
     ['abuseObserved', abuse.summary.observedIdentities],
     ['abuseWatch', abuse.summary.watch],
@@ -304,6 +309,9 @@ const AnalyticsAdminScreen = () => {
           <div>
             <h2>{t('analyticsAdmin.abuseTitle')}</h2>
             <p>{t('analyticsAdmin.abuseDescription')}</p>
+            <p className="analytics-window-note">
+              {t('analyticsAdmin.fixedRecentWindow', { hours: abuse.windowHours ?? 48 })}
+            </p>
           </div>
           <span className="analytics-badge analytics-badge--review">
             {t('analyticsAdmin.abuseHumanReview')}
@@ -875,6 +883,9 @@ const AnalyticsAdminScreen = () => {
           <div>
             <h2>{t('analyticsAdmin.recentEvents')}</h2>
             <p>{t('analyticsAdmin.recentDescription')}</p>
+            <p className="analytics-window-note">
+              {t('analyticsAdmin.fixedRecentWindow', { hours: recentEventsWindowHours })}
+            </p>
           </div>
           <span>{t('analyticsAdmin.generatedAt')} {formatDateTime(data.generatedAt)}</span>
         </div>
