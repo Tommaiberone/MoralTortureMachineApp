@@ -742,6 +742,40 @@ dev table, or `/dev` SSM hierarchy.
   cross-identity UTM join. `PartyRoomHomeScreen.jsx` gained its first page-view
   event (`party_home_viewed`) since it previously tracked nothing until a
   room was actually created.
+- `TASK-300` (2026-09-10): `/admin/analytics/overview` was found to always run
+  two full unbounded `Scan`s of `user_analytics`/`product_events` regardless
+  of the requested `days` window, with CloudWatch confirming the Lambda's
+  daily max `Duration` climbing toward the shared 30s Lambda/API Gateway
+  timeout as the tables grew (ADR-137). `TASK-300.1` (ADR-138) adds a new
+  provisioned table, `analytics_daily_aggregates` (5 RCU/3 WCU, one item per
+  UTC calendar day, hash key `dayKey` only), for the dashboard's purely
+  additive ("category A") fields: `eventCounts`, `sourceCounts`,
+  `platformCounts`/`platformBreakdown`, `languageCounts`, `timeZoneCounts`,
+  `appVersionCounts`, `topDilemmas`, `interactionBreakdowns`, and the
+  additive half of `daily` (`events`/`web`/`android`/`ios`/`unknown`, but not
+  yet `sessions`/`users`, which stay unique-identity counts pending
+  `TASK-300.2`). `track_analytics_event`/`ingest_analytics_events`
+  (`backend_fastapi.py`) each issue exactly one extra `UpdateItem` `ADD` per
+  event (product events batch to one call per distinct day in the batch, not
+  one per event) on top of the existing raw-row write, computed via
+  `_scalar_aggregate_increments` from `normalize_analytics_event`'s own
+  output so the write and read paths can never disagree; a failed aggregate
+  update is caught and logged inside `_apply_scalar_aggregate_increments`
+  itself and can never fail the caller's raw write or ingest response.
+  Attribute names are dynamic (`namespace__platform__escaped-value...`);
+  every dynamic value segment is escaped first (`_escape_analytics_aggregate_segment`,
+  every `_` becomes `_-`) so the `__` delimiter used to join/split segments
+  can never collide with a value that happens to contain an underscore.
+  `/admin/analytics/overview` reads the requested window's aggregate items in
+  one `BatchGetItem` (`_read_analytics_daily_aggregates`) and
+  `build_analytics_overview` prefers them for the fields above when present,
+  falling back to the original Scan-derived computation otherwise (missing
+  table, transient read error, or a caller - existing unit tests included -
+  that does not pass `aggregate_items`); this fallback is why the full Scans
+  are not removed yet. `funnel`, `retentionCohorts`, `viralCoefficient`,
+  `creativeVariants`, `copyExperiments`, `abuseMonitoring`, `recentEvents`,
+  `dataQuality`, and `summary` are unaffected and still fully Scan-derived,
+  pending `TASK-300.2`/`300.3`/`300.5`.
 - Abuse monitoring groups events using a server-generated, HMAC-peppered network
   pseudonym where available, falling back to anonymous or session identity. The
   dashboard returns only a short derived mask, behavioral counts, thresholds,

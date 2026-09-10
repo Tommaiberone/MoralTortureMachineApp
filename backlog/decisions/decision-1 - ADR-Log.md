@@ -5056,6 +5056,170 @@ different-length answers still rendered the same height.
   still the right one to reuse, just pointed at a different, better-liked
   font file.
 
+### ADR-137 — `TASK-300` investigation: replace `/admin/analytics/overview`'s full-history Scan with write-time aggregation, not a bigger read-time query
+
+Context: the user reported the analytics admin page as slow. Investigation
+(`TASK-300`) found `GET /admin/analytics/overview` (`backend_fastapi.py`)
+always ran two full unbounded DynamoDB `Scan`s — `_scan_all_rows` over
+`user_analytics` (34,630 items, ~15.2MB) and `product_events` (16,555 items,
+~9.4MB), confirmed via `describe-table` on the `mtm-analytics-ro` profile —
+plus a third full `Scan` (`_count_registered_users`) over `users`, on every
+cache-miss request, filtering the requested `days` window only *after*
+fetching and normalizing every row ever written. CloudWatch (`mtm-ops-readonly`
+profile) confirmed the symptom: `moral-torture-machine-api`'s daily *maximum*
+`AWS/Lambda Duration` climbed from ~5.6s (2026-08-27) to ~23.8s (2026-09-08),
+while the *average* stayed 20-150ms, closing in on the 30s Lambda/API Gateway
+timeout shared by every route (`main.tf:1316`, `main.tf:1520`) as the tables
+grow toward their 90-day TTL retention ceiling.
+
+The user then asked whether a bigger structural change — writing
+pre-aggregated data at ingest time and incrementing it, instead of appending
+one raw row per event and scanning the backlog at read time — could replace
+the narrower "add a GSI, Query the date range" fix first considered. Every
+`build_*` function behind the dashboard (`backend_fastapi.py` ~4489-4970) was
+read to answer this precisely rather than by analogy, since the answer
+differs by metric:
+
+- **Purely additive metrics** (`eventCounts`, `sourceCounts`,
+  `platform/language/timeZone/appVersionCounts`, `topDilemmas`,
+  `interactionBreakdowns`) need no identity dedup — a write-time
+  `UpdateItem ... ADD count :1` on a `(day, dimension)` item is exact and
+  correct. This is the same pattern the codebase already uses successfully
+  for Daily Moral Crime's `currentAggregate` (a single projected `GetItem`,
+  no scan).
+- **Identity-deduplicated metrics** (every funnel — generic, Daily, Party
+  Room, Duel — plus D1/D7 retention cohorts, viral coefficient, creative
+  variant breakdown, and the `COPY_EXPERIMENTS` exposure→conversion
+  breakdowns) cannot become a scalar counter: summing two independently
+  incremented integers double-counts a returning identity and cannot express
+  a cross-event-type identity join (e.g. `build_experiment_breakdown`'s
+  "of those exposed to variant X, how many later converted"). These can
+  still move off the full-history Scan using DynamoDB's native idempotent
+  `ADD` on a `String Set` per `(day, stage/variant)` bucket — reads become
+  O(days requested) set unions instead of O(entire table history) — but the
+  result is a set structure to union across days, not a single incrementing
+  number.
+- **Not aggregable at all**: `build_abuse_monitoring` needs the actual
+  per-identity, minute-level event sequence to detect bursts and
+  rapid-replay patterns — pre-aggregating it away would remove the fraud
+  signal it exists to produce. `recentEvents` shows the 60 most recent raw
+  events with their properties verbatim, which by definition cannot be
+  reconstructed from any aggregate. Both must keep reading raw rows, but can
+  be bounded to a short fixed recent window (e.g. last 24-48h) instead of
+  the full `days` selector, since that is already all they conceptually need.
+
+Decision: pursue the write-time aggregation direction in full rather than
+the narrower GSI-Query fix, as a sequence of dependent child tasks under
+`TASK-300`: (1) scalar write-time counters for the purely-additive metrics,
+(2) per-day identity `Set` aggregates for the funnel/retention/experiment
+metrics, (3) bound abuse-monitoring/`recentEvents` to a short fixed recent
+window instead of the full requested range, (4) a one-off backfill of the
+new aggregate structures from the existing raw history still inside the
+90-day TTL window (aggregation only applies to events written after
+cutover otherwise), (5) cutover `/admin/analytics/overview` to read only
+from the new aggregates/bounded window and remove the full-table Scans.
+Each step needs its own AWS Free Tier check per CLAUDE.md before any new
+table/attribute is provisioned.
+
+### Consequences
+
+- This is materially larger than a single-GSI fix: it changes the write
+  path of every endpoint that calls `track_analytics_event`/
+  `ingest_analytics_events`, adds two new aggregate access patterns, and
+  needs a one-off prod backfill — sequenced as separate atomic tasks rather
+  than one large change.
+- Historical detail for `abuseMonitoring`/`recentEvents` is intentionally
+  narrowed to a short recent window going forward; the full `days` selector
+  will no longer widen those two panels specifically, by design (Consequence
+  of category C above, not a regression to fix later).
+- Raw `user_analytics`/`product_events` rows remain the source of truth and
+  keep their existing 90-day TTL; the dashboard stops reading them in bulk,
+  but nothing about ingestion, retention, or export/deletion behavior
+  changes.
+- Any new DynamoDB attribute/table this introduces must be re-verified
+  against current AWS Free Tier terms before provisioning, per CLAUDE.md —
+  memorized pricing from this ADR must not be treated as still accurate.
+
+### ADR-138 — `TASK-300.1` implemented: write-time scalar aggregates for `/admin/analytics/overview`'s purely-additive fields
+
+Context: `ADR-137` decided to pursue write-time aggregation over a narrower
+GSI-Query fix for `TASK-300`'s full-Scan problem, in five sequenced steps.
+This is the first: the "category A" fields that need no per-identity dedup.
+
+Decision: added `analytics_daily_aggregates` (`backend/terraform/main.tf`),
+a `PROVISIONED` (5 RCU/3 WCU) table with hash key `dayKey` only — one item
+per UTC calendar day, chosen over a per-(day, metric) item per metric so a
+single event/batch-day needs exactly one `UpdateItem` call, not one per
+metric (verified against current AWS Free Tier terms 2026-09-10: the
+account's shared 25 RCU/25 WCU always-free allowance easily covers this
+alongside `users`' existing 1/1). Attribute names are dynamic:
+`<namespace>__<platform>__<escaped value segment(s)>`, ADD-incremented by
++1 per event. Considered joining raw dimension values directly with `__`
+and splitting with a bounded `maxsplit` at read time, but rejected it: a
+value itself containing `__` (or, for the two-value `shareClicked`
+namespace, a single `_`) would misparse. Instead every dynamic segment is
+escaped first (`_escape_analytics_aggregate_segment`: every `_` becomes
+`_-`), which provably makes `__` impossible inside an escaped segment (every
+underscore is immediately followed by `-`), so a plain unbounded `split("__")`
+at read time is always unambiguous — verified by a dedicated round-trip test
+and a test that pushes a property value containing a literal `__` all the
+way through write and read.
+
+`_scalar_aggregate_increments` takes `normalize_analytics_event`'s own
+output (not a re-derivation of platform/language/timeZone/appVersion
+resolution) specifically so the write path cannot drift from the read path
+it is meant to agree with. `track_analytics_event` and
+`ingest_analytics_events` each call it and `_apply_scalar_aggregate_increments`
+right after their existing raw write; the latter catches and logs its own
+errors so a dashboard-only write can never turn a successful gameplay-adjacent
+request into a client-visible failure (mirrors `track_analytics_event`'s
+pre-existing "never fail the request" posture) — verified by a test whose
+mocked `update_item` raises and confirms the raw write still completed.
+`ingest_analytics_events` groups increments by day across the whole batch
+before writing, so a typical batch (almost always one calendar day) costs
+one extra `UpdateItem`, not one per event.
+
+`/admin/analytics/overview` fetches the requested window with one
+`BatchGetItem` (`_read_analytics_daily_aggregates`, chunked at 100 keys) and
+`build_analytics_overview` takes the result as an optional `aggregate_items`
+param: when present, `parse_scalar_aggregate_items` reconstructs
+`eventCounts`/`sourceCounts`/`platformCounts`/`platformBreakdown`/
+`languageCounts`/`timeZoneCounts`/`appVersionCounts`/`topDilemmas`/
+`interactionBreakdowns` and the additive half of `daily` from it; when
+absent (existing unit tests that predate this task, or a transient read
+error the endpoint catches the same way it already does for
+`registered_users`/`daily_moral_crime_aggregates`), the original Scan-derived
+computation still runs unchanged. The full Scans stay in place in this step
+only because `funnel`/`retentionCohorts`/`viralCoefficient`/`creativeVariants`/
+`copyExperiments`/`abuseMonitoring`/`recentEvents`/`dataQuality`/`summary`
+still need the raw `events` list — removing the Scans is `TASK-300.5`.
+
+Verified by 15 new tests in `backend/tests/test_analytics_models.py`,
+most importantly one that builds representative legacy+product rows, runs
+`build_analytics_overview` once Scan-only and once with `aggregate_items`
+independently reconstructed via the real `_scalar_aggregate_increments`
+(not a hand-duplicated expectation), and asserts every migrated field
+matches exactly while every field outside this task's scope is byte-identical
+between the two runs. All 211 backend tests pass; `terraform validate`
+passes (the two pre-existing `filebase64sha256` errors are the
+CI-built Lambda zip not existing locally, unrelated to this change).
+
+### Consequences
+
+- The Scan-derived computation for these 9 fields is temporarily redundant
+  dead weight once aggregates are available in production - left in place
+  deliberately as the fallback path and the thing this step's tests verify
+  against, to be deleted in `TASK-300.5` alongside the Scans themselves
+  rather than removed piecemeal across two different subtasks.
+- `daily`'s `sessions`/`users` fields are unique-identity counts and stay
+  Scan-derived until `TASK-300.2`; `daily`'s `events`/`web`/`android`/`ios`/
+  `unknown` fields already come from aggregates when available.
+- The escape scheme (`_escape_analytics_aggregate_segment`/
+  `_unescape_analytics_aggregate_segment`) is the reusable building block
+  `TASK-300.2`'s per-day identity `Set` aggregates should reuse for their own
+  dynamic attribute names, rather than re-solving the same delimiter-collision
+  problem a second time.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

@@ -4,7 +4,7 @@ import time
 import unittest
 import uuid
 from datetime import datetime, timedelta, timezone
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -19,15 +19,22 @@ os.environ.setdefault("AWS_DEFAULT_REGION", "eu-west-1")
 from backend.src.backend_fastapi import (  # noqa: E402
     AnalyticsBatchRequest,
     AnalyticsEvent,
+    _analytics_day_key,
+    _apply_scalar_aggregate_increments,
     _consume_burst_window,
+    _escape_analytics_aggregate_segment,
     _network_fingerprint,
     _rate_limit_participant_source,
     _rate_limit_rules_for_request,
     _rate_limit_source,
+    _scalar_aggregate_increments,
+    _unescape_analytics_aggregate_segment,
     build_analytics_overview,
     enforce_zero_cost_burst_guard,
     infer_platform,
+    ingest_analytics_events,
     normalize_analytics_event,
+    parse_scalar_aggregate_items,
     require_analytics_admin,
     track_analytics_event,
     verify_cognito_id_token,
@@ -168,6 +175,249 @@ class AnalyticsModelTests(unittest.TestCase):
         self.assertEqual(batch.events[0].timeZone, "Europe/Rome")
         self.assertIsNone(batch.events[1].referrer)
         self.assertIsNone(batch.events[2].timeZone)
+
+
+class AnalyticsDailyAggregateTests(unittest.TestCase):
+    """TASK-300.1/ADR-137: write-time aggregates for the purely-additive
+    ("category A") fields of /admin/analytics/overview, so the dashboard no
+    longer needs a full Scan of user_analytics/product_events for them."""
+
+    def test_escape_unescape_round_trips_values_containing_underscores(self):
+        for value in ("evaluation", "co_py__link", "___", "Europe/Rome", "plain", ""):
+            with self.subTest(value=value):
+                escaped = _escape_analytics_aggregate_segment(value)
+                self.assertNotIn("__", escaped)
+                self.assertEqual(_unescape_analytics_aggregate_segment(escaped), value)
+
+    def test_day_key_buckets_by_utc_calendar_day(self):
+        late_on_10th = int(datetime(2026, 9, 10, 23, 30, tzinfo=timezone.utc).timestamp() * 1000)
+        early_on_11th = int(datetime(2026, 9, 11, 0, 5, tzinfo=timezone.utc).timestamp() * 1000)
+        self.assertEqual(_analytics_day_key(late_on_10th), "2026-09-10")
+        self.assertEqual(_analytics_day_key(early_on_11th), "2026-09-11")
+
+    def test_increments_and_parse_round_trip_for_a_single_event(self):
+        now_ms = 1785369600000
+        raw = {
+            "eventId": str(uuid.uuid4()), "anonymousUserId": "user-1", "occurredAt": now_ms,
+            "actionType": "share_clicked", "platform": "web",
+            "properties": '{"channel": "whatsapp", "object_type": "challenge"}',
+        }
+        normalized = normalize_analytics_event(raw, "product")
+        increments = _scalar_aggregate_increments(normalized)
+        item = {"dayKey": _analytics_day_key(now_ms), **increments}
+
+        parsed = parse_scalar_aggregate_items([item], platform_filter="all")
+
+        self.assertEqual(parsed["eventCounts"], [{"eventName": "share_clicked", "count": 1}])
+        self.assertEqual(parsed["sourceCounts"], {"product": 1})
+        self.assertEqual(parsed["platformCounts"], {"web": 1})
+        self.assertEqual(parsed["interactionBreakdowns"]["shareClicked"], [
+            {"channel": "whatsapp", "objectType": "challenge", "count": 1},
+        ])
+
+    def test_platform_filter_only_sums_the_selected_platform(self):
+        now_ms = 1785369600000
+        day_key = _analytics_day_key(now_ms)
+        web_event = normalize_analytics_event(
+            {"eventId": "e1", "anonymousUserId": "u1", "occurredAt": now_ms,
+             "actionType": "test_started", "platform": "web", "properties": "{}"},
+            "product",
+        )
+        android_event = normalize_analytics_event(
+            {"eventId": "e2", "anonymousUserId": "u2", "occurredAt": now_ms,
+             "actionType": "test_started", "platform": "android", "properties": "{}"},
+            "product",
+        )
+        merged: dict[str, int] = {}
+        for event in (web_event, android_event):
+            for attribute_name, delta in _scalar_aggregate_increments(event).items():
+                merged[attribute_name] = merged.get(attribute_name, 0) + delta
+        item = {"dayKey": day_key, **merged}
+
+        self.assertEqual(
+            parse_scalar_aggregate_items([item], platform_filter="web")["platformCounts"],
+            {"web": 1},
+        )
+        self.assertEqual(
+            parse_scalar_aggregate_items([item], platform_filter="all")["platformCounts"],
+            {"web": 1, "android": 1},
+        )
+
+    def test_property_value_containing_double_underscore_does_not_corrupt_parsing(self):
+        now_ms = 1785369600000
+        raw = {
+            "eventId": str(uuid.uuid4()), "anonymousUserId": "user-1", "occurredAt": now_ms,
+            "actionType": "mode_selected", "platform": "web",
+            "properties": '{"mode": "weird__mode_value"}',
+        }
+        normalized = normalize_analytics_event(raw, "product")
+        item = {"dayKey": _analytics_day_key(now_ms), **_scalar_aggregate_increments(normalized)}
+
+        parsed = parse_scalar_aggregate_items([item], platform_filter="all")
+
+        self.assertEqual(parsed["interactionBreakdowns"]["modeSelected"], [
+            {"mode": "weird__mode_value", "count": 1},
+        ])
+
+    def test_apply_increments_sends_one_add_update_item_and_never_raises(self):
+        table = Mock()
+        with patch.object(backend_module, "analytics_daily_aggregates_table", table):
+            _apply_scalar_aggregate_increments(
+                "2026-09-10", {"event__web__test_started": 1, "platform__web": 1}, 12345,
+            )
+        table.update_item.assert_called_once()
+        call_kwargs = table.update_item.call_args.kwargs
+        self.assertEqual(call_kwargs["Key"], {"dayKey": "2026-09-10"})
+        self.assertIn(" ADD ", call_kwargs["UpdateExpression"])
+        self.assertEqual(set(call_kwargs["ExpressionAttributeNames"].values()), {
+            "event__web__test_started", "platform__web",
+        })
+
+        table.update_item.side_effect = RuntimeError("boom")
+        with patch.object(backend_module, "analytics_daily_aggregates_table", table):
+            _apply_scalar_aggregate_increments("2026-09-10", {"event__web__test_started": 1}, 12345)
+        # No exception propagated - the caller's own write must never break because
+        # this best-effort dashboard aggregate failed.
+
+    def test_track_analytics_event_updates_the_daily_aggregate(self):
+        analytics_table = Mock()
+        aggregates_table = Mock()
+        with (
+            patch.object(backend_module, "analytics_table", analytics_table),
+            patch.object(backend_module, "analytics_daily_aggregates_table", aggregates_table),
+            patch.object(backend_module, "_network_fingerprint", return_value=None),
+        ):
+            track_analytics_event(session_id="session-1", action_type="vote_cast", platform="web", language="en")
+
+        analytics_table.put_item.assert_called_once()
+        aggregates_table.update_item.assert_called_once()
+        attribute_names = set(aggregates_table.update_item.call_args.kwargs["ExpressionAttributeNames"].values())
+        # "vote_cast" itself is escaped (every "_" becomes "_-") before being
+        # embedded in the attribute name - see _escape_analytics_aggregate_segment.
+        self.assertIn(f"event__web__{_escape_analytics_aggregate_segment('vote_cast')}", attribute_names)
+
+    def test_a_failing_aggregate_write_never_breaks_the_raw_event_write(self):
+        analytics_table = Mock()
+        aggregates_table = Mock()
+        aggregates_table.update_item.side_effect = RuntimeError("boom")
+        with (
+            patch.object(backend_module, "analytics_table", analytics_table),
+            patch.object(backend_module, "analytics_daily_aggregates_table", aggregates_table),
+            patch.object(backend_module, "_network_fingerprint", return_value=None),
+        ):
+            track_analytics_event(session_id="session-1", action_type="vote_cast")
+
+        analytics_table.put_item.assert_called_once()
+
+    def test_ingest_analytics_events_updates_one_daily_aggregate_per_batch_day(self):
+        product_events_table = MagicMock()
+        aggregates_table = Mock()
+        batch = AnalyticsBatchRequest(events=[
+            valid_event(eventName="test_started", occurredAt=1785369600000, platform="web"),
+            valid_event(eventName="test_started", occurredAt=1785369601000, platform="web"),
+        ])
+        request = Request({
+            "type": "http",
+            "method": "POST",
+            "path": "/analytics/events",
+            "headers": [],
+            "client": ("127.0.0.1", 1234),
+        })
+        with (
+            patch.object(backend_module, "product_events_table", product_events_table),
+            patch.object(backend_module, "analytics_daily_aggregates_table", aggregates_table),
+            patch.object(backend_module, "_network_fingerprint", return_value=None),
+        ):
+            result = asyncio.run(ingest_analytics_events(batch, request))
+
+        self.assertEqual(result, {"accepted": 2})
+        # Both events fall on the same UTC day, so exactly one UpdateItem
+        # call covers the whole batch - not one call per event.
+        aggregates_table.update_item.assert_called_once()
+        call_kwargs = aggregates_table.update_item.call_args.kwargs
+        name_to_value = {
+            name: call_kwargs["ExpressionAttributeValues"][f":v{placeholder[2:]}"]
+            for placeholder, name in call_kwargs["ExpressionAttributeNames"].items()
+        }
+        expected_attribute_name = f"event__web__{_escape_analytics_aggregate_segment('test_started')}"
+        self.assertEqual(name_to_value[expected_attribute_name], 2)
+
+    def test_aggregate_derived_fields_match_scan_derived_fields(self):
+        """AC#3 of TASK-300.1: the write-time-aggregate path must reproduce
+        exactly what the full-Scan path already computes, for every field it
+        covers - and must not change anything outside its scope."""
+        now_ms = 1785369600000
+        day0 = now_ms - 2 * 24 * 60 * 60 * 1000
+        day1 = now_ms - 1 * 24 * 60 * 60 * 1000
+        legacy_rows = [
+            {"sessionId": "s1", "timestamp": day0 + 1000, "actionType": "dilemma_fetched",
+             "platform": "web", "language": "en", "timeZone": "Europe/Rome", "appVersion": "1.4.0",
+             "actionData": '{"dilemma_id": "trolley-1"}'},
+            {"sessionId": "s2", "timestamp": day0 + 2000, "actionType": "vote_cast",
+             "platform": "android", "language": "it", "actionData": '{"dilemma_id": "trolley-1"}'},
+        ]
+        product_rows = [
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-1", "occurredAt": day1 + 1000,
+             "actionType": "mode_selected", "platform": "web", "language": "en", "appVersion": "1.5.0",
+             "properties": '{"mode": "evaluation"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-2", "occurredAt": day1 + 2000,
+             "actionType": "share_clicked", "platform": "web", "language": "en", "appVersion": "1.5.0",
+             "properties": '{"channel": "whatsapp", "object_type": "challenge"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-3", "occurredAt": day1 + 3000,
+             "actionType": "auth_prompt_shown", "platform": "android", "language": "it", "appVersion": "1.5.0",
+             "properties": '{"surface": "results_challenge"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-3", "occurredAt": day1 + 4000,
+             "actionType": "auth_prompt_clicked", "platform": "android", "language": "it", "appVersion": "1.5.0",
+             "properties": '{"surface": "results_challenge"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-4", "occurredAt": day1 + 5000,
+             "actionType": "dilemma_fetched", "platform": "unknown", "language": "en",
+             "properties": '{"dilemma_id": "trolley-2"}'},
+        ]
+
+        scan_only = build_analytics_overview(
+            legacy_rows=legacy_rows, product_rows=product_rows, days=7, now_ms=now_ms, platform="all",
+        )
+
+        # Reconstruct exactly what the write path would have produced for
+        # these same rows (the real write path does this incrementally per
+        # event/batch - this test does it in one pass for comparison).
+        day_increments: dict[str, dict[str, int]] = {}
+        for source, rows in (("legacy", legacy_rows), ("product", product_rows)):
+            for row in rows:
+                normalized = normalize_analytics_event(row, source)
+                bucket = day_increments.setdefault(_analytics_day_key(normalized["occurredAt"]), {})
+                for attribute_name, delta in _scalar_aggregate_increments(normalized).items():
+                    bucket[attribute_name] = bucket.get(attribute_name, 0) + delta
+        aggregate_items = [{"dayKey": day_key, **increments} for day_key, increments in day_increments.items()]
+
+        aggregate_backed = build_analytics_overview(
+            legacy_rows=legacy_rows, product_rows=product_rows, days=7, now_ms=now_ms, platform="all",
+            aggregate_items=aggregate_items,
+        )
+
+        for field in (
+            "eventCounts", "sourceCounts", "platformCounts", "platformBreakdown",
+            "languageCounts", "timeZoneCounts", "appVersionCounts", "topDilemmas",
+            "interactionBreakdowns",
+        ):
+            with self.subTest(field=field):
+                self.assertEqual(aggregate_backed[field], scan_only[field])
+
+        # sessions/users stay Scan-derived until TASK-300.2; events/web/
+        # android/ios/unknown must already match per day.
+        scan_daily_by_date = {row["date"]: row for row in scan_only["daily"]}
+        for row in aggregate_backed["daily"]:
+            scan_row = scan_daily_by_date[row["date"]]
+            for key in ("events", "web", "android", "ios", "unknown"):
+                with self.subTest(date=row["date"], key=key):
+                    self.assertEqual(row[key], scan_row[key])
+            self.assertEqual(row["sessions"], scan_row["sessions"])
+            self.assertEqual(row["users"], scan_row["users"])
+
+        # Fields outside TASK-300.1's scope must be completely untouched.
+        for field in ("funnel", "retentionCohorts", "viralCoefficient", "abuseMonitoring", "dataQuality", "summary"):
+            with self.subTest(field=field):
+                self.assertEqual(aggregate_backed[field], scan_only[field])
 
 
 class AnalyticsOverviewTests(unittest.TestCase):

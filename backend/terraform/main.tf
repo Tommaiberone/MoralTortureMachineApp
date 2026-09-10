@@ -154,6 +154,49 @@ resource "aws_dynamodb_table" "product_events" {
   }
 }
 
+# TASK-300.1/ADR-137: write-time aggregates for /admin/analytics/overview's
+# purely-additive metrics (event/source/platform/language/timeZone/appVersion
+# counts, the platform-resolution breakdown, top dilemmas, and the
+# mode/share/auth-prompt interaction breakdowns), so the dashboard no longer
+# needs a full Scan of user_analytics/product_events to compute them. One
+# item per UTC calendar day (hash key only, no range key - unlike
+# daily_moral_crime_votes this table never stores per-user rows), with a wide
+# set of dynamically-named counter attributes incremented via one UpdateItem
+# ADD per event/batch-day at write time (backend_fastapi.py's
+# track_analytics_event/ingest_analytics_events). Low, predictable write
+# volume and small (single-digit KB) items make provisioned capacity safe
+# here, unlike the legacy on-demand tables above - 5 RCU/3 WCU stays well
+# within the account's shared, always-free 25 RCU/25 WCU allowance (verified
+# against current AWS Free Tier terms 2026-09-10) alongside users' existing
+# 1/1. TTL matches the 90-day raw retention window (ANALYTICS_RAW_RETENTION_SECONDS)
+# since the aggregate does not need to outlive the raw data it is verified
+# against; extending aggregate retention beyond raw TTL is a separate,
+# not-yet-decided product question.
+resource "aws_dynamodb_table" "analytics_daily_aggregates" {
+  name           = "${var.environment}-${var.stack_name}-analytics-daily-aggregates"
+  billing_mode   = "PROVISIONED"
+  read_capacity  = 5
+  write_capacity = 3
+  hash_key       = "dayKey"
+
+  attribute {
+    name = "dayKey"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "expirationTime"
+    enabled        = true
+  }
+
+  tags = {
+    Name        = "Moral Torture Machine Analytics Daily Aggregates"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+    Purpose     = "Write-time aggregate counters for the admin analytics dashboard"
+  }
+}
+
 # DynamoDB Table for authenticated Users, keyed by immutable Cognito sub.
 # TASK-12: unlike the legacy PAY_PER_REQUEST tables (audited exception pending
 # TASK-88), this new low-traffic table uses provisioned capacity within the
@@ -1137,6 +1180,7 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           "${aws_dynamodb_table.user_analytics.arn}/index/*",
           aws_dynamodb_table.product_events.arn,
           "${aws_dynamodb_table.product_events.arn}/index/*",
+          aws_dynamodb_table.analytics_daily_aggregates.arn,
           aws_dynamodb_table.users.arn,
           aws_dynamodb_table.moral_profiles.arn,
           "${aws_dynamodb_table.moral_profiles.arn}/index/*",
@@ -1159,6 +1203,7 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           aws_dynamodb_table.dilemmas.arn,
           aws_dynamodb_table.user_analytics.arn,
           aws_dynamodb_table.product_events.arn,
+          aws_dynamodb_table.analytics_daily_aggregates.arn,
           aws_dynamodb_table.users.arn,
           aws_dynamodb_table.moral_profiles.arn,
           aws_dynamodb_table.challenges.arn,
@@ -1321,6 +1366,7 @@ resource "aws_lambda_function" "api" {
       DYNAMODB_TABLE                        = aws_dynamodb_table.dilemmas.name
       ANALYTICS_TABLE                       = aws_dynamodb_table.user_analytics.name
       PRODUCT_EVENTS_TABLE                  = aws_dynamodb_table.product_events.name
+      ANALYTICS_DAILY_AGGREGATES_TABLE      = aws_dynamodb_table.analytics_daily_aggregates.name
       USERS_TABLE                           = aws_dynamodb_table.users.name
       MORAL_PROFILES_TABLE                  = aws_dynamodb_table.moral_profiles.name
       CHALLENGES_TABLE                      = aws_dynamodb_table.challenges.name

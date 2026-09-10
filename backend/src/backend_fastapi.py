@@ -98,6 +98,13 @@ app.add_middleware(
 DYNAMODB_TABLE = os.getenv("DYNAMODB_TABLE", "moral-torture-machine-dilemmas")
 ANALYTICS_TABLE = os.getenv("ANALYTICS_TABLE", "moral-torture-machine-user-analytics")
 PRODUCT_EVENTS_TABLE = os.getenv("PRODUCT_EVENTS_TABLE", "prod-moral-torture-machine-product-events")
+# TASK-300.1/ADR-137: write-time aggregate counters for the admin analytics
+# dashboard's purely-additive metrics, so it stops needing a full Scan of the
+# two tables above for those fields.
+ANALYTICS_DAILY_AGGREGATES_TABLE = os.getenv(
+    "ANALYTICS_DAILY_AGGREGATES_TABLE",
+    "prod-moral-torture-machine-analytics-daily-aggregates",
+)
 USERS_TABLE = os.getenv("USERS_TABLE", "moral-torture-machine-users")
 MORAL_PROFILES_TABLE = os.getenv("MORAL_PROFILES_TABLE", "moral-torture-machine-moral-profiles")
 CHALLENGES_TABLE = os.getenv("CHALLENGES_TABLE", "moral-torture-machine-challenges")
@@ -345,6 +352,7 @@ dynamodb_client = boto3.client('dynamodb', region_name=AWS_REGION)
 table = dynamodb.Table(DYNAMODB_TABLE)
 analytics_table = dynamodb.Table(ANALYTICS_TABLE)
 product_events_table = dynamodb.Table(PRODUCT_EVENTS_TABLE)
+analytics_daily_aggregates_table = dynamodb.Table(ANALYTICS_DAILY_AGGREGATES_TABLE)
 users_table = dynamodb.Table(USERS_TABLE)
 moral_profiles_table = dynamodb.Table(MORAL_PROFILES_TABLE)
 challenges_table = dynamodb.Table(CHALLENGES_TABLE)
@@ -1027,6 +1035,16 @@ def track_analytics_event(
 
         # Write to DynamoDB asynchronously (fire and forget)
         analytics_table.put_item(Item=event_data)
+
+        # TASK-300.1/ADR-137: contribute this event to its day's write-time
+        # aggregate, computed from the exact same normalized shape the read
+        # path (build_analytics_overview) already relies on.
+        normalized_event = normalize_analytics_event(event_data, "legacy")
+        _apply_scalar_aggregate_increments(
+            _analytics_day_key(normalized_event["occurredAt"]),
+            _scalar_aggregate_increments(normalized_event),
+            expiration_time,
+        )
 
         logger.info(f"Analytics event tracked: {action_type} for session {session_id[:8]}...")
 
@@ -4255,6 +4273,10 @@ async def ingest_analytics_events(batch: AnalyticsBatchRequest, request: Request
     try:
         # eventId is the table key, so retries overwrite the same item instead of
         # inflating funnel counts. batch_writer also retries unprocessed writes.
+        # TASK-300.1/ADR-137: increments are grouped by day and applied after
+        # the raw writes succeed, one UpdateItem per distinct day the batch
+        # touches (almost always exactly one) rather than one per event.
+        day_increments: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
         with product_events_table.batch_writer(overwrite_by_pkeys=["eventId"]) as writer:
             for event in batch.events:
                 item = {
@@ -4284,6 +4306,14 @@ async def ingest_analytics_events(batch: AnalyticsBatchRequest, request: Request
                 if network_fingerprint:
                     item["networkFingerprint"] = network_fingerprint
                 writer.put_item(Item=item)
+
+                normalized_event = normalize_analytics_event(item, "product")
+                day_key = _analytics_day_key(normalized_event["occurredAt"])
+                for attribute_name, delta in _scalar_aggregate_increments(normalized_event).items():
+                    day_increments[day_key][attribute_name] += delta
+
+        for day_key, increments in day_increments.items():
+            _apply_scalar_aggregate_increments(day_key, dict(increments), expiration_time)
 
         return {"accepted": len(batch.events)}
     except Exception as e:
@@ -4427,6 +4457,120 @@ def normalize_analytics_event(item: dict[str, Any], source: str) -> dict[str, An
         "utm": _parse_utm(item.get("utm")),
     }
 
+
+# TASK-300.1/ADR-137: write-time aggregation for /admin/analytics/overview's
+# purely-additive metrics ("category A" - no per-identity dedup needed), so
+# that dashboard no longer has to Scan the full history of user_analytics/
+# product_events for these fields. One DynamoDB item per UTC calendar day in
+# analytics_daily_aggregates_table (hash key `dayKey` only), holding a wide
+# set of dynamically-named counter attributes incremented via a single
+# UpdateItem ADD per write (one per event for the legacy path, one per
+# distinct day per ingest batch for the product path - never one call per
+# metric, to keep this non-blocking for gameplay-adjacent endpoints).
+#
+# Attribute names are built as "<namespace>__<platform>__<escaped value...>".
+# Every dynamic value segment is escaped first (every "_" becomes "_-") so
+# the "__" delimiter can never appear inside a segment - splitting on "__" at
+# read time is therefore always unambiguous, even if a value itself happens
+# to contain an underscore (or, pathologically, a double one).
+def _escape_analytics_aggregate_segment(value: str) -> str:
+    return value.replace("_", "_-")
+
+
+def _unescape_analytics_aggregate_segment(value: str) -> str:
+    return value.replace("_-", "_")
+
+
+# Defensive cap on each dynamic segment fed into an aggregate attribute name.
+# Existing ingest validation already bounds these (AnalyticsEvent.eventName
+# <=64 chars, _parse_event_properties string values <=160 chars), but this
+# new table has no reason to inherit a bigger blast radius than that.
+_ANALYTICS_AGGREGATE_SEGMENT_MAX_LENGTH = 80
+
+
+def _analytics_day_key(occurred_at_ms: int) -> str:
+    return datetime.fromtimestamp(occurred_at_ms / 1000, tz=timezone.utc).date().isoformat()
+
+
+def _scalar_aggregate_increments(event: dict[str, Any]) -> dict[str, int]:
+    """Attribute-name -> +1 deltas for one already-normalized event (i.e. the
+    output of normalize_analytics_event) - operating on that shared shape,
+    rather than re-deriving platform/language/timeZone/appVersion resolution
+    from scratch, guarantees the write path can never disagree with the
+    read-time Scan-based computation it is meant to replace."""
+    platform = event["platform"]
+    properties = event["properties"]
+    event_name = event["eventName"]
+    increments: dict[str, int] = defaultdict(int)
+
+    def add(namespace: str, *value_parts: str) -> None:
+        segments = [namespace, platform] + [
+            _escape_analytics_aggregate_segment(str(part)[:_ANALYTICS_AGGREGATE_SEGMENT_MAX_LENGTH])
+            for part in value_parts
+        ]
+        increments["__".join(segments)] += 1
+
+    add("event", event_name)
+    add("source", event["source"])
+    add("platform")
+    add("platformDetail", "total")
+    add("platformDetail", event["platformResolution"])
+    add("language", event["language"])
+    add("timeZone", event["timeZone"])
+    add("appVersion", event["appVersion"])
+
+    dilemma_id = properties.get("dilemma_id")
+    if dilemma_id:
+        add("dilemma", dilemma_id)
+
+    if event_name == "mode_selected":
+        mode = properties.get("mode")
+        add("modeSelected", mode if mode is not None else "unknown")
+    elif event_name == "share_clicked":
+        add(
+            "shareClicked",
+            properties.get("channel") or "unknown",
+            properties.get("object_type") or "unknown",
+        )
+    elif event_name == "auth_prompt_shown":
+        add("authPromptShown", properties.get("surface") or "unknown")
+    elif event_name == "auth_prompt_clicked":
+        add("authPromptClicked", properties.get("surface") or "unknown")
+
+    return dict(increments)
+
+
+def _apply_scalar_aggregate_increments(
+    day_key: str,
+    increments: dict[str, int],
+    expiration_time: int,
+) -> None:
+    """Best-effort: mirrors the existing 'never fail the request if analytics
+    tracking fails' posture (track_analytics_event's own try/except, and the
+    reason this function - not its caller - swallows the error) so a
+    dashboard-only write can never turn a successful event/ingest write into
+    a client-visible failure."""
+    if not increments:
+        return
+    try:
+        update_parts = ["SET expirationTime = :expiration_time"]
+        expression_attribute_names: dict[str, str] = {}
+        expression_attribute_values: dict[str, Any] = {":expiration_time": expiration_time}
+        for index, (attribute_name, delta) in enumerate(increments.items()):
+            name_placeholder = f"#a{index}"
+            value_placeholder = f":v{index}"
+            expression_attribute_names[name_placeholder] = attribute_name
+            expression_attribute_values[value_placeholder] = delta
+            update_parts.append(f"{name_placeholder} {value_placeholder}")
+        analytics_daily_aggregates_table.update_item(
+            Key={"dayKey": day_key},
+            UpdateExpression=update_parts[0] + " ADD " + ", ".join(update_parts[1:]),
+            ExpressionAttributeNames=expression_attribute_names,
+            ExpressionAttributeValues=expression_attribute_values,
+        )
+    except Exception as error:
+        logger.error(f"Failed to update analytics daily aggregate for {day_key}: {error!s}")
+
 def _scan_all_rows(dynamodb_table) -> list[dict[str, Any]]:
     rows = []
     scan_kwargs = {}
@@ -4438,6 +4582,149 @@ def _scan_all_rows(dynamodb_table) -> list[dict[str, Any]]:
             break
         scan_kwargs["ExclusiveStartKey"] = last_key
     return rows
+
+
+# TASK-300.1/ADR-137: fetch every requested day's write-time aggregate item in
+# as few round trips as possible (BatchGetItem, up to 100 keys per call) -
+# O(days requested), never O(entire table history) like _scan_all_rows above.
+# A day with no aggregate item yet (no traffic that day, or history from
+# before this table existed and not yet backfilled by TASK-300.4) is simply
+# absent from the result; callers treat that the same as all-zero.
+_ANALYTICS_AGGREGATE_BATCH_GET_MAX_ROUNDS = 5
+
+
+def _read_analytics_daily_aggregates(day_keys: list[str]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    pending = list(day_keys)
+    rounds = 0
+    while pending and rounds < _ANALYTICS_AGGREGATE_BATCH_GET_MAX_ROUNDS:
+        rounds += 1
+        chunk, pending = pending[:100], pending[100:]
+        response = dynamodb.batch_get_item(
+            RequestItems={
+                ANALYTICS_DAILY_AGGREGATES_TABLE: {"Keys": [{"dayKey": key} for key in chunk]},
+            }
+        )
+        items.extend(response.get("Responses", {}).get(ANALYTICS_DAILY_AGGREGATES_TABLE, []))
+        unprocessed = response.get("UnprocessedKeys", {}).get(ANALYTICS_DAILY_AGGREGATES_TABLE)
+        if unprocessed and unprocessed.get("Keys"):
+            pending = [key["dayKey"] for key in unprocessed["Keys"]] + pending
+    return items
+
+
+def parse_scalar_aggregate_items(
+    items: list[dict[str, Any]],
+    platform_filter: str,
+) -> dict[str, Any]:
+    """Reconstruct the purely-additive ("category A") portion of
+    build_analytics_overview's response shape from TASK-300.1/ADR-137's
+    write-time daily aggregate items - no raw-event Scan needed for these
+    fields. See _scalar_aggregate_increments for how attribute names are
+    built (`namespace__platform__escaped-value-segment(s)`)."""
+    platforms = ("web", "android", "ios", "unknown") if platform_filter == "all" else (platform_filter,)
+    platform_set = set(platforms)
+
+    event_counts: Counter = Counter()
+    source_counts: Counter = Counter()
+    platform_counts: Counter = Counter()
+    language_counts: Counter = Counter()
+    time_zone_counts: Counter = Counter()
+    app_version_counts: Counter = Counter()
+    platform_details = defaultdict(lambda: Counter({"total": 0, "exact": 0, "inferred": 0, "unknown": 0}))
+    dilemma_counts: Counter = Counter()
+    mode_selected_counts: Counter = Counter()
+    share_clicked_counts: Counter = Counter()
+    auth_prompt_shown_counts: Counter = Counter()
+    auth_prompt_clicked_counts: Counter = Counter()
+    daily_additive: dict[str, dict[str, int]] = {}
+
+    for item in items:
+        day_key = str(item.get("dayKey", ""))
+        day_bucket = daily_additive.setdefault(
+            day_key, {"events": 0, "web": 0, "android": 0, "ios": 0, "unknown": 0}
+        )
+        for attribute_name, raw_value in item.items():
+            if attribute_name in {"dayKey", "expirationTime"}:
+                continue
+            try:
+                value = int(raw_value)
+            except (TypeError, ValueError):
+                continue
+            parts = attribute_name.split("__")
+            if len(parts) < 2:
+                continue
+            namespace, item_platform = parts[0], parts[1]
+            if item_platform not in platform_set:
+                continue
+            value_parts = [_unescape_analytics_aggregate_segment(part) for part in parts[2:]]
+
+            if namespace == "event" and len(value_parts) == 1:
+                event_counts[value_parts[0]] += value
+            elif namespace == "source" and len(value_parts) == 1:
+                source_counts[value_parts[0]] += value
+            elif namespace == "platform" and not value_parts:
+                platform_counts[item_platform] += value
+                day_bucket[item_platform] += value
+                day_bucket["events"] += value
+            elif namespace == "platformDetail" and len(value_parts) == 1:
+                platform_details[item_platform][value_parts[0]] += value
+            elif namespace == "language" and len(value_parts) == 1:
+                language_counts[value_parts[0]] += value
+            elif namespace == "timeZone" and len(value_parts) == 1:
+                time_zone_counts[value_parts[0]] += value
+            elif namespace == "appVersion" and len(value_parts) == 1:
+                app_version_counts[value_parts[0]] += value
+            elif namespace == "dilemma" and len(value_parts) == 1:
+                dilemma_counts[value_parts[0]] += value
+            elif namespace == "modeSelected" and len(value_parts) == 1:
+                mode_selected_counts[value_parts[0]] += value
+            elif namespace == "shareClicked" and len(value_parts) == 2:
+                share_clicked_counts[(value_parts[0], value_parts[1])] += value
+            elif namespace == "authPromptShown" and len(value_parts) == 1:
+                auth_prompt_shown_counts[value_parts[0]] += value
+            elif namespace == "authPromptClicked" and len(value_parts) == 1:
+                auth_prompt_clicked_counts[value_parts[0]] += value
+
+    auth_prompt_ctr = []
+    for surface in sorted(set(auth_prompt_shown_counts) | set(auth_prompt_clicked_counts)):
+        shown = auth_prompt_shown_counts[surface]
+        clicked = auth_prompt_clicked_counts[surface]
+        auth_prompt_ctr.append({
+            "surface": surface,
+            "shown": shown,
+            "clicked": clicked,
+            "clickThroughPct": round((clicked / shown) * 100, 1) if shown else None,
+        })
+
+    return {
+        "eventCounts": [
+            {"eventName": name, "count": count} for name, count in event_counts.most_common()
+        ],
+        "sourceCounts": dict(source_counts),
+        "platformCounts": dict(platform_counts),
+        "platformBreakdown": [
+            {"platform": platform_name, **dict(platform_details[platform_name])}
+            for platform_name in ("web", "android", "ios", "unknown")
+        ],
+        "languageCounts": dict(language_counts),
+        "timeZoneCounts": dict(time_zone_counts),
+        "appVersionCounts": dict(app_version_counts),
+        "topDilemmas": [
+            {"dilemmaId": dilemma_id, "events": count}
+            for dilemma_id, count in dilemma_counts.most_common(12)
+        ],
+        "interactionBreakdowns": {
+            "modeSelected": [
+                {"mode": mode, "count": count} for mode, count in mode_selected_counts.most_common()
+            ],
+            "shareClicked": [
+                {"channel": channel, "objectType": object_type, "count": count}
+                for (channel, object_type), count in share_clicked_counts.most_common()
+            ],
+            "authPromptCtr": auth_prompt_ctr,
+        },
+        "dailyAdditive": daily_additive,
+    }
 
 
 def _get_daily_moral_crime_current_aggregate() -> list[dict[str, Any]]:
@@ -4978,8 +5265,20 @@ def build_analytics_overview(
     platform: str = "all",
     registered_users: int | None = None,
     daily_moral_crime_aggregates: list[dict[str, Any]] | None = None,
+    aggregate_items: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Build privacy-safe aggregates used by both the web and Android dashboard."""
+    """Build privacy-safe aggregates used by both the web and Android dashboard.
+
+    `aggregate_items` (TASK-300.1/ADR-137) are this window's write-time daily
+    aggregate rows, when the caller has them. When present, every purely
+    additive ("category A") field below is computed from them instead of
+    from `events` - the Scan-derived versions stay in place only as the
+    fallback for callers that don't pass aggregates (existing unit tests,
+    and any environment without the table configured). `events` remains the
+    only source for every field TASK-300.1 does not cover (funnels, abuse
+    monitoring, retention, viral/experiment breakdowns, recentEvents,
+    dataQuality, summary) until later TASK-300.x steps migrate those too.
+    """
     now_ms = now_ms or int(time.time() * 1000)
     end_date = datetime.fromtimestamp(now_ms / 1000, tz=timezone.utc).date()
     start_date = end_date - timedelta(days=days - 1)
@@ -5054,13 +5353,35 @@ def build_analytics_overview(
             if event["eventName"] in event_names:
                 funnel_identities[stage_key].add(event["identity"])
 
+    # TASK-300.1/ADR-137: purely additive fields switch to the write-time
+    # aggregates when the caller has them - see build_analytics_overview's
+    # own docstring for why the Scan-derived Counters above stay in place as
+    # the fallback rather than being removed in this step.
+    scalar_aggregates = (
+        parse_scalar_aggregate_items(aggregate_items, platform)
+        if aggregate_items is not None
+        else None
+    )
+
     daily_rows = []
-    for value in daily.values():
-        daily_rows.append({
+    for date_key, value in daily.items():
+        row = {
             **value,
             "sessions": len(value["sessions"]),
             "users": len(value["users"]),
-        })
+        }
+        if scalar_aggregates is not None:
+            additive = scalar_aggregates["dailyAdditive"].get(
+                date_key, {"events": 0, "web": 0, "android": 0, "ios": 0, "unknown": 0}
+            )
+            row.update({
+                "events": additive["events"],
+                "web": additive["web"],
+                "android": additive["android"],
+                "ios": additive["ios"],
+                "unknown": additive["unknown"],
+            })
+        daily_rows.append(row)
 
     funnel = []
     previous_count = None
@@ -5109,7 +5430,7 @@ def build_analytics_overview(
         for name, (exposure_event, conversion_event) in COPY_EXPERIMENTS.items()
     }
 
-    return {
+    overview = {
         "generatedAt": now_ms,
         "period": {"days": days, "from": cutoff_ms, "to": now_ms, "platform": platform},
         "summary": {
@@ -5157,6 +5478,21 @@ def build_analytics_overview(
         },
     }
 
+    if scalar_aggregates is not None:
+        overview.update({
+            "sourceCounts": scalar_aggregates["sourceCounts"],
+            "platformCounts": scalar_aggregates["platformCounts"],
+            "platformBreakdown": scalar_aggregates["platformBreakdown"],
+            "languageCounts": scalar_aggregates["languageCounts"],
+            "timeZoneCounts": scalar_aggregates["timeZoneCounts"],
+            "appVersionCounts": scalar_aggregates["appVersionCounts"],
+            "eventCounts": scalar_aggregates["eventCounts"],
+            "topDilemmas": scalar_aggregates["topDilemmas"],
+            "interactionBreakdowns": scalar_aggregates["interactionBreakdowns"],
+        })
+
+    return overview
+
 @app.get("/admin/analytics/overview")
 async def analytics_overview(
     request: Request,
@@ -5170,6 +5506,11 @@ async def analytics_overview(
     cached = _analytics_overview_cache.get(cache_key)
     if cached and (time.time() - cached["createdAt"]) < 60:
         return cached["value"]
+
+    now_ms = int(time.time() * 1000)
+    end_date = datetime.fromtimestamp(now_ms / 1000, tz=timezone.utc).date()
+    start_date = end_date - timedelta(days=days - 1)
+    day_keys = [(start_date + timedelta(days=offset)).isoformat() for offset in range(days)]
 
     try:
         legacy_rows = _scan_all_rows(analytics_table)
@@ -5196,13 +5537,25 @@ async def analytics_overview(
             logger.warning("Unable to read Daily Moral Crime aggregates: %s", str(error))
             daily_moral_crime_aggregates = None
 
+        try:
+            # TASK-300.1/ADR-137: a transient issue reading the new
+            # write-time aggregates must not hide the whole dashboard -
+            # build_analytics_overview falls back to the Scan-derived
+            # computation for the fields these cover when None.
+            aggregate_items = _read_analytics_daily_aggregates(day_keys)
+        except ClientError as error:
+            logger.warning("Unable to read analytics daily aggregates: %s", str(error))
+            aggregate_items = None
+
         overview = build_analytics_overview(
             legacy_rows,
             product_rows,
             days,
+            now_ms=now_ms,
             platform=platform,
             registered_users=registered_users,
             daily_moral_crime_aggregates=daily_moral_crime_aggregates,
+            aggregate_items=aggregate_items,
         )
         _analytics_overview_cache[cache_key] = {"createdAt": time.time(), "value": overview}
         return overview
