@@ -81,11 +81,21 @@ Due lezioni pagate per davvero nella sessione che ha creato questa skill
    quelli che l'utente vedrebbe loggandosi in `/admin/analytics`, e che un
    futuro cambiamento alla logica di aggregazione (nuovo campo, nuova
    definizione di "attivo") si propaghi automaticamente qui senza bisogno di
-   aggiornare questa skill. Uno scan completo di entrambe le tabelle e'
-   economico ai volumi attuali (decine di migliaia di item, vedi
-   `ANALYTICS_GUIDE.md`); se in futuro il volume cresce molto, e' un segnale
-   per instradare un task che introduca rollup lato backend, non per
-   scan-are meno qui.
+   aggiornare questa skill. Uno scan completo di entrambe le tabelle resta
+   economico per un run manuale occasionale come questo (decine di migliaia
+   di item), anche se da TASK-300/ADR-137-142 (2026-09-10) l'endpoint live
+   `/admin/analytics/overview` non fa piu' questo Scan ad ogni richiesta -
+   usa invece rollup a scrittura (`analytics_daily_aggregates`) che
+   `build_analytics_overview` preferisce quando li riceve. Questa skill puo'
+   continuare a passare solo `legacy_rows`/`product_rows` (senza
+   `aggregate_items`): `build_analytics_overview` ripiega correttamente sul
+   calcolo Scan-derived quando quel parametro manca, quindi i numeri restano
+   corretti - semplicemente non e' piu' il path che paga il costo in
+   produzione. Non serve cambiare questo script per usare i rollup, ma se in
+   futuro anche uno Scan manuale occasionale diventasse lento, e' un segnale
+   per instradarlo sugli stessi `_read_analytics_daily_aggregates`/
+   `_read_recent_activity_rows` che l'endpoint live usa ora, non per uno
+   Scan piu' furbo.
    Scegli `days`/`platform` in base a cosa stai verificando: usa la finestra
    piu' ampia sensata per il volume di traffico attuale (es. 30-90gg) per gli
    A/B test recenti, e isola esplicitamente la finestra post-fix (come

@@ -34,7 +34,9 @@ const AnalyticsAdminScreen = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [activeSection, setActiveSection] = useState('trends');
+  // TASK-305: growth gates are the default view so an admin opening the
+  // dashboard sees doc-2's own thresholds first, not a raw trend chart.
+  const [activeSection, setActiveSection] = useState('growth');
   const attemptedToken = useRef('');
 
   useEffect(() => {
@@ -181,6 +183,65 @@ const AnalyticsAdminScreen = () => {
   const retentionCohorts = data.retentionCohorts || {};
   const retentionD1 = retentionCohorts.d1 || {};
   const retentionD7 = retentionCohorts.d7 || {};
+
+  // TASK-305: doc-2's growth gates, pulled together from data the response
+  // already carries - no backend change, this is presentation only. Same
+  // minimum-sample floor /analytics-optimize already uses for every gate
+  // (RETENTION_MIN_COHORT_SAMPLE=30 backend-side) so a tiny denominator
+  // never renders a confident-looking pass/fail.
+  const GATE_MIN_SAMPLE = 30;
+  const genericFunnel = Array.isArray(data.funnel) ? data.funnel : [];
+  const stageByKey = (rows, key) => rows.find((row) => row.stage === key);
+  const testStartedStage = stageByKey(genericFunnel, 'test_started');
+  const testCompletedStage = stageByKey(genericFunnel, 'test_completed');
+  const resultViewedStage = stageByKey(genericFunnel, 'result_viewed');
+  const sharedStage = stageByKey(genericFunnel, 'shared');
+  const duelLandingStage = stageByKey(duelFunnel, 'landingViewed');
+  const duelCompletedStage = stageByKey(duelFunnel, 'completed');
+
+  const gateFromRatio = (numerator, denominator, thresholdPct) => {
+    if (!denominator) return { pct: null, sample: 0, insufficientSample: true, passed: null };
+    const sample = denominator;
+    const pct = Math.round((numerator / denominator) * 1000) / 10;
+    return {
+      pct,
+      sample,
+      insufficientSample: sample < GATE_MIN_SAMPLE,
+      passed: sample < GATE_MIN_SAMPLE ? null : pct >= thresholdPct,
+    };
+  };
+
+  const growthGates = [
+    {
+      key: 'gateTestCompletion',
+      threshold: 60,
+      thresholdLabel: '≥60%',
+      ...gateFromRatio(testCompletedStage?.users || 0, testStartedStage?.users || 0, 60),
+    },
+    {
+      key: 'gateResultToShare',
+      threshold: 15,
+      thresholdLabel: '≥15%',
+      ...gateFromRatio(sharedStage?.users || 0, resultViewedStage?.users || 0, 15),
+    },
+    {
+      key: 'gateDuelOpenToComplete',
+      threshold: 25,
+      thresholdLabel: '≥25%',
+      ...gateFromRatio(duelCompletedStage?.identities || 0, duelLandingStage?.identities || 0, 25),
+    },
+    {
+      key: 'gateD7Retention',
+      threshold: null,
+      thresholdLabel: '12–15%',
+      pct: retentionD7.retentionPct ?? null,
+      sample: retentionD7.cohortSize || 0,
+      insufficientSample: Boolean(retentionD7.insufficientSample),
+      passed: retentionD7.insufficientSample ? null : (retentionD7.retentionPct ?? 0) >= 12,
+    },
+  ];
+  const northStarProxy = duelCompletedStage?.identities ?? 0;
+
   const viralCoefficient = Array.isArray(data.viralCoefficient) ? data.viralCoefficient : [];
   const creativeVariants = Array.isArray(data.creativeVariants) ? data.creativeVariants : [];
   const copyExperiments = data.copyExperiments || {};
@@ -373,6 +434,54 @@ const AnalyticsAdminScreen = () => {
             </tbody>
           </table>
         </div>
+      </section>
+      )}
+
+      {activeSection === 'growth' && (
+      <section className="analytics-card analytics-growth-gates" id="panel-growth-gates" role="tabpanel" aria-labelledby="tab-growth">
+        <div className="analytics-section-heading">
+          <div>
+            <h2>{t('analyticsAdmin.growthGatesTitle')}</h2>
+            <p>{t('analyticsAdmin.growthGatesDescription')}</p>
+          </div>
+        </div>
+        <div className="analytics-table-wrap analytics-table-wrap--stack">
+          <table>
+            <thead>
+              <tr>
+                <th>{t('analyticsAdmin.gateMetric')}</th>
+                <th className="analytics-num">{t('analyticsAdmin.gateValue')}</th>
+                <th className="analytics-num">{t('analyticsAdmin.gateThreshold')}</th>
+                <th>{t('analyticsAdmin.gateStatus')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {growthGates.map((gate) => (
+                <tr key={gate.key}>
+                  <td data-label={t('analyticsAdmin.gateMetric')}>{t(`analyticsAdmin.${gate.key}`)}</td>
+                  <td className="analytics-num" data-label={t('analyticsAdmin.gateValue')}>
+                    {gate.pct === null ? '—' : `${gate.pct}%`}
+                  </td>
+                  <td className="analytics-num" data-label={t('analyticsAdmin.gateThreshold')}>{gate.thresholdLabel}</td>
+                  <td data-label={t('analyticsAdmin.gateStatus')}>
+                    {gate.insufficientSample ? (
+                      <span className="analytics-badge analytics-badge--review">{t('analyticsAdmin.retentionInsufficientSample')}</span>
+                    ) : (
+                      <span className={`analytics-badge analytics-badge--${gate.passed ? 'normal' : 'suspicious'}`}>
+                        {t(gate.passed ? 'analyticsAdmin.gatePassed' : 'analyticsAdmin.gateBelow')}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <aside className="analytics-abuse-note">
+          <strong>{t('analyticsAdmin.northStarTitle')}</strong>
+          <span>{t('analyticsAdmin.northStarValue', { value: formatNumber(northStarProxy) })}</span>
+          <small>{t('analyticsAdmin.northStarCaveat')}</small>
+        </aside>
       </section>
       )}
 

@@ -860,6 +860,24 @@ dev table, or `/dev` SSM hierarchy.
   accumulation used to count the `"unknown"` sessionId placeholder as a
   real session, unlike `summary.uniqueSessions`' own definition a few
   lines below it - both now agree.
+
+  `TASK-305` (ADR-143, 2026-09-10) added a "Growth gates" panel at the top
+  of `AnalyticsAdminScreen.jsx`'s `growth` tab (now the default landing tab
+  instead of `trends`), computing `doc-2`'s four measurable validation
+  gates (short-test completion, result-to-share, Duel open-to-complete,
+  D7 retention) against their own named thresholds from data the response
+  already carries (`funnel`, `moralDuel.eventFunnel`, `retentionCohorts`) -
+  frontend-only, no backend change - plus a North Star proxy (distinct
+  identities reaching the Duel `completed` stage) explicitly labeled as a
+  proxy rather than `doc-2`'s literal definition (distinct completed
+  *challenges*), since `challenge_token` is deliberately excluded from
+  analytics for privacy (TASK-200) and an exact count would need a new
+  non-identifying server-side counter (`TASK-304`). The same audit found
+  `doc-2`'s "invitees creating another challenge" gate has no tracking at
+  all yet (`TASK-303`) and a genuine, higher-priority instance of
+  `TASK-300`'s original Scan-on-every-request bug on `GET /users/me/archetype`/
+  `duel-stats` (routine user-facing pages, not an admin-only dashboard -
+  `TASK-301`).
 - Abuse monitoring groups events using a server-generated, HMAC-peppered network
   pseudonym where available, falling back to anonymous or session identity. The
   dashboard returns only a short derived mask, behavioral counts, thresholds,

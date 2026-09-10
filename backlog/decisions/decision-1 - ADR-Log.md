@@ -5566,6 +5566,65 @@ investigation used) returned to normal, closing the loop `ADR-137` opened.
 - `TASK-300`'s own acceptance criteria are now fully satisfied; it closes
   as Done alongside this task.
 
+### ADR-143 — `TASK-305` implemented: a "Growth gates" panel in the admin dashboard, doc-2's audit finds one gate untracked and the North Star unmeasurable exactly
+
+Context: the user asked for an analysis of whether the analytics dashboard
+surfaces the right information for growth decisions, at the same time as
+requesting a general audit for other instances of `TASK-300`'s Scan
+pattern (`TASK-301`/`302`) and an AWS cost check (essentially $0/month,
+all free-tier headroom, all three budget alert thresholds in `OK` state).
+
+The audit found `doc-2`'s five validation gates (short-test completion
+≥60%, result-to-share ≥15%, Duel open-to-complete ≥25%, D7 retention
+12-15%, and the North Star - completed challenges with 2+ participants per
+week) were computable from data the dashboard already returns, but
+scattered across four different tabs (funnel, growth, duel, trends) with
+no comparison to their own named thresholds anywhere in the UI - a person
+had to remember the numbers from `doc-2` or run `/analytics-optimize` to
+know whether a gate was actually cleared. One gate, "invitees creating
+another challenge," was not tracked by any existing field at all
+(`TASK-303`), and the North Star as `doc-2` literally defines it (distinct
+*challenges*, not people) cannot be measured exactly without tracking
+`challenge_token`, which `TASK-200`/an earlier ADR deliberately excluded
+from analytics for privacy - the closest available proxy is the Duel
+`completed` stage's distinct-identity count, which undercounts a person
+completing more than one Duel in the period (`TASK-304`, a privacy-safe
+non-identifying server-side counter, is the fix, not resurrecting the
+token).
+
+Decision: added a "Growth gates" section to the top of `AnalyticsAdminScreen.jsx`'s
+`growth` tab (now the default landing tab instead of `trends`), computing
+the four measurable gates from `funnel`/`moralDuel.eventFunnel`/
+`retentionCohorts` already in the response - no backend change - each
+shown against its own threshold with a pass/below/insufficient-sample
+badge (same 30-identity floor `/analytics-optimize` already uses), plus
+the North Star proxy explicitly labeled as a proxy. `TASK-303`/`304`
+(invitee-creates-own-challenge tracking; exact North Star counter) are
+filed as separate follow-ups rather than attempted in the same change,
+since both need new backend instrumentation, not just a new view over
+existing data. `.claude/commands/analytics-optimize.md`'s own rationale
+comment (why a manual Scan is fine for that skill) was updated to
+reference `TASK-300`'s new rollup-based read path instead of describing
+it as unbuilt. `CLAUDE.md` gained a standing rule (per the user's explicit
+request) that new features bring their analytics coverage with them in
+the same change, citing `TASK-216`'s and this audit's own findings
+(`TASK-303`) as the concrete cost of not doing that.
+
+### Consequences
+
+- The dashboard's default view changed from `trends` to `growth` - an
+  admin opening `/admin/analytics` now sees gate status first.
+- This is a packaged frontend change (admin-only screen, but still part of
+  the same bundle Capacitor ships); pending alongside `TASK-300.3`'s own
+  small label addition for a deliberate version-bump decision rather than
+  bumped automatically, since a `versionCode` bump auto-publishes to
+  Google Play with no review gate (ADR-017) and neither change is urgent
+  enough on its own to warrant that on its own schedule.
+- `TASK-301` (a `users_table` Scan on `GET /users/me/archetype`/`duel-stats`,
+  the same architectural bug as `TASK-300` but on routine user-facing
+  pages, not just an admin dashboard) is the highest-priority follow-up
+  from this session's audit - flagged High, not filed away as a curiosity.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

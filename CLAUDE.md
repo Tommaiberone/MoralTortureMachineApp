@@ -87,9 +87,9 @@ where possible, and have verifiable acceptance criteria.
 
 | Trigger | Action |
 |---|---|
-| Bug or technical debt found during work | Create a low-priority `Backlog` task, then notify the user |
+| Bug or technical debt found during work | Create a task, then notify the user |
 | Missing blocking dependency | Create a high-priority `To Do` task, then notify before continuing |
-| Low-impact implicit requirement | Create a `Backlog` task, then notify the user |
+| Low-impact implicit requirement | Create a task, then notify the user |
 | External decision required | Create an `Open Points` task, then notify the user |
 | Regression | Create a high-priority `[regression]` To Do task and record the cause in the ADR log |
 
@@ -199,6 +199,27 @@ Growth metric or strategic gate changed        -> backlog/docs/doc-2
 - Never include raw email, auth token, IP address, full dilemma response text,
   or AI analysis in client analytics event properties.
 - Use snake_case event names and version event schemas.
+- **Keep analytics current with new features (2026-09-10, at the user's
+  explicit request):** when a change adds a new game mode, screen, CTA,
+  funnel step, or growth-loop action, its analytics coverage is part of
+  that change, not a follow-up — fire the relevant `trackEvent` calls (or
+  extend `backend_fastapi.py`'s write-time aggregate dimensions —
+  `GENERIC_FUNNEL_STAGES`, `_scalar_aggregate_increments`,
+  `_set_aggregate_increments`, and friends, per ADR-137/138/139/142 — when
+  the new step belongs in an existing funnel/gate) in the same task, and
+  check whether `AnalyticsAdminScreen.jsx`'s existing sections already
+  surface it or need a small addition, rather than shipping the feature
+  blind and discovering the gap later. Reason: `TASK-216` found the Party
+  Room home-screen button fired no `trackEvent` at all and `mode_selected`
+  in practice only ever reflected the Solo Evaluation button (doc-1); the
+  original `TASK-300` investigation was itself triggered by an unrelated
+  architecture problem, not by anyone noticing a metric was missing, and a
+  2026-09-10 pass found `doc-2`'s own "invitees creating another challenge"
+  growth gate was never tracked at all (`TASK-303`). Low-impact instrumentation
+  added while already touching a feature is fine to add directly and note
+  afterward, same as any other low-impact finding; if the right
+  event/dimension design isn't obvious, create a task instead of guessing.
+  This does not license adding tracking nobody asked for to unrelated code.
 - Treat `platform` as a required comparison dimension shared by web and native.
   New events must use exact `web`/`android` values; historical inference must
   always be labeled as inferred rather than mixed into exact data.
