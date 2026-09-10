@@ -151,11 +151,24 @@ dev table, or `/dev` SSM hierarchy.
   immutable Cognito `sub`, provisioned capacity (1/1 RCU-WCU, within the
   always-free allowance) rather than on-demand, and has PITR disabled by
   default pending `TASK-89`. `upsert_user_record` idempotently creates/updates
-  a user record on every authenticated call (wired into `GET /auth/me`).
+  a user record on every authenticated call (wired into `GET /auth/me`), and
+  (`TASK-300.5`/`301`, ADR-142/144) increments the write-time registered-user
+  counter (`REGISTERED_USER_COUNT_SENTINEL_SUB`) exactly once, the first time
+  a given `sub` gets a `createdAt` (detected via `ReturnValues="UPDATED_OLD"`,
+  no extra read) - never on a returning user's repeat call.
 - `POST /users/claim-anonymous-data` links an `anonymous_user_id` to the
   authenticated account via a single-table claim-lock item
   (`sub = "anon#<id>"`, conditional `PutItem` on `ownerSub`): idempotent for
-  the same account, rejected with 409 for a different one.
+  the same account, rejected with 409 for a different one. `_claimed_anonymous_ids`
+  (the reverse lookup: given an account, which anonymous ids has it claimed)
+  reads `OwnerSubIndex`, a GSI on `ownerSub` (`TASK-301`, ADR-144) - it used
+  to be a full-table `Scan`, which was the same architectural bug `TASK-300`
+  fixed for the admin dashboard, but reachable from routine, frequently-visited
+  pages (`GET /users/me/archetype`, `GET /users/me/duel-stats`) rather than
+  an admin-only one. Unlike `analytics_daily_aggregates`, this GSI is
+  naturally sharded one partition per account, not a single growing shared
+  key, so a small fixed provisioned capacity (1/1, matching the base table)
+  is safe.
 - `GET /users/export` has schema v3 and uses the account's authoritative
   `anon#<anonymous_user_id>` claim-lock rows to include only that user's
   account, profiles, social participations (including a caller's Daily
@@ -190,6 +203,15 @@ dev table, or `/dev` SSM hierarchy.
 
 ## Data and scoring rules
 
+- `GET /get-dilemma` (the app's single most-called endpoint - core gameplay)
+  and `_pick_random_dilemma_base_ids` (Party Room's dilemma sampling) read a
+  language's dilemma pool via `LanguageIndex`, a GSI on the `dilemmas`
+  table's existing `language` attribute (`TASK-302`, ADR-144), through
+  `_query_all` so results are always fully paginated. Both used to run a
+  single, unpaginated `table.scan(FilterExpression=...)` call - besides the
+  unnecessary RCU/latency cost, a DynamoDB `Scan` page caps at roughly 1MB,
+  so if the catalog ever grew past that the pool would have silently
+  shrunk with no error, not just gotten slower.
 - Archetypes and compatibility are deterministic, testable, symmetric where
   applicable, and versioned.
 - The moral archetype engine (`backend/src/archetype_engine.py`) assigns one of

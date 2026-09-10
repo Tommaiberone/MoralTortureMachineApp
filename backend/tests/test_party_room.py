@@ -168,7 +168,9 @@ class PartyRoomTestCase(unittest.TestCase):
         self.rooms = _FakeTable(("roomCode",))
         self.participants = _FakeTable(("roomCode", "participantId"))
         self.dilemmas_table = Mock()
-        self.dilemmas_table.scan.return_value = {
+        # TASK-302: _pick_random_dilemma_base_ids now Queries LanguageIndex
+        # instead of an unpaginated table.scan().
+        self.dilemmas_table.query.return_value = {
             "Items": [
                 {"_id": f"d{i}-en", "language": "en"} for i in range(10)
             ]

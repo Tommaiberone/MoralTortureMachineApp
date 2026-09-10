@@ -38,6 +38,26 @@ resource "aws_dynamodb_table" "dilemmas" {
     type = "S"
   }
 
+  # TASK-302: GET /get-dilemma and _pick_random_dilemma_base_ids (Party Room)
+  # previously read the whole language's pool with a single, unpaginated
+  # table.scan(FilterExpression=...) call - besides the RCU/latency cost on
+  # the app's most-called endpoint, a single Scan page silently caps at ~1MB,
+  # so if this catalog ever grew past that the pool would quietly lose
+  # dilemmas with no error, not just get slower. A Query on this GSI is both
+  # cheaper and correctly paginated (_query_all) instead of reading one page
+  # and stopping. On-demand billing, same as the base table - no capacity to
+  # plan for a catalog this size.
+  attribute {
+    name = "language"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "LanguageIndex"
+    hash_key        = "language"
+    projection_type = "ALL"
+  }
+
   # Enable Point-in-Time Recovery for automatic backups
   point_in_time_recovery {
     enabled = true
@@ -266,6 +286,30 @@ resource "aws_dynamodb_table" "users" {
   attribute {
     name = "sub"
     type = "S"
+  }
+
+  # TASK-301: claim-lock rows (sub = "anon#<id>") carry ownerSub, but finding
+  # every claim-lock for one account previously meant a full-table Scan
+  # (_claimed_anonymous_ids) on every call - including GET /users/me/archetype
+  # and /users/me/duel-stats, routine pages a logged-in user visits often, the
+  # same architectural bug TASK-300/ADR-137 fixed for the admin dashboard.
+  # Unlike that case, this GSI is naturally sharded per account (one partition
+  # per ownerSub, a handful of claim-lock rows each) rather than a single
+  # shared hot key, so a small fixed provisioned capacity is safe here - no
+  # PAY_PER_REQUEST exception needed (verified against current AWS Free Tier
+  # terms 2026-09-10: this table's own 1/1 plus this GSI's 1/1 stays trivially
+  # within the account's shared, always-free 25 RCU/25 WCU allowance).
+  attribute {
+    name = "ownerSub"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "OwnerSubIndex"
+    hash_key        = "ownerSub"
+    read_capacity   = 1
+    write_capacity  = 1
+    projection_type = "ALL"
   }
 
   tags = {
@@ -1226,12 +1270,14 @@ resource "aws_iam_role_policy" "lambda_permissions" {
         ]
         Resource = [
           aws_dynamodb_table.dilemmas.arn,
+          "${aws_dynamodb_table.dilemmas.arn}/index/*",
           aws_dynamodb_table.user_analytics.arn,
           "${aws_dynamodb_table.user_analytics.arn}/index/*",
           aws_dynamodb_table.product_events.arn,
           "${aws_dynamodb_table.product_events.arn}/index/*",
           aws_dynamodb_table.analytics_daily_aggregates.arn,
           aws_dynamodb_table.users.arn,
+          "${aws_dynamodb_table.users.arn}/index/*",
           aws_dynamodb_table.moral_profiles.arn,
           "${aws_dynamodb_table.moral_profiles.arn}/index/*",
           aws_dynamodb_table.challenges.arn,
@@ -1354,6 +1400,7 @@ resource "aws_iam_role_policy" "retention_sweep_permissions" {
           aws_dynamodb_table.product_events.arn,
           "${aws_dynamodb_table.product_events.arn}/index/*",
           aws_dynamodb_table.users.arn,
+          "${aws_dynamodb_table.users.arn}/index/*",
           aws_dynamodb_table.moral_profiles.arn,
           "${aws_dynamodb_table.moral_profiles.arn}/index/*",
           aws_dynamodb_table.challenges.arn,

@@ -16,6 +16,7 @@ os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
 os.environ.setdefault("AWS_DEFAULT_REGION", "eu-west-1")
 
 from backend.src.backend_fastapi import (  # noqa: E402
+    _claimed_anonymous_ids,
     claim_anonymous_user_id,
     delete_user_account,
     export_user_data,
@@ -159,6 +160,47 @@ class ClaimAnonymousUserIdTests(unittest.TestCase):
         table.update_item.assert_not_called()
 
 
+class ClaimedAnonymousIdsTests(unittest.TestCase):
+    """TASK-301/ADR-137: _claimed_anonymous_ids used to Scan the whole
+    users_table on every call - including GET /users/me/archetype and
+    /users/me/duel-stats, routine pages, not just export/delete - the same
+    architectural bug TASK-300 fixed for the admin dashboard. It must now
+    Query the OwnerSubIndex GSI instead."""
+
+    def test_queries_the_owner_sub_index_instead_of_scanning(self):
+        table = Mock()
+        table.query.return_value = {"Items": [
+            {"sub": "anon#anon-1", "ownerSub": "user-sub", "claimedAt": 1000},
+        ]}
+        with patch.object(backend_module, "users_table", table):
+            anonymous_ids, claim_locks = _claimed_anonymous_ids("user-sub")
+
+        table.scan.assert_not_called()
+        table.query.assert_called_once()
+        call_kwargs = table.query.call_args.kwargs
+        self.assertEqual(call_kwargs["IndexName"], "OwnerSubIndex")
+        self.assertEqual(call_kwargs["KeyConditionExpression"], "ownerSub = :owner")
+        self.assertEqual(call_kwargs["ExpressionAttributeValues"], {":owner": "user-sub"})
+        self.assertEqual(anonymous_ids, ["anon-1"])
+        self.assertEqual(len(claim_locks), 1)
+
+    def test_paginates_and_ignores_non_claim_rows(self):
+        table = Mock()
+        table.query.side_effect = [
+            {
+                "Items": [{"sub": "anon#anon-1", "ownerSub": "user-sub"}],
+                "LastEvaluatedKey": {"sub": "anon#anon-1"},
+            },
+            {"Items": [{"sub": "anon#anon-2", "ownerSub": "user-sub"}]},
+        ]
+        with patch.object(backend_module, "users_table", table):
+            anonymous_ids, claim_locks = _claimed_anonymous_ids("user-sub")
+
+        self.assertEqual(table.query.call_count, 2)
+        self.assertEqual(anonymous_ids, ["anon-1", "anon-2"])
+        self.assertEqual(len(claim_locks), 2)
+
+
 class ExportAndDeleteAccountTests(unittest.TestCase):
     def _linked_tables(self):
         users_table = Mock()
@@ -169,7 +211,7 @@ class ExportAndDeleteAccountTests(unittest.TestCase):
             "lastActiveAt": 2000,
             "claimedAnonymousUserIds": {"anon-1"},
         }}
-        users_table.scan.return_value = {"Items": [{
+        users_table.query.return_value = {"Items": [{
             "sub": "anon#anon-1",
             "ownerSub": "user-sub",
             "claimedAt": 1500,
@@ -367,7 +409,7 @@ SIX_DIMENSIONS = ["Empathy", "Integrity", "Responsibility", "Justice", "Altruism
 class MyLatestArchetypeTests(unittest.TestCase):
     def test_returns_none_when_the_account_has_no_claimed_anonymous_id(self):
         users_table = Mock()
-        users_table.scan.return_value = {"Items": []}
+        users_table.query.return_value = {"Items": []}
         with (
             patch.object(backend_module, "users_table", users_table),
             patch.object(backend_module, "require_authenticated_user", return_value={"sub": "user-sub"}),
@@ -377,7 +419,7 @@ class MyLatestArchetypeTests(unittest.TestCase):
 
     def test_returns_none_when_every_claimed_profile_has_expired(self):
         users_table = Mock()
-        users_table.scan.return_value = {"Items": [{"sub": "anon#anon-1", "ownerSub": "user-sub"}]}
+        users_table.query.return_value = {"Items": [{"sub": "anon#anon-1", "ownerSub": "user-sub"}]}
         profiles_table = Mock()
         profiles_table.query.return_value = {"Items": [{
             "publicId": "expired",
@@ -395,7 +437,7 @@ class MyLatestArchetypeTests(unittest.TestCase):
 
     def test_returns_the_most_recently_created_valid_profiles_archetype(self):
         users_table = Mock()
-        users_table.scan.return_value = {"Items": [{"sub": "anon#anon-1", "ownerSub": "user-sub"}]}
+        users_table.query.return_value = {"Items": [{"sub": "anon#anon-1", "ownerSub": "user-sub"}]}
         profiles_table = Mock()
         profiles_table.query.return_value = {"Items": [
             {
@@ -431,7 +473,7 @@ class MyDuelStatsTests(unittest.TestCase):
 
     def test_returns_zeroed_stats_when_the_account_has_no_claimed_anonymous_id(self):
         users_table = Mock()
-        users_table.scan.return_value = {"Items": []}
+        users_table.query.return_value = {"Items": []}
         with (
             patch.object(backend_module, "users_table", users_table),
             patch.object(backend_module, "require_authenticated_user", return_value={"sub": "user-sub"}),
@@ -447,7 +489,7 @@ class MyDuelStatsTests(unittest.TestCase):
     def test_counts_only_completed_challenges_and_computes_symmetric_stats(self):
         mine_averages, opponent_averages = self._mine_and_opponent_averages()
         users_table = Mock()
-        users_table.scan.return_value = {"Items": [{"sub": "anon#anon-1", "ownerSub": "user-sub"}]}
+        users_table.query.return_value = {"Items": [{"sub": "anon#anon-1", "ownerSub": "user-sub"}]}
 
         participants_table = Mock()
         participants_table.query.return_value = {"Items": [

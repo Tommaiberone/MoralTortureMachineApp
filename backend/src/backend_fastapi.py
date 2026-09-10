@@ -1837,10 +1837,18 @@ def _claimed_anonymous_ids(account_sub: str) -> tuple[list[str], list[dict[str, 
     The duplicated set on the user record is useful for display, but an
     account deletion must not trust a stale value that could theoretically be
     claimed by a different account after a partial historic cleanup.
+
+    TASK-301/ADR-137: this used to be a full-table Scan of users_table on
+    every call - including GET /users/me/archetype and /users/me/duel-stats,
+    routine pages a logged-in user visits often, not just the rare export/
+    delete path - the same architectural bug TASK-300 fixed for the admin
+    dashboard. OwnerSubIndex (hash key ownerSub) makes this a Query scoped to
+    just this account's own claim-lock rows instead.
     """
-    claim_locks = _scan_all(
+    claim_locks = _query_all(
         users_table,
-        FilterExpression="ownerSub = :owner",
+        IndexName="OwnerSubIndex",
+        KeyConditionExpression="ownerSub = :owner",
         ExpressionAttributeValues={":owner": account_sub},
     )
     anonymous_ids = sorted({
@@ -3138,14 +3146,18 @@ def _pick_random_dilemma_base_ids(language: str, count: int) -> list[str]:
     """Sample `count` distinct dilemma base ids once, up front, so every
     participant in the room answers the identical set (unlike Duel, where
     dilemmas come from whichever profile the creator already completed)."""
-    response = table.scan(
-        FilterExpression='attribute_exists(#lang) AND #lang = :language',
-        ExpressionAttributeNames={'#lang': 'language'},
-        ExpressionAttributeValues={':language': language},
+    # TASK-302/ADR-137: same Query-instead-of-unpaginated-Scan fix as
+    # get_dilemma, via the same LanguageIndex GSI.
+    items = _query_all(
+        table,
+        IndexName="LanguageIndex",
+        KeyConditionExpression="#lang = :language",
+        ExpressionAttributeNames={"#lang": "language"},
+        ExpressionAttributeValues={":language": language},
     )
     suffix = f"-{language}"
     base_ids = sorted({
-        item['_id'][:-len(suffix)] for item in response.get('Items', [])
+        item['_id'][:-len(suffix)] for item in items
         if item.get('_id', '').endswith(suffix)
     })
     if not base_ids:
@@ -6208,18 +6220,18 @@ async def get_dilemma(request: Request, language: str = "en", exclude: str = "")
             if len(excluded_ids) > 1000:
                 raise HTTPException(status_code=400, detail="Too many excluded IDs")
 
-        # Scan DynamoDB for all items with the specified language
-        response = table.scan(
-            FilterExpression='attribute_exists(#lang) AND #lang = :language',
-            ExpressionAttributeNames={
-                '#lang': 'language'
-            },
-            ExpressionAttributeValues={
-                ':language': language
-            }
+        # TASK-302/ADR-137: a Query against LanguageIndex, fully paginated
+        # (_query_all) - this used to be a single, unpaginated table.scan()
+        # call on the app's most-called endpoint, which both cost more RCU
+        # than necessary and silently capped at one ~1MB Scan page (no error
+        # if the catalog ever grew past that, just a quietly shrunken pool).
+        items = _query_all(
+            table,
+            IndexName="LanguageIndex",
+            KeyConditionExpression="#lang = :language",
+            ExpressionAttributeNames={"#lang": "language"},
+            ExpressionAttributeValues={":language": language},
         )
-
-        items = response.get('Items', [])
 
         if not items:
             logger.warning(f"No dilemmas found for language: {language}")

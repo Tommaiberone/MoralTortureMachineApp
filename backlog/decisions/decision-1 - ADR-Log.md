@@ -5625,6 +5625,73 @@ the same change, citing `TASK-216`'s and this audit's own findings
   pages, not just an admin dashboard) is the highest-priority follow-up
   from this session's audit - flagged High, not filed away as a curiosity.
 
+### ADR-144 — `TASK-301`/`TASK-302` implemented: `_claimed_anonymous_ids` and dilemma-pool reads move from `Scan` to `Query`
+
+Context: the user asked to resolve the two concrete findings from the
+architecture audit behind `ADR-143` - both instances of `TASK-300`'s
+"full Scan on a live request path" bug, on tables `ADR-143` had not yet
+touched.
+
+Decision: `_claimed_anonymous_ids` (`backend_fastapi.py`) previously ran a
+full-table `Scan` of `users_table` with `FilterExpression="ownerSub = :owner"`
+on every call - not just the rare export/delete path its own docstring
+was written for, but `GET /users/me/archetype` and `GET /users/me/duel-stats`
+(pages a logged-in user visits routinely) and `POST /challenges`'s
+multi-device fallback. Added `OwnerSubIndex`, a GSI on the existing
+`ownerSub` attribute claim-lock rows already carry (no write-path change
+needed, just indexing data already there), and switched the function to
+`_query_all` (an existing helper, already the established pattern for
+every other owner-scoped lookup in this file - `moral_profiles`' `OwnerIndex`,
+`product_events`' `AnonymousUserIndex`). Unlike `analytics_daily_aggregates`
+(`ADR-139`), this GSI is naturally sharded one partition per account with a
+handful of rows each, not a single growing shared key, so a small fixed
+provisioned capacity (1 RCU/1 WCU, matching the base table) is safe - no
+`PAY_PER_REQUEST` exception needed, verified against current Free Tier
+terms the same day as `ADR-139`'s check.
+
+`GET /get-dilemma` (the app's single most-called endpoint - core gameplay)
+and `_pick_random_dilemma_base_ids` (Party Room's dilemma sampling) had the
+same `Scan`-with-`FilterExpression` pattern against the dilemmas table, but
+reading it more closely during this fix surfaced a second, more serious
+problem than the audit's own performance framing: neither call paginated
+past `LastEvaluatedKey` - a single `table.scan()` call, whatever its first
+page returned. A DynamoDB `Scan` page caps at roughly 1MB; at the catalog's
+current size (~115 English dilemmas) that likely still fits in one page,
+but nothing would have errored if it ever didn't - the pool would have
+silently shrunk instead. Added `LanguageIndex` (GSI on the existing
+`language` attribute, `PAY_PER_REQUEST` like the base table - no capacity
+to plan for a catalog this size) and switched both call sites to
+`_query_all`, which already pages correctly. The GSI's sparseness also
+subsumes the original `attribute_exists(#lang)` filter condition for free -
+an item without a `language` attribute is never indexed, so a Query on it
+can't return one either.
+
+Verified by 9 new unit tests (`_claimed_anonymous_ids` queries `OwnerSubIndex`
+and never calls `.scan()`, and paginates; `get_dilemma`/`_pick_random_dilemma_base_ids`
+query `LanguageIndex`, paginate across multiple pages - the specific bug this
+found - correctly reset the exclude pool, and 404 on an empty language) plus
+6 existing tests' `users_table.scan` mocks updated to `.query` (the ones
+mocking `_claimed_anonymous_ids`'s call specifically - `_sweep_expired_accounts`'s
+own, unrelated, already-legitimate once-daily `users_table` Scan was left
+untouched) and the full 264-test backend suite.
+
+### Consequences
+
+- `_scan_all`/`_scan_for_anonymous_ids` remain defined and still used - by
+  `_collect_account_data`'s reads of `challenge_participants`/`party_participants`/
+  `product_events`/`user_analytics` for a claimed anonymous id, domains whose
+  own code comment already documents the reasoning for not adding dedicated
+  GSIs there (low, bounded, export/delete-only call frequency). This ADR
+  does not revisit that call; it only fixes the specific functions actually
+  reachable from routine, frequently-visited pages.
+- The `attribute_exists(#lang)` check `get_dilemma`/`_pick_random_dilemma_base_ids`
+  used to spell out explicitly is now implicit (a sparse GSI's own behavior)
+  rather than written in the code - documented here and in both functions'
+  comments so a future reader does not go looking for it.
+- Both new GSIs stay within the account's shared, always-free Free Tier
+  allowance (`users`: 1/1 RCU-WCU beyond the base table's own 1/1;
+  `dilemmas`: on-demand, same billing mode as the base table already had).
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
