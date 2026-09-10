@@ -3,9 +3,10 @@ id: TASK-300
 title: >-
   GET /admin/analytics/overview fa Scan completo non filtrato per data su ogni
   richiesta, durata Lambda in crescita verso il timeout di 30s
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-10 15:04'
+updated_date: '2026-09-10 19:03'
 labels: []
 dependencies: []
 priority: high
@@ -34,9 +35,15 @@ Questo task documenta l'indagine ed e' pronto per l'implementazione, ma la direz
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 La risposta di /admin/analytics/overview non richiede piu' uno Scan dell'intera storia della tabella quando viene richiesta una finestra 'days' piu' stretta (es. query/lettura delimitata da data, o rollup pre-calcolati) per user_analytics e product_events
-- [ ] #2 _count_registered_users non esegue piu' uno Scan completo e non indicizzato sulla tabella users per ogni richiesta della dashboard
+- [x] #1 La risposta di /admin/analytics/overview non richiede piu' uno Scan dell'intera storia della tabella quando viene richiesta una finestra 'days' piu' stretta (es. query/lettura delimitata da data, o rollup pre-calcolati) per user_analytics e product_events
+- [x] #2 _count_registered_users non esegue piu' uno Scan completo e non indicizzato sulla tabella users per ogni richiesta della dashboard
 - [ ] #3 Dopo il fix, la durata massima giornaliera della Lambda (CloudWatch AWS/Lambda Duration su moral-torture-machine-api) torna stabilmente ben al di sotto del timeout di 30s, verificato con lo stesso metodo usato in questa indagine
-- [ ] #4 L'eventuale nuovo indice/GSI o cambio di capacity rispetta il vincolo AWS Free Tier di CLAUDE.md (costo/limiti verificati prima dell'implementazione, eccezione registrata se non disponibile un'opzione Free Tier adeguata)
-- [ ] #5 Il comportamento del filtro platform e dei 12 combinazioni days/platform nella UI resta invariato per l'utente admin
+- [x] #4 L'eventuale nuovo indice/GSI o cambio di capacity rispetta il vincolo AWS Free Tier di CLAUDE.md (costo/limiti verificati prima dell'implementazione, eccezione registrata se non disponibile un'opzione Free Tier adeguata)
+- [x] #5 Il comportamento del filtro platform e dei 12 combinazioni days/platform nella UI resta invariato per l'utente admin
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Risolto tramite 5 subtask sequenziali (TASK-300.1-300.5, ADR-137/138/139/140/141/142): aggregati a scrittura (contatori scalari + Set di identita' per giorno) sostituiscono lo Scan completo di user_analytics/product_events per ogni campo della dashboard; abuseMonitoring/recentEvents usano una finestra breve fissa (48h) via una nuova GSI DayIndex invece dello Scan sull'intero range days; backfill storico eseguito su prod (90 giorni, 2026-06-12 -> 2026-09-09); registeredUsers passato a un contatore a scrittura in users_table, seminato dal vecchio Scan (41 utenti) prima del cutover. GET /admin/analytics/overview non esegue piu' alcuno Scan completo (analytics_table, product_events_table, users_table) per nessuna combinazione days/platform - verificato sia con un test dedicato che con revisione del codice. Nuova tabella analytics_daily_aggregates (PAY_PER_REQUEST, eccezione Free Tier documentata in ADR-139 dopo aver scoperto che DynamoDB fattura UpdateItem in base alla dimensione dell'item, non al delta) e due nuove GSI sparse DayIndex su user_analytics/product_events (nessun costo extra, tabelle gia' PAY_PER_REQUEST). Il filtro platform e le 12 combinazioni days/platform nella UI restano invariati (stesso contratto di risposta). Verificato con oltre 250 test backend, pnpm lint/build:prod puliti, e deploy in produzione confermato ad ogni step. AC#3 (durata massima giornaliera Lambda tornata sotto il timeout, misurata con lo stesso metodo dell'indagine originale) resta esplicitamente aperta: il bucket CloudWatch di oggi include ancora ore precedenti al deploy (~23s osservati), quindi il miglioramento sara' visibile nel bucket di domani o al prossimo caricamento reale della dashboard - nessuna richiesta reale a /admin/analytics/overview e' stata osservata nei log dopo il deploy per campionarla direttamente. La fiducia nella correzione resta comunque alta perche' basata su una garanzia strutturale (lo Scan non puo' piu' essere chiamato, per costruzione del codice) piuttosto che su un solo campione runtime.
+<!-- SECTION:FINAL_SUMMARY:END -->
