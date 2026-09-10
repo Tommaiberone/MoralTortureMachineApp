@@ -3,9 +3,10 @@ id: TASK-300.5
 title: >-
   Analytics: cutover completo di /admin/analytics/overview sui nuovi aggregati,
   rimuovere gli Scan completi
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-09-10 15:12'
+updated_date: '2026-09-10 18:41'
 labels: []
 dependencies:
   - TASK-300.1

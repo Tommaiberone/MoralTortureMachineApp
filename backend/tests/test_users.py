@@ -80,7 +80,11 @@ class OptionalUserDependencyTests(unittest.TestCase):
 
 class UpsertUserRecordTests(unittest.TestCase):
     def test_upsert_is_idempotent_and_keeps_the_original_created_at(self):
+        # TASK-300.5: an existing record (createdAt already present in
+        # UPDATED_OLD) is the "idempotent repeat call" this test is named
+        # for - it must not also increment the registered-user counter.
         table = Mock()
+        table.update_item.return_value = {"Attributes": {"createdAt": 1700000000000}}
         with patch.object(backend_module, "users_table", table):
             upsert_user_record("user-sub", {"email": "user@example.com"})
 
@@ -91,6 +95,14 @@ class UpsertUserRecordTests(unittest.TestCase):
         self.assertEqual(call.kwargs["ExpressionAttributeValues"][":email"], "user@example.com")
         self.assertEqual(call.kwargs["ExpressionAttributeValues"][":cognito_username"], None)
         self.assertIn(":expiration_time", call.kwargs["ExpressionAttributeValues"])
+
+    def test_upsert_of_a_brand_new_user_also_increments_the_registered_user_counter(self):
+        table = Mock()
+        table.update_item.return_value = {"Attributes": {}}  # no createdAt -> brand new
+        with patch.object(backend_module, "users_table", table):
+            upsert_user_record("user-sub", {"email": "user@example.com"})
+
+        self.assertEqual(table.update_item.call_count, 2)
 
 
 class ClaimAnonymousUserIdTests(unittest.TestCase):

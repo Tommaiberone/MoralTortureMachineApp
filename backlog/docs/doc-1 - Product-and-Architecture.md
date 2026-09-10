@@ -831,6 +831,35 @@ dev table, or `/dev` SSM hierarchy.
   (`2026-06-12` through `2026-09-09`, 90 days). It is not part of any
   scheduled job; safe to re-run manually if ever needed, but not expected
   to be.
+
+  `TASK-300.5` (ADR-142) is the final cutover: `/admin/analytics/overview`
+  no longer Scans `user_analytics`/`product_events`/`users` at all, for any
+  `days`/`platform` combination - `TASK-300`'s original problem (Lambda
+  duration trending toward the shared 30s timeout) is fully resolved, not
+  just reduced. `daily.sessions`/`summary.uniqueSessions` come from a new
+  `activeSession` identity-Set dimension (keyed by `sessionId`, not
+  `identity` - `_set_aggregate_increments`'s `add_to_set` gained a
+  `member` override for this); `summary.knownAnonymousUsers` needed no new
+  dimension at all, since `normalize_analytics_event`'s own `identity =
+  anonymousUserId or "legacy-session:" + sessionId` already lets the
+  existing unioned `activeIdentity` set be filtered by that prefix instead;
+  `dataQuality.anonymousIdentityCoveragePct` needed one new purely-additive
+  scalar (`hasAnonymousId`); `dataQuality`'s other three fields are pure
+  arithmetic over data `TASK-300.1` already produces. `summary.registeredUsers`
+  moved off its own full `users_table` Scan onto a write-time counter: a
+  sentinel row (`REGISTERED_USER_COUNT_SENTINEL_SUB` in `users_table`)
+  `upsert_user_record` increments exactly once per brand-new account
+  (detected via `ReturnValues="UPDATED_OLD"` - no extra read), seeded once
+  from the old Scan's real result (41) via
+  `backend/scripts/seed_registered_user_count.py` before this deployed, so
+  the figure never appeared to drop to zero. `_scan_all_rows` and
+  `_count_registered_users` remain defined, but only as one-off script
+  dependencies now - never called from a request path; a future change
+  must not reintroduce either into the hot path. Fixed one small
+  pre-existing inconsistency along the way: the per-day `daily.sessions`
+  accumulation used to count the `"unknown"` sessionId placeholder as a
+  real session, unlike `summary.uniqueSessions`' own definition a few
+  lines below it - both now agree.
 - Abuse monitoring groups events using a server-generated, HMAC-peppered network
   pseudonym where available, falling back to anonymous or session identity. The
   dashboard returns only a short derived mask, behavioral counts, thresholds,

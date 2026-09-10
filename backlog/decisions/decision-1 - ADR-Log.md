@@ -5463,6 +5463,109 @@ successfully, spot-verified with a `GetItem` against the live table.
   every remaining Scan in `analytics_overview` is dead code waiting to be
   deleted, not a live dependency.
 
+### ADR-142 — `TASK-300.5` implemented and executed: full cutover, `/admin/analytics/overview` no longer Scans any raw table
+
+Context: the final step of `ADR-137`/`TASK-300`. With category A (`ADR-138`),
+category B (`ADR-139`), category C (`ADR-140`), and the historical backfill
+(`ADR-141`) all in place, the only fields `/admin/analytics/overview` still
+computed from a full Scan were `summary`, `dataQuality`, `daily.sessions`,
+and the registered-user count (a separate full Scan of `users_table`).
+Removing the Scans required covering these too, not just deleting the calls.
+
+Decision: two small additions closed the remaining gap entirely from data
+already being collected, with no new tables:
+
+- **`daily.sessions`/`summary.uniqueSessions`**: a new `activeSession`
+  identity-Set dimension (`_set_aggregate_increments`), keyed by
+  `sessionId` rather than `identity` - the first dimension to add a
+  non-identity member, so `add_to_set` gained a `member` keyword override.
+  Read side unions `activeSessionsByDay` the same way `activeIdentity` was
+  already unioned for retention.
+- **`summary.knownAnonymousUsers`**: needed *no* new dimension -
+  `normalize_analytics_event` already sets `identity = anonymousUserId or
+  f"legacy-session:{sessionId}"`, so filtering the existing unioned
+  `activeIdentity` set for entries not starting with `"legacy-session:"`
+  reproduces the Scan-derived `{anonymousUserId for ... if truthy}` set
+  exactly, without tracking a third redundant Set.
+- **`dataQuality.anonymousIdentityCoveragePct`**: one new purely-additive
+  scalar dimension, `hasAnonymousId` (added alongside `TASK-300.1`'s other
+  category-A counters), since this field needs a plain event *count*, not
+  distinct identities.
+- **`dataQuality`'s other three fields** (`exactPlatformCoveragePct`,
+  `timeZoneCoveragePct`, `platformResolution`/`historicalPlatformIsEstimated`)
+  needed no new dimension at all - they are arithmetic over `platformBreakdown`/
+  `timeZoneCounts`, both already produced by `TASK-300.1`.
+- **`registeredUsers`**: `users_table` has no per-day structure to piggyback
+  on (it is not part of the analytics-event system), so this got its own
+  write-time counter instead - a sentinel row (`REGISTERED_USER_COUNT_
+  SENTINEL_SUB = "__registered_user_count__"`, safe: Cognito subs are UUIDs
+  and every other `users_table` access is a direct key lookup, never a
+  broad Scan/Query, so nothing else can collide with or be confused by it;
+  `_sweep_expired_accounts` already skips any row without `createdAt`).
+  `upsert_user_record` now requests `ReturnValues="UPDATED_OLD"` on its
+  existing `UpdateItem` and increments the counter only when `createdAt`
+  was absent beforehand - i.e. only for a genuinely new account, never a
+  returning one - with no extra read. `_count_registered_users` (the old
+  Scan) is kept, undeleted, solely as the one-off seed source for this new
+  counter, documented as never to be called from a request path again.
+  `backend/scripts/seed_registered_user_count.py` (same dry-run-by-default,
+  `--execute`-gated shape as `TASK-300.4`'s backfill script) ran it one
+  last time against production and set the counter's starting value from
+  the real result (41), so the dashboard's registered-user figure did not
+  appear to drop to zero the moment this deployed.
+
+`analytics_overview` (the endpoint) now fetches only `aggregate_items`
+(`_read_analytics_daily_aggregates`) and `recent_activity_rows`
+(`_read_recent_activity_rows`) - `_scan_all_rows(analytics_table)`,
+`_scan_all_rows(product_events_table)`, and the `users_table` Scan are all
+gone from this path. Since there is no more Scan to safely fall back to, a
+read failure on either of the two remaining calls now propagates to the
+endpoint's existing `except ClientError: raise HTTPException(503, ...)`
+instead of silently degrading to an empty, misleadingly-zeroed response -
+`build_analytics_overview` itself still keeps its Scan-derived branch
+(taking empty `legacy_rows`/`product_rows` when called this way), but only
+as the code path existing unit tests exercise, never a live fallback.
+
+While wiring `daily.sessions`, a genuine small pre-existing inconsistency
+surfaced: the Scan-derived per-day accumulation counted the `"unknown"`
+sessionId placeholder as if it were one real shared session per day, while
+`summary.uniqueSessions` a few lines below it in the same function already
+excluded `"unknown"` from its own definition. Fixed to match (excluded
+from both), rather than reproducing the inconsistency in the new
+aggregate path just to make the two paths agree - a small, low-impact,
+found-while-touching-the-area correction per CLAUDE.md, not scope creep.
+
+Verified by 9 new unit tests (counter increment only on a genuinely new
+user vs. a returning one, counter read/increment/failure handling, the
+`activeSession`/`hasAnonymousId` dimensions round-tripping including the
+`"unknown"`-sessionId exclusion, and a direct test of the `analytics_
+overview` endpoint function asserting `_scan_all_rows` is never invoked for
+any `days`/`platform` combination) plus 3 more for the seeder script, the
+existing cross-check test extended to also verify `summary`/`dataQuality`/
+`daily.sessions` now match between the two paths, and the full 250-test
+backend suite. Deployed and confirmed: `moral-torture-machine-api`'s daily
+max `AWS/Lambda Duration` (the exact metric `TASK-300`'s original
+investigation used) returned to normal, closing the loop `ADR-137` opened.
+
+### Consequences
+
+- `/admin/analytics/overview` no longer performs a full-table `Scan`
+  anywhere in its request path, for any `days`/`platform` combination -
+  `TASK-300`'s original problem (Lambda duration trending toward the
+  shared 30s timeout as the raw tables grew) is resolved, not just reduced.
+- `_scan_all_rows` and `_count_registered_users` remain defined in
+  `backend_fastapi.py` - not dead code, but now exclusively one-off
+  operational-script dependencies (`backend/scripts/*.py`), never called
+  from a request path. A future contributor should not "clean up" their
+  Scan usage back into the hot path without re-reading this ADR.
+- Registered-user counting is now eventually-consistent with reality only
+  to the extent `upsert_user_record` runs on every account creation; if a
+  future code path ever creates a `users_table` row through some other
+  function, it must also call `_increment_registered_user_count()` or the
+  counter will silently undercount.
+- `TASK-300`'s own acceptance criteria are now fully satisfied; it closes
+  as Done alongside this task.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

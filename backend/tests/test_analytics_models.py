@@ -27,12 +27,14 @@ from backend.src.backend_fastapi import (  # noqa: E402
     PARTY_ROOM_ANALYTICS_STAGES,
     PARTY_ROOM_HOST_ACTION_EVENTS,
     RECENT_ACTIVITY_WINDOW_HOURS,
+    REGISTERED_USER_COUNT_SENTINEL_SUB,
     _analytics_day_key,
     _apply_daily_aggregate_increments,
     _consume_burst_window,
     _escape_analytics_aggregate_segment,
     _identity_active_days_from_daily_sets,
     _identity_funnel_from_stage_identities,
+    _increment_registered_user_count,
     _masked_identity,
     _network_fingerprint,
     _query_recent_rows,
@@ -40,10 +42,13 @@ from backend.src.backend_fastapi import (  # noqa: E402
     _rate_limit_rules_for_request,
     _rate_limit_source,
     _read_recent_activity_rows,
+    _read_registered_user_count,
     _recent_activity_day_keys,
     _scalar_aggregate_increments,
+    _scan_all_rows,
     _set_aggregate_increments,
     _unescape_analytics_aggregate_segment,
+    analytics_overview,
     build_analytics_overview,
     enforce_zero_cost_burst_guard,
     infer_platform,
@@ -52,6 +57,7 @@ from backend.src.backend_fastapi import (  # noqa: E402
     parse_scalar_aggregate_items,
     parse_set_aggregate_items,
     require_analytics_admin,
+    upsert_user_record,
     track_analytics_event,
     verify_cognito_id_token,
 )
@@ -603,13 +609,18 @@ class AnalyticsDailyAggregateTests(unittest.TestCase):
         scan_daily_by_date = {row["date"]: row for row in scan_only["daily"]}
         for row in aggregate_backed["daily"]:
             scan_row = scan_daily_by_date[row["date"]]
-            for key in ("events", "web", "android", "ios", "unknown", "users"):
+            # TASK-300.5: every field of `daily`, including `sessions`, is
+            # now aggregate-derived when available.
+            for key in ("events", "web", "android", "ios", "unknown", "users", "sessions"):
                 with self.subTest(date=row["date"], key=key):
                     self.assertEqual(row[key], scan_row[key])
-            # sessions stays Scan-derived (no task migrates it yet).
-            self.assertEqual(row["sessions"], scan_row["sessions"])
 
-        # Fields no TASK-300.x step touches must still be completely untouched.
+        # TASK-300.5: summary/dataQuality are now aggregate-derived too:
+        # verified equal to the Scan-derived computation here. abuseMonitoring/
+        # recentEvents are the only fields no TASK-300.x step ever migrates
+        # (category C intentionally stays on a short fixed recent window,
+        # not this test's arbitrary synthetic `days` range) so they are
+        # compared as-is rather than expected to differ meaningfully here.
         for field in ("abuseMonitoring", "dataQuality", "summary", "recentEvents"):
             with self.subTest(field=field):
                 self.assertEqual(aggregate_backed[field], scan_only[field])
@@ -729,6 +740,123 @@ class AnalyticsRecentActivityWindowTests(unittest.TestCase):
             _masked_identity("user-old"),
             [event["identity"] for event in overview["recentEvents"]],
         )
+
+
+class AnalyticsCutoverTests(unittest.TestCase):
+    """TASK-300.5/ADR-137: full cutover - no more raw-table Scans anywhere
+    in /admin/analytics/overview, and a write-time registered-user counter
+    replacing the users_table Scan _count_registered_users used to need."""
+
+    def test_upsert_user_record_increments_the_counter_only_on_first_creation(self):
+        users_table_mock = Mock()
+        users_table_mock.update_item.return_value = {"Attributes": {}}  # no prior createdAt -> new user
+        with patch.object(backend_module, "users_table", users_table_mock):
+            upsert_user_record("sub-1", {"email": "a@example.com"})
+
+        # One call to persist the record, one to increment the counter.
+        self.assertEqual(users_table_mock.update_item.call_count, 2)
+        counter_call = users_table_mock.update_item.call_args_list[1]
+        self.assertEqual(counter_call.kwargs["Key"], {"sub": REGISTERED_USER_COUNT_SENTINEL_SUB})
+        self.assertIn("ADD", counter_call.kwargs["UpdateExpression"])
+
+    def test_upsert_user_record_does_not_increment_for_a_returning_user(self):
+        users_table_mock = Mock()
+        users_table_mock.update_item.return_value = {"Attributes": {"createdAt": 123}}  # already existed
+        with patch.object(backend_module, "users_table", users_table_mock):
+            upsert_user_record("sub-1", {"email": "a@example.com"})
+
+        users_table_mock.update_item.assert_called_once()  # only the record write, no counter increment
+
+    def test_increment_and_read_registered_user_count(self):
+        users_table_mock = Mock()
+        users_table_mock.get_item.return_value = {"Item": {"registeredUserCount": 7}}
+        with patch.object(backend_module, "users_table", users_table_mock):
+            self.assertEqual(_read_registered_user_count(), 7)
+            _increment_registered_user_count()
+
+        users_table_mock.update_item.assert_called_once_with(
+            Key={"sub": REGISTERED_USER_COUNT_SENTINEL_SUB},
+            UpdateExpression="ADD registeredUserCount :one",
+            ExpressionAttributeValues={":one": 1},
+        )
+
+    def test_read_registered_user_count_defaults_to_zero_before_any_seed(self):
+        users_table_mock = Mock()
+        users_table_mock.get_item.return_value = {}
+        with patch.object(backend_module, "users_table", users_table_mock):
+            self.assertEqual(_read_registered_user_count(), 0)
+
+    def test_increment_registered_user_count_never_raises(self):
+        users_table_mock = Mock()
+        users_table_mock.update_item.side_effect = RuntimeError("boom")
+        with patch.object(backend_module, "users_table", users_table_mock):
+            _increment_registered_user_count()  # must not raise
+
+    def test_active_session_and_has_anonymous_id_round_trip(self):
+        now_ms = 1785369600000
+        with_anon = normalize_analytics_event(
+            {"eventId": "e1", "anonymousUserId": "user-1", "sessionId": "session-1",
+             "occurredAt": now_ms, "actionType": "test_started", "platform": "web", "properties": "{}"},
+            "product",
+        )
+        without_anon = normalize_analytics_event(
+            {"eventId": "e2", "sessionId": "session-2",
+             "occurredAt": now_ms, "actionType": "test_started", "platform": "web", "properties": "{}"},
+            "product",
+        )
+
+        merged_numeric: dict[str, int] = {}
+        merged_sets: dict[str, set[str]] = {}
+        for event in (with_anon, without_anon):
+            for name, delta in _scalar_aggregate_increments(event).items():
+                merged_numeric[name] = merged_numeric.get(name, 0) + delta
+            for name, identities in _set_aggregate_increments(event).items():
+                merged_sets[name] = merged_sets.get(name, set()) | identities
+        item = {"dayKey": _analytics_day_key(now_ms), **merged_numeric, **merged_sets}
+
+        scalar_parsed = parse_scalar_aggregate_items([item], platform_filter="all")
+        set_parsed = parse_set_aggregate_items([item], platform_filter="all")
+
+        # Only the event with a real anonymousUserId contributes.
+        self.assertEqual(scalar_parsed["hasAnonymousIdCount"], 1)
+        # Both events have a real (non-"unknown") sessionId.
+        day_key = _analytics_day_key(now_ms)
+        self.assertEqual(set_parsed["activeSessionsByDay"][day_key], {"session-1", "session-2"})
+
+    def test_session_id_unknown_is_excluded_from_active_sessions(self):
+        now_ms = 1785369600000
+        event = normalize_analytics_event(
+            {"eventId": "e1", "occurredAt": now_ms, "actionType": "test_started",
+             "platform": "web", "properties": "{}"},  # no sessionId -> "unknown"
+            "product",
+        )
+        item = {"dayKey": _analytics_day_key(now_ms), **_set_aggregate_increments(event)}
+
+        set_parsed = parse_set_aggregate_items([item], platform_filter="all")
+
+        self.assertEqual(set_parsed["activeSessionsByDay"], {})
+
+    def test_analytics_overview_endpoint_never_scans_any_raw_table(self):
+        """AC#1: no combination of days/platform may trigger _scan_all_rows
+        on analytics_table, product_events_table, or users_table."""
+        scan_spy = Mock(side_effect=_scan_all_rows)
+        request = Request({
+            "type": "http", "method": "GET", "path": "/admin/analytics/overview",
+            "headers": [], "client": ("127.0.0.1", 1234),
+        })
+        with (
+            patch.object(backend_module, "require_analytics_admin", return_value=None),
+            patch.object(backend_module, "_scan_all_rows", scan_spy),
+            patch.object(backend_module, "_read_analytics_daily_aggregates", return_value=[]),
+            patch.object(backend_module, "_read_recent_activity_rows", return_value=([], [])),
+            patch.object(backend_module, "_get_daily_moral_crime_current_aggregate", return_value=[]),
+            patch.object(backend_module, "_read_registered_user_count", return_value=5),
+            patch.object(backend_module, "_analytics_overview_cache", {}),
+        ):
+            result = asyncio.run(analytics_overview(request, days=30, platform="all"))
+
+        scan_spy.assert_not_called()
+        self.assertEqual(result["summary"]["registeredUsers"], 5)
 
 
 class AnalyticsOverviewTests(unittest.TestCase):

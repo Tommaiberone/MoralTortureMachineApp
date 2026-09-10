@@ -570,7 +570,7 @@ def upsert_user_record(sub: str, claims: dict[str, Any]) -> None:
     """Idempotently persist a user record keyed by the immutable Cognito sub."""
     now = int(time.time() * 1000)
     expiration_time = int(time.time()) + ACCOUNT_RETENTION_SECONDS
-    users_table.update_item(
+    response = users_table.update_item(
         Key={"sub": sub},
         UpdateExpression=(
             "SET createdAt = if_not_exists(createdAt, :now), "
@@ -586,7 +586,15 @@ def upsert_user_record(sub: str, claims: dict[str, Any]) -> None:
             ":cognito_username": claims.get("cognito:username"),
             ":expiration_time": expiration_time,
         },
+        # TASK-300.5/ADR-137: UPDATED_OLD lets us tell a brand-new record
+        # (no createdAt existed before this call) from a repeat call on an
+        # already-known account, without a separate read - the only signal
+        # _increment_registered_user_count needs to stay accurate without
+        # ever double-counting a returning user.
+        ReturnValues="UPDATED_OLD",
     )
+    if "createdAt" not in response.get("Attributes", {}):
+        _increment_registered_user_count()
 
 
 def _touch_existing_account_activity(claims: dict[str, Any]) -> None:
@@ -4551,6 +4559,11 @@ def _scalar_aggregate_increments(event: dict[str, Any]) -> dict[str, int]:
     add("language", event["language"])
     add("timeZone", event["timeZone"])
     add("appVersion", event["appVersion"])
+    if event["anonymousUserId"]:
+        # TASK-300.5/ADR-137: dataQuality.anonymousIdentityCoveragePct needs
+        # a plain event count (not distinct identities - that is
+        # activeIdentity's job below, category B), purely additive.
+        add("hasAnonymousId")
 
     dilemma_id = properties.get("dilemma_id")
     if dilemma_id:
@@ -4600,16 +4613,25 @@ def _set_aggregate_increments(event: dict[str, Any]) -> dict[str, set[str]]:
     utm = event["utm"]
     increments: dict[str, set[str]] = defaultdict(set)
 
-    def add_to_set(namespace: str, *value_parts: str) -> None:
+    def add_to_set(namespace: str, *value_parts: str, member: str = identity) -> None:
         segments = [namespace, platform] + [
             _escape_analytics_aggregate_segment(str(part)[:_ANALYTICS_AGGREGATE_SEGMENT_MAX_LENGTH])
             for part in value_parts
         ]
-        increments["__".join(segments)].add(identity)
+        increments["__".join(segments)].add(member)
 
     # Retention (build_retention_cohorts): every event counts toward "this
     # identity was active on this UTC day", regardless of which event it is.
     add_to_set("activeIdentity")
+
+    # TASK-300.5/ADR-137: summary.uniqueSessions/daily.sessions need
+    # distinct sessionId per day, a different dimension from identity -
+    # "unknown" is the fallback extract_session_id never actually produces
+    # server-side, but normalize_analytics_event's own default for a raw
+    # row missing the field entirely, so it is excluded the same way the
+    # Scan-derived path already excludes it.
+    if event["sessionId"] != "unknown":
+        add_to_set("activeSession", member=event["sessionId"])
 
     for stage_key, event_names in GENERIC_FUNNEL_STAGES:
         if event_name in event_names:
@@ -4838,6 +4860,7 @@ def parse_scalar_aggregate_items(
     auth_prompt_shown_counts: Counter = Counter()
     auth_prompt_clicked_counts: Counter = Counter()
     challenge_share_ready_variant_counts: Counter = Counter()
+    has_anonymous_id_count = 0
     daily_additive: dict[str, dict[str, int]] = {}
 
     for item in items:
@@ -4888,6 +4911,8 @@ def parse_scalar_aggregate_items(
                 auth_prompt_clicked_counts[value_parts[0]] += value
             elif namespace == "challengeShareReadyVariant" and len(value_parts) == 1:
                 challenge_share_ready_variant_counts[value_parts[0]] += value
+            elif namespace == "hasAnonymousId" and not value_parts:
+                has_anonymous_id_count += value
 
     auth_prompt_ctr = []
     for surface in sorted(set(auth_prompt_shown_counts) | set(auth_prompt_clicked_counts)):
@@ -4932,6 +4957,9 @@ def parse_scalar_aggregate_items(
         # aggregate-derived path feeds this into _creative_variant_rows
         # alongside TASK-300.2's completions Sets (parse_set_aggregate_items).
         "challengeShareReadyVariantCounts": challenge_share_ready_variant_counts,
+        # Not a dashboard field itself - build_analytics_overview's
+        # aggregate-derived path uses this for dataQuality.anonymousIdentityCoveragePct.
+        "hasAnonymousIdCount": has_anonymous_id_count,
     }
 
 
@@ -4955,6 +4983,7 @@ def parse_set_aggregate_items(
     party_host_action_identities: dict[str, set[str]] = defaultdict(set)
     duel_stage_identities: dict[str, set[str]] = defaultdict(set)
     active_identities_by_day: dict[str, set[str]] = defaultdict(set)
+    active_sessions_by_day: dict[str, set[str]] = defaultdict(set)
     viral_completions_by_channel: dict[str, set[str]] = defaultdict(set)
     variant_completions_by_variant: dict[str, set[str]] = defaultdict(set)
     experiment_exposed: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
@@ -4978,6 +5007,8 @@ def parse_set_aggregate_items(
 
             if namespace == "activeIdentity" and not value_parts:
                 active_identities_by_day[day_key] |= identities
+            elif namespace == "activeSession" and not value_parts:
+                active_sessions_by_day[day_key] |= identities
             elif namespace == "funnelStage" and len(value_parts) == 1:
                 funnel_stage_identities[value_parts[0]] |= identities
             elif namespace == "dailyStage" and len(value_parts) == 1:
@@ -5004,6 +5035,7 @@ def parse_set_aggregate_items(
         "partyHostActionIdentities": dict(party_host_action_identities),
         "duelStageIdentities": dict(duel_stage_identities),
         "activeIdentitiesByDay": dict(active_identities_by_day),
+        "activeSessionsByDay": dict(active_sessions_by_day),
         "viralCompletionsByChannel": dict(viral_completions_by_channel),
         "variantCompletionsByVariant": dict(variant_completions_by_variant),
         "experimentExposedByName": {
@@ -5049,7 +5081,14 @@ def _masked_identity(identity: str) -> str:
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:10]
 
 def _count_registered_users() -> int:
-    """Count real user records in users_table, excluding anon# claim-lock rows."""
+    """Full-table Scan count of real user records, excluding anon# claim-lock
+    rows. TASK-300.5/ADR-137: no longer called by the live request path -
+    /admin/analytics/overview reads _read_registered_user_count() instead.
+    Kept only as the one-off seed this repo's history used once to
+    initialize REGISTERED_USER_COUNT_SENTINEL_SUB's counter to the accurate
+    pre-existing total before the write-time counter took over; safe to
+    call again by hand if that counter is ever suspected to have drifted,
+    but never on any request path."""
     total = 0
     scan_kwargs = {
         "Select": "COUNT",
@@ -5063,6 +5102,37 @@ def _count_registered_users() -> int:
             break
         scan_kwargs["ExclusiveStartKey"] = last_key
     return total
+
+
+# TASK-300.5/ADR-137: sentinel key for the write-time registered-user
+# counter, stored in users_table itself (same "sentinel row alongside real
+# rows" pattern daily_moral_crime_votes already uses for its own aggregate).
+# Cognito subs are UUIDs and can never collide with this literal string.
+# _sweep_expired_accounts already skips any row without `createdAt`
+# (retention_sweep never touches this row), and every other users_table
+# access is a direct GetItem/UpdateItem keyed by the caller's own
+# authenticated sub, never a broad Scan/Query, so nothing else can collide
+# with or be confused by it either.
+REGISTERED_USER_COUNT_SENTINEL_SUB = "__registered_user_count__"
+
+
+def _increment_registered_user_count() -> None:
+    """Best-effort: a failure here must never break account creation/login,
+    mirroring the same posture _apply_daily_aggregate_increments uses for
+    its own write-time counters."""
+    try:
+        users_table.update_item(
+            Key={"sub": REGISTERED_USER_COUNT_SENTINEL_SUB},
+            UpdateExpression="ADD registeredUserCount :one",
+            ExpressionAttributeValues={":one": 1},
+        )
+    except Exception as error:
+        logger.error(f"Failed to increment registered user count: {error!s}")
+
+
+def _read_registered_user_count() -> int:
+    item = users_table.get_item(Key={"sub": REGISTERED_USER_COUNT_SENTINEL_SUB}).get("Item")
+    return int(item["registeredUserCount"]) if item else 0
 
 
 ABUSE_MONITORING_THRESHOLDS = {
@@ -5696,7 +5766,12 @@ def build_analytics_overview(
         day_key = datetime.fromtimestamp(event["occurredAt"] / 1000, tz=timezone.utc).date().isoformat()
         if day_key in daily:
             daily[day_key]["events"] += 1
-            daily[day_key]["sessions"].add(event["sessionId"])
+            # TASK-300.5: matches summary.uniqueSessions' own definition just
+            # below (excludes the "unknown" sessionId fallback) - previously
+            # inconsistent, counting "unknown" as if it were one real shared
+            # session per day.
+            if event["sessionId"] != "unknown":
+                daily[day_key]["sessions"].add(event["sessionId"])
             daily[day_key]["users"].add(event["identity"])
             daily[day_key][event["platform"]] += 1
 
@@ -5754,6 +5829,7 @@ def build_analytics_overview(
             })
         if set_aggregates is not None:
             row["users"] = len(set_aggregates["activeIdentitiesByDay"].get(date_key, set()))
+            row["sessions"] = len(set_aggregates["activeSessionsByDay"].get(date_key, set()))
         daily_rows.append(row)
 
     if set_aggregates is not None:
@@ -5930,6 +6006,60 @@ def build_analytics_overview(
             "interactionBreakdowns": scalar_aggregates["interactionBreakdowns"],
         })
 
+    # TASK-300.5/ADR-137: the last two Scan-dependent fields.
+    # `summary`/`dataQuality` are derived entirely from data
+    # scalar_aggregates/set_aggregates already computed above - no new
+    # fetch, no new Scan.
+    if scalar_aggregates is not None and set_aggregates is not None:
+        aggregate_identities: set[str] = set()
+        for day_identities in set_aggregates["activeIdentitiesByDay"].values():
+            aggregate_identities |= day_identities
+        aggregate_sessions: set[str] = set()
+        for day_sessions in set_aggregates["activeSessionsByDay"].values():
+            aggregate_sessions |= day_sessions
+        # identity == anonymousUserId whenever one was present (normalize_
+        # analytics_event); the "legacy-session:" prefix is the synthetic
+        # fallback used only when it was not, so filtering it out here
+        # reproduces the Scan-derived {anonymousUserId for ... if truthy}
+        # set without a dedicated write-time dimension of its own.
+        aggregate_anonymous_users = {
+            identity for identity in aggregate_identities
+            if not identity.startswith("legacy-session:")
+        }
+        aggregate_total_events = sum(entry["count"] for entry in scalar_aggregates["eventCounts"])
+        aggregate_exact_events = sum(row["exact"] for row in scalar_aggregates["platformBreakdown"])
+        aggregate_time_zone_events = sum(
+            count for time_zone, count in scalar_aggregates["timeZoneCounts"].items()
+            if time_zone != "unknown"
+        )
+        aggregate_platform_resolution_counts: Counter = Counter()
+        for row in scalar_aggregates["platformBreakdown"]:
+            for resolution in ("exact", "inferred", "unknown"):
+                if row[resolution]:
+                    aggregate_platform_resolution_counts[resolution] += row[resolution]
+
+        overview["summary"] = {
+            "totalEvents": aggregate_total_events,
+            "activeIdentities": len(aggregate_identities),
+            "knownAnonymousUsers": len(aggregate_anonymous_users),
+            "uniqueSessions": len(aggregate_sessions),
+            "registeredUsers": registered_users,
+        }
+        overview["dataQuality"] = {
+            "exactPlatformCoveragePct": (
+                round((aggregate_exact_events / aggregate_total_events) * 100, 1) if aggregate_total_events else 0
+            ),
+            "anonymousIdentityCoveragePct": (
+                round((scalar_aggregates["hasAnonymousIdCount"] / aggregate_total_events) * 100, 1)
+                if aggregate_total_events else 0
+            ),
+            "timeZoneCoveragePct": (
+                round((aggregate_time_zone_events / aggregate_total_events) * 100, 1) if aggregate_total_events else 0
+            ),
+            "platformResolution": dict(aggregate_platform_resolution_counts),
+            "historicalPlatformIsEstimated": aggregate_platform_resolution_counts["inferred"] > 0,
+        }
+
     return overview
 
 @app.get("/admin/analytics/overview")
@@ -5952,19 +6082,10 @@ async def analytics_overview(
     day_keys = [(start_date + timedelta(days=offset)).isoformat() for offset in range(days)]
 
     try:
-        legacy_rows = _scan_all_rows(analytics_table)
         try:
-            product_rows = _scan_all_rows(product_events_table)
+            registered_users = _read_registered_user_count()
         except ClientError as error:
-            if error.response.get("Error", {}).get("Code") != "ResourceNotFoundException":
-                raise
-            logger.warning("Product events table is not deployed yet; showing legacy analytics only")
-            product_rows = []
-
-        try:
-            registered_users = _count_registered_users()
-        except ClientError as error:
-            logger.warning("Unable to count registered users: %s", str(error))
+            logger.warning("Unable to read registered user count: %s", str(error))
             registered_users = None
 
         try:
@@ -5976,30 +6097,19 @@ async def analytics_overview(
             logger.warning("Unable to read Daily Moral Crime aggregates: %s", str(error))
             daily_moral_crime_aggregates = None
 
-        try:
-            # TASK-300.1/ADR-137: a transient issue reading the new
-            # write-time aggregates must not hide the whole dashboard -
-            # build_analytics_overview falls back to the Scan-derived
-            # computation for the fields these cover when None.
-            aggregate_items = _read_analytics_daily_aggregates(day_keys)
-        except ClientError as error:
-            logger.warning("Unable to read analytics daily aggregates: %s", str(error))
-            aggregate_items = None
-
-        try:
-            # TASK-300.3/ADR-137: abuseMonitoring/recentEvents read a short
-            # fixed window via a date-bounded Query (DayIndex GSI), never
-            # the full Scan above - a transient issue here falls back to
-            # the still-fetched, days-scoped `events` inside
-            # build_analytics_overview rather than hiding the dashboard.
-            recent_activity_rows = _read_recent_activity_rows(now_ms)
-        except ClientError as error:
-            logger.warning("Unable to read recent activity rows: %s", str(error))
-            recent_activity_rows = None
+        # TASK-300.5/ADR-137: this endpoint no longer Scans user_analytics/
+        # product_events at all (TASK-300.1-.4 backfilled and now cover
+        # every field that used to need the raw rows) - aggregate_items and
+        # recent_activity_rows are the *only* source for the response
+        # below, so a read failure here is no longer safe to silently
+        # degrade from: it propagates to the outer except and returns 503,
+        # rather than showing a misleadingly empty dashboard.
+        aggregate_items = _read_analytics_daily_aggregates(day_keys)
+        recent_activity_rows = _read_recent_activity_rows(now_ms)
 
         overview = build_analytics_overview(
-            legacy_rows,
-            product_rows,
+            [],
+            [],
             days,
             now_ms=now_ms,
             platform=platform,
