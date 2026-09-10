@@ -154,30 +154,49 @@ resource "aws_dynamodb_table" "product_events" {
   }
 }
 
-# TASK-300.1/ADR-137: write-time aggregates for /admin/analytics/overview's
-# purely-additive metrics (event/source/platform/language/timeZone/appVersion
-# counts, the platform-resolution breakdown, top dilemmas, and the
-# mode/share/auth-prompt interaction breakdowns), so the dashboard no longer
-# needs a full Scan of user_analytics/product_events to compute them. One
-# item per UTC calendar day (hash key only, no range key - unlike
-# daily_moral_crime_votes this table never stores per-user rows), with a wide
-# set of dynamically-named counter attributes incremented via one UpdateItem
-# ADD per event/batch-day at write time (backend_fastapi.py's
-# track_analytics_event/ingest_analytics_events). Low, predictable write
-# volume and small (single-digit KB) items make provisioned capacity safe
-# here, unlike the legacy on-demand tables above - 5 RCU/3 WCU stays well
-# within the account's shared, always-free 25 RCU/25 WCU allowance (verified
-# against current AWS Free Tier terms 2026-09-10) alongside users' existing
-# 1/1. TTL matches the 90-day raw retention window (ANALYTICS_RAW_RETENTION_SECONDS)
-# since the aggregate does not need to outlive the raw data it is verified
-# against; extending aggregate retention beyond raw TTL is a separate,
-# not-yet-decided product question.
+# TASK-300.1/300.2/ADR-137/ADR-139: write-time aggregates for
+# /admin/analytics/overview's purely-additive metrics (event/source/platform/
+# language/timeZone/appVersion counts, platform-resolution breakdown, top
+# dilemmas, mode/share/auth-prompt interaction breakdowns) and its
+# identity-Set metrics (every funnel, D1/D7 retention, viral/variant/
+# copy-experiment conversion), so the dashboard no longer needs a full Scan
+# of user_analytics/product_events to compute them. One item per UTC
+# calendar day (hash key only, no range key - unlike daily_moral_crime_votes
+# this table never stores per-user rows), with a wide set of dynamically-
+# named counter/Set attributes incremented via one UpdateItem ADD per
+# event/batch-day at write time (backend_fastapi.py's
+# track_analytics_event/ingest_analytics_events).
+#
+# PAY_PER_REQUEST, not provisioned (revised in TASK-300.2/ADR-139 from
+# TASK-300.1/ADR-137's original 5 RCU/3 WCU choice): DynamoDB bills
+# UpdateItem by the item's size *after* the write, not by the delta written,
+# and every write for a given day lands on the same single item - so as
+# TASK-300.2 adds dozens of identity-Set attributes alongside TASK-300.1's
+# counters, this item's total size (and therefore the WCU a single write
+# consumes) grows over the course of each day, and every write for "today"
+# is inherently a single hot partition key regardless of overall traffic.
+# A small fixed provisioned WCU number cannot safely absorb that combination
+# without risking throttling (added retry latency on the very path this
+# whole initiative exists to keep fast) on later writes each day, however
+# generously chosen; on-demand is the correct tool for an unpredictable,
+# per-item write size on a single hot key, not a workaround. Verified
+# 2026-09-10 against current on-demand pricing (~$1.25 per million write
+# request units, ~$0.25 per million read request units, us pricing used as
+# a same-order-of-magnitude proxy since exact eu-west-1 figures were not
+# published in the sources checked): at this table's actual traffic
+# (currently a few hundred aggregate writes/day, a handful of admin
+# dashboard reads/day), the realistic monthly cost is a few cents, not the
+# dollars that would warrant a bigger design change. This is a deliberate,
+# documented Free Tier exception per CLAUDE.md's cost-constraints process
+# (on-demand has zero free-tier offset, unlike provisioned capacity) -
+# revisit if this table's write volume or item size ever grows enough to
+# make the cost material, by either provisioning capacity sized to the
+# then-actual item size or splitting the wide per-day item into several
+# smaller ones.
 resource "aws_dynamodb_table" "analytics_daily_aggregates" {
-  name           = "${var.environment}-${var.stack_name}-analytics-daily-aggregates"
-  billing_mode   = "PROVISIONED"
-  read_capacity  = 5
-  write_capacity = 3
-  hash_key       = "dayKey"
+  name         = "${var.environment}-${var.stack_name}-analytics-daily-aggregates"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "dayKey"
 
   attribute {
     name = "dayKey"

@@ -5220,6 +5220,128 @@ CI-built Lambda zip not existing locally, unrelated to this change).
   dynamic attribute names, rather than re-solving the same delimiter-collision
   problem a second time.
 
+### ADR-139 — `TASK-300.2` implemented: write-time identity-Set aggregates for every funnel/retention/viral/experiment field, and `analytics_daily_aggregates` moved to on-demand billing
+
+Context: `ADR-137`'s category B - every funnel (generic, Daily Moral Crime,
+Party Room, Moral Duel), D1/D7 retention, viral coefficient, creative
+variant breakdown, and the four copy experiments - all need per-identity
+dedup or a cross-event-type identity join, which a scalar counter cannot
+express (summing two independently-incremented integers double-counts an
+identity that reappears).
+
+Decision: reused `ADR-138`'s table (`analytics_daily_aggregates`, same
+per-day item) rather than adding a second table, since the read path
+already fetches the whole item via `BatchGetItem` for category A - category
+B attributes ride along in the same read/write for free. Every relevant
+Set dimension (`funnelStage`, `dailyStage`, `partyStage`,
+`partyHostAction`, `duelStage`, `activeIdentity` for retention,
+`viralCompletion`, `variantCompletion`, `experimentExposure`,
+`experimentConversion`) is written as a DynamoDB String Set via `ADD`
+(idempotent union - a retried event never double-counts), reusing
+`ADR-138`'s escape scheme for the free-text segments (channel, variant,
+surface) so no new delimiter-collision problem needed solving.
+`_set_aggregate_increments` derives which stages/experiments an event
+belongs to from the *same* module-level registries the Scan-derived
+builders already used (`GENERIC_FUNNEL_STAGES` - promoted from a
+previously function-local list to a module constant for this reason -
+`DAILY_MORAL_CRIME_ANALYTICS_STAGES`, `PARTY_ROOM_ANALYTICS_STAGES`,
+`PARTY_ROOM_HOST_ACTION_EVENTS`, `MORAL_DUEL_ANALYTICS_STAGES`,
+`COPY_EXPERIMENTS`), so the write and read paths cannot drift apart on
+which events count toward which stage.
+
+Every builder function this covers (`_build_identity_funnel`,
+`build_daily_moral_crime_analytics`, `build_party_room_analytics`,
+`build_moral_duel_analytics`, `build_retention_cohorts`,
+`build_viral_coefficient`, `build_creative_variant_breakdown`,
+`build_experiment_breakdown`) was split into a pure "core" computation
+(`_identity_funnel_from_stage_identities`,
+`_retention_rates_from_identity_active_days`, `_viral_coefficient_rows`,
+`_creative_variant_rows`, `_experiment_breakdown_rows`,
+`_party_room_host_action_counts_from_identities`,
+`_daily_moral_crime_current_aggregate_section`) plus a thin Scan-derived
+wrapper that assembles the core's inputs from raw `events`. `parse_set_
+aggregate_items` assembles the same core inputs from the parsed Sets
+instead, so both paths call the identical final arithmetic and cannot
+disagree on it - only on how the identity sets going into that arithmetic
+were assembled. `build_viral_coefficient`'s "share attempts" and
+`build_creative_variant_breakdown`'s "attempts" needed one more scalar
+dimension each: the former is already `TASK-300.1`'s `shareClicked`
+breakdown summed across object types per channel (no new dimension), the
+latter needed a new one-line addition to `_scalar_aggregate_increments`
+(`challengeShareReadyVariant`, by the `challenge_share_ready` event's own
+`variant` property) since nothing had counted that event's attempts before.
+`daily`'s `users` field (per-day unique identities) also switches to the
+`activeIdentity` Set now that it exists, completing `ADR-138`'s
+half-migrated `daily` row; `sessions` stays Scan-derived (no task tracks
+session-id Sets yet).
+
+Verified by 4 new dedicated unit tests (segment round-trip, same-identity
+same-day dedup, same-identity cross-day union for retention, and a
+coverage sweep confirming every stage/event-name registry entry produces
+at least one Set contribution) plus a substantially expanded version of
+`TASK-300.1`'s cross-check test: a richer synthetic dataset exercising
+every funnel/retention/viral/variant/experiment path, comparing the
+write-time-aggregate output (built by actually calling
+`_scalar_aggregate_increments`/`_set_aggregate_increments`, the real write
+functions, not a hand-duplicated expectation) against the Scan-derived
+output field-by-field. `Counter.most_common()` ties broke in a different
+but equally valid order between the two paths (insertion order differs
+structurally between a sequential event scan and a per-day attribute
+iteration), so the comparison sorts any list found before asserting
+equality rather than requiring an exact sequence neither path ever
+promised. All 219 backend tests pass.
+
+While implementing this, `_apply_scalar_aggregate_increments` (`ADR-138`)
+became `_apply_daily_aggregate_increments`, taking both the numeric and Set
+increments together and combining them into one `UpdateItem` `ADD`
+expression - never two separate calls - since DynamoDB's `ADD` already
+applies arithmetic addition to a Number attribute and set-union to a Set
+attribute within the same expression.
+
+Implementing this also surfaced a real problem with `ADR-138`'s original
+5 RCU/3 WCU provisioned choice: DynamoDB bills `UpdateItem` by the item's
+size *after* the write, not by the delta - confirmed against current AWS
+documentation, not assumed - and every write for a given day lands on the
+same single item, which is now wide enough (TASK-300.1's ~250-300 numeric
+attributes plus TASK-300.2's ~170-210 Set attributes) that its size grows
+over the course of a day regardless of how small any one write's actual
+delta is. A small fixed provisioned WCU number cannot safely absorb that
+without risking throttling on later writes each day - and this table's
+access pattern (all of "today"'s writes landing on one key) is a
+textbook-unsuitable case for provisioned capacity independent of the exact
+number chosen. `analytics_daily_aggregates` was moved to `PAY_PER_REQUEST`
+billing (`backend/terraform/main.tf`) as a result - verified 2026-09-10
+against current on-demand pricing; at this table's actual traffic the
+realistic added cost is a few cents a month, a deliberate, documented Free
+Tier exception per CLAUDE.md's cost-constraints process rather than an
+oversight. `_apply_daily_aggregate_increments`'s and `_read_analytics_
+daily_aggregates`'s code did not need to change for this - `boto3`'s
+`Table` resource methods work identically against either billing mode.
+
+### Consequences
+
+- The 400KB DynamoDB item size hard limit (unrelated to billing mode)
+  still applies. At this table's current realistic cardinality (a few
+  hundred aggregate writes/day, bounded stage/channel/variant/experiment
+  dimensions) a fully-populated day item is estimated in the low tens of
+  KB at most - comfortable headroom, not a near-miss. If traffic or the
+  number of tracked dimensions grows enough to approach it, the documented
+  mitigation is splitting the wide per-day item into several smaller ones
+  (e.g. by namespace group), not a bigger provisioned-capacity number,
+  which would not fix the underlying single-hot-key/growing-item-size
+  problem either.
+- `funnel`, `dailyMoralCrime`, `partyRoom`, `moralDuel`, `retentionCohorts`,
+  `viralCoefficient`, `creativeVariants`, `copyExperiments`, and `daily.users`
+  are all Scan-independent when aggregates are available; only
+  `abuseMonitoring`, `recentEvents`, `dataQuality`, `summary`, and
+  `daily.sessions` still require the full Scan, pending `TASK-300.3`/`.5`.
+- Any future new funnel/experiment must add itself to the same module-level
+  registries (`GENERIC_FUNNEL_STAGES` and friends, `COPY_EXPERIMENTS`)
+  rather than hardcoding event names a second time, or `_set_aggregate_
+  increments` will silently miss it while the Scan-derived fallback keeps
+  working - the coverage-sweep test added here guards exactly this, but
+  only for registries it knows to check.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

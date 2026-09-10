@@ -747,35 +747,62 @@ dev table, or `/dev` SSM hierarchy.
   of the requested `days` window, with CloudWatch confirming the Lambda's
   daily max `Duration` climbing toward the shared 30s Lambda/API Gateway
   timeout as the tables grew (ADR-137). `TASK-300.1` (ADR-138) adds a new
-  provisioned table, `analytics_daily_aggregates` (5 RCU/3 WCU, one item per
-  UTC calendar day, hash key `dayKey` only), for the dashboard's purely
-  additive ("category A") fields: `eventCounts`, `sourceCounts`,
-  `platformCounts`/`platformBreakdown`, `languageCounts`, `timeZoneCounts`,
-  `appVersionCounts`, `topDilemmas`, `interactionBreakdowns`, and the
-  additive half of `daily` (`events`/`web`/`android`/`ios`/`unknown`, but not
-  yet `sessions`/`users`, which stay unique-identity counts pending
-  `TASK-300.2`). `track_analytics_event`/`ingest_analytics_events`
-  (`backend_fastapi.py`) each issue exactly one extra `UpdateItem` `ADD` per
-  event (product events batch to one call per distinct day in the batch, not
-  one per event) on top of the existing raw-row write, computed via
-  `_scalar_aggregate_increments` from `normalize_analytics_event`'s own
-  output so the write and read paths can never disagree; a failed aggregate
-  update is caught and logged inside `_apply_scalar_aggregate_increments`
-  itself and can never fail the caller's raw write or ingest response.
-  Attribute names are dynamic (`namespace__platform__escaped-value...`);
-  every dynamic value segment is escaped first (`_escape_analytics_aggregate_segment`,
-  every `_` becomes `_-`) so the `__` delimiter used to join/split segments
-  can never collide with a value that happens to contain an underscore.
+  table, `analytics_daily_aggregates` (one item per UTC calendar day, hash
+  key `dayKey` only), for the dashboard's purely additive ("category A")
+  fields: `eventCounts`, `sourceCounts`, `platformCounts`/`platformBreakdown`,
+  `languageCounts`, `timeZoneCounts`, `appVersionCounts`, `topDilemmas`,
+  `interactionBreakdowns`, and the additive half of `daily`
+  (`events`/`web`/`android`/`ios`/`unknown`). `track_analytics_event`/
+  `ingest_analytics_events` (`backend_fastapi.py`) each issue exactly one
+  extra `UpdateItem` `ADD` per event (product events batch to one call per
+  distinct day in the batch, not one per event) on top of the existing
+  raw-row write, computed via `_scalar_aggregate_increments` from
+  `normalize_analytics_event`'s own output so the write and read paths can
+  never disagree; a failed aggregate update is caught and logged inside
+  `_apply_daily_aggregate_increments` itself and can never fail the caller's
+  raw write or ingest response. Attribute names are dynamic
+  (`namespace__platform__escaped-value...`); every dynamic value segment is
+  escaped first (`_escape_analytics_aggregate_segment`, every `_` becomes
+  `_-`) so the `__` delimiter used to join/split segments can never collide
+  with a value that happens to contain an underscore.
   `/admin/analytics/overview` reads the requested window's aggregate items in
   one `BatchGetItem` (`_read_analytics_daily_aggregates`) and
   `build_analytics_overview` prefers them for the fields above when present,
   falling back to the original Scan-derived computation otherwise (missing
   table, transient read error, or a caller - existing unit tests included -
   that does not pass `aggregate_items`); this fallback is why the full Scans
-  are not removed yet. `funnel`, `retentionCohorts`, `viralCoefficient`,
-  `creativeVariants`, `copyExperiments`, `abuseMonitoring`, `recentEvents`,
-  `dataQuality`, and `summary` are unaffected and still fully Scan-derived,
-  pending `TASK-300.2`/`300.3`/`300.5`.
+  are not removed yet.
+
+  `TASK-300.2` (ADR-139) adds the identity-Set ("category B") fields to the
+  *same* per-day item, reusing the one `BatchGetItem`/`UpdateItem` already in
+  place rather than a second table: every funnel (generic, Daily Moral
+  Crime, Party Room, Moral Duel), D1/D7 retention (`daily.users` too, now
+  that the underlying per-day active-identity Set exists), viral
+  coefficient, creative variant breakdown, and all four copy experiments.
+  `_set_aggregate_increments` derives an event's stage/experiment membership
+  from the same module-level registries the Scan-derived builders already
+  used (`GENERIC_FUNNEL_STAGES` - promoted from a function-local list to a
+  module constant for this - `DAILY_MORAL_CRIME_ANALYTICS_STAGES`,
+  `PARTY_ROOM_ANALYTICS_STAGES`, `PARTY_ROOM_HOST_ACTION_EVENTS`,
+  `MORAL_DUEL_ANALYTICS_STAGES`, `COPY_EXPERIMENTS`), so a future new funnel
+  stage or experiment only needs adding to one registry, not two. Every
+  affected builder (`_build_identity_funnel`,
+  `build_daily_moral_crime_analytics`, `build_party_room_analytics`,
+  `build_moral_duel_analytics`, `build_retention_cohorts`,
+  `build_viral_coefficient`, `build_creative_variant_breakdown`,
+  `build_experiment_breakdown`) is split into a pure core computation plus a
+  thin Scan-derived wrapper, so the aggregate-derived path calls the exact
+  same arithmetic instead of a second, independently-maintained copy of it.
+  Implementing this surfaced that DynamoDB bills `UpdateItem` by the item's
+  post-write size, not the delta, and this table's access pattern (every
+  write for "today" landing on one key) makes a small fixed provisioned WCU
+  number unsafe once the item is wide enough to matter - so
+  `analytics_daily_aggregates` moved from `TASK-300.1`'s original 5 RCU/3
+  WCU provisioned choice to `PAY_PER_REQUEST` billing, a documented,
+  low-cost (a few cents/month at current traffic) Free Tier exception.
+  `abuseMonitoring`, `recentEvents`, `dataQuality`, `summary`, and
+  `daily.sessions` are the only fields still fully Scan-derived, pending
+  `TASK-300.3`/`.5`.
 - Abuse monitoring groups events using a server-generated, HMAC-peppered network
   pseudonym where available, falling back to anonymous or session identity. The
   dashboard returns only a short derived mask, behavioral counts, thresholds,

@@ -19,15 +19,24 @@ os.environ.setdefault("AWS_DEFAULT_REGION", "eu-west-1")
 from backend.src.backend_fastapi import (  # noqa: E402
     AnalyticsBatchRequest,
     AnalyticsEvent,
+    COPY_EXPERIMENTS,
+    DAILY_MORAL_CRIME_ANALYTICS_STAGES,
+    GENERIC_FUNNEL_STAGES,
+    MORAL_DUEL_ANALYTICS_STAGES,
+    PARTY_ROOM_ANALYTICS_STAGES,
+    PARTY_ROOM_HOST_ACTION_EVENTS,
     _analytics_day_key,
-    _apply_scalar_aggregate_increments,
+    _apply_daily_aggregate_increments,
     _consume_burst_window,
     _escape_analytics_aggregate_segment,
+    _identity_active_days_from_daily_sets,
+    _identity_funnel_from_stage_identities,
     _network_fingerprint,
     _rate_limit_participant_source,
     _rate_limit_rules_for_request,
     _rate_limit_source,
     _scalar_aggregate_increments,
+    _set_aggregate_increments,
     _unescape_analytics_aggregate_segment,
     build_analytics_overview,
     enforce_zero_cost_burst_guard,
@@ -35,11 +44,26 @@ from backend.src.backend_fastapi import (  # noqa: E402
     ingest_analytics_events,
     normalize_analytics_event,
     parse_scalar_aggregate_items,
+    parse_set_aggregate_items,
     require_analytics_admin,
     track_analytics_event,
     verify_cognito_id_token,
 )
 from backend.src import backend_fastapi as backend_module  # noqa: E402
+
+
+def _order_insensitive(value):
+    """Counter.most_common() only guarantees insertion-order tie-breaking,
+    and the Scan-derived path's insertion order (raw event sequence) differs
+    from the aggregate-derived path's (per-day attribute iteration) even
+    when every count matches exactly - so comparisons in this file sort any
+    list found (recursively) before asserting equality, rather than
+    asserting an exact sequence neither path ever promised to preserve."""
+    if isinstance(value, list):
+        return sorted((_order_insensitive(item) for item in value), key=repr)
+    if isinstance(value, dict):
+        return {key: _order_insensitive(val) for key, val in value.items()}
+    return value
 
 
 def valid_event(**overrides):
@@ -259,25 +283,133 @@ class AnalyticsDailyAggregateTests(unittest.TestCase):
             {"mode": "weird__mode_value", "count": 1},
         ])
 
+    def test_set_increments_dedupe_the_same_identity_within_one_day(self):
+        """TASK-300.2 AC#1/#6: the same identity firing the same funnel-stage
+        event twice on one day (e.g. a retried request) must still count as
+        one distinct identity, not two - DynamoDB Set ADD is idempotent."""
+        now_ms = 1785369600000
+        day_key = _analytics_day_key(now_ms)
+        first = normalize_analytics_event(
+            {"eventId": "e1", "anonymousUserId": "user-1", "occurredAt": now_ms,
+             "actionType": "share_clicked", "platform": "web", "properties": "{}"},
+            "product",
+        )
+        second = normalize_analytics_event(
+            {"eventId": "e2", "anonymousUserId": "user-1", "occurredAt": now_ms + 1000,
+             "actionType": "share_clicked", "platform": "web", "properties": "{}"},
+            "product",
+        )
+        merged: dict[str, set[str]] = {}
+        for event in (first, second):
+            for attribute_name, identities in _set_aggregate_increments(event).items():
+                merged[attribute_name] = merged.get(attribute_name, set()) | identities
+        item = {"dayKey": day_key, **merged}
+
+        parsed = parse_set_aggregate_items([item], platform_filter="all")
+
+        self.assertEqual(parsed["funnelStageIdentities"]["shared"], {"user-1"})
+        funnel = _identity_funnel_from_stage_identities(
+            parsed["funnelStageIdentities"], GENERIC_FUNNEL_STAGES, count_key="users"
+        )
+        shared_stage = next(row for row in funnel if row["stage"] == "shared")
+        self.assertEqual(shared_stage["users"], 1)
+
+    def test_set_increments_union_the_same_identity_across_days_for_retention(self):
+        """TASK-300.2 AC#1/#6: retention needs to see the same identity as
+        active on two distinct days, not deduped away across days - only
+        within a single day's Set should the identity collapse to one."""
+        day0_ms = 1785369600000
+        day1_ms = day0_ms + 24 * 60 * 60 * 1000
+        event_day0 = normalize_analytics_event(
+            {"eventId": "e1", "anonymousUserId": "user-1", "occurredAt": day0_ms,
+             "actionType": "test_started", "platform": "web", "properties": "{}"},
+            "product",
+        )
+        event_day1 = normalize_analytics_event(
+            {"eventId": "e2", "anonymousUserId": "user-1", "occurredAt": day1_ms,
+             "actionType": "test_started", "platform": "web", "properties": "{}"},
+            "product",
+        )
+        items = [
+            {"dayKey": _analytics_day_key(day0_ms), **_set_aggregate_increments(event_day0)},
+            {"dayKey": _analytics_day_key(day1_ms), **_set_aggregate_increments(event_day1)},
+        ]
+
+        parsed = parse_set_aggregate_items(items, platform_filter="all")
+
+        self.assertEqual(parsed["activeIdentitiesByDay"], {
+            _analytics_day_key(day0_ms): {"user-1"},
+            _analytics_day_key(day1_ms): {"user-1"},
+        })
+        identity_active_days = _identity_active_days_from_daily_sets(parsed["activeIdentitiesByDay"])
+        self.assertEqual(len(identity_active_days["user-1"]), 2)
+
+    def test_set_increments_cover_every_stage_registry_and_copy_experiment(self):
+        """TASK-300.2 AC#1: every event name referenced by GENERIC_FUNNEL_STAGES,
+        DAILY_MORAL_CRIME_ANALYTICS_STAGES, PARTY_ROOM_ANALYTICS_STAGES,
+        PARTY_ROOM_HOST_ACTION_EVENTS, MORAL_DUEL_ANALYTICS_STAGES and
+        COPY_EXPERIMENTS produces at least one Set contribution - guards
+        against a stage/event silently falling through the write path."""
+        event_names = set()
+        for _, names in GENERIC_FUNNEL_STAGES:
+            event_names |= set(names)
+        for _, name in (
+            *DAILY_MORAL_CRIME_ANALYTICS_STAGES,
+            *PARTY_ROOM_ANALYTICS_STAGES,
+            *PARTY_ROOM_HOST_ACTION_EVENTS,
+            *MORAL_DUEL_ANALYTICS_STAGES,
+        ):
+            event_names.add(name)
+        for exposure_event, conversion_event in COPY_EXPERIMENTS.values():
+            event_names.add(exposure_event)
+            event_names.add(conversion_event)
+
+        for event_name in sorted(event_names):
+            with self.subTest(event_name=event_name):
+                normalized = normalize_analytics_event(
+                    {"eventId": "e1", "anonymousUserId": "user-1", "occurredAt": 1785369600000,
+                     "actionType": event_name, "platform": "web",
+                     "properties": '{"variant": "archetype", "mode": "evaluation"}'},
+                    "product",
+                )
+                increments = _set_aggregate_increments(normalized)
+                self.assertGreater(len(increments), 0, f"{event_name} produced no Set increments")
+
     def test_apply_increments_sends_one_add_update_item_and_never_raises(self):
         table = Mock()
         with patch.object(backend_module, "analytics_daily_aggregates_table", table):
-            _apply_scalar_aggregate_increments(
-                "2026-09-10", {"event__web__test_started": 1, "platform__web": 1}, 12345,
+            _apply_daily_aggregate_increments(
+                "2026-09-10",
+                {"event__web__test_started": 1, "platform__web": 1},
+                {"activeIdentity__web": {"user-1", "user-2"}},
+                12345,
             )
         table.update_item.assert_called_once()
         call_kwargs = table.update_item.call_args.kwargs
         self.assertEqual(call_kwargs["Key"], {"dayKey": "2026-09-10"})
         self.assertIn(" ADD ", call_kwargs["UpdateExpression"])
         self.assertEqual(set(call_kwargs["ExpressionAttributeNames"].values()), {
-            "event__web__test_started", "platform__web",
+            "event__web__test_started", "platform__web", "activeIdentity__web",
         })
+        name_to_value = {
+            name: call_kwargs["ExpressionAttributeValues"][f":v{placeholder[2:]}"]
+            for placeholder, name in call_kwargs["ExpressionAttributeNames"].items()
+        }
+        self.assertEqual(name_to_value["activeIdentity__web"], {"user-1", "user-2"})
 
         table.update_item.side_effect = RuntimeError("boom")
         with patch.object(backend_module, "analytics_daily_aggregates_table", table):
-            _apply_scalar_aggregate_increments("2026-09-10", {"event__web__test_started": 1}, 12345)
+            _apply_daily_aggregate_increments(
+                "2026-09-10", {"event__web__test_started": 1}, {}, 12345,
+            )
         # No exception propagated - the caller's own write must never break because
         # this best-effort dashboard aggregate failed.
+
+    def test_apply_increments_is_a_no_op_with_nothing_to_add(self):
+        table = Mock()
+        with patch.object(backend_module, "analytics_daily_aggregates_table", table):
+            _apply_daily_aggregate_increments("2026-09-10", {}, {}, 12345)
+        table.update_item.assert_not_called()
 
     def test_track_analytics_event_updates_the_daily_aggregate(self):
         analytics_table = Mock()
@@ -343,18 +475,27 @@ class AnalyticsDailyAggregateTests(unittest.TestCase):
         self.assertEqual(name_to_value[expected_attribute_name], 2)
 
     def test_aggregate_derived_fields_match_scan_derived_fields(self):
-        """AC#3 of TASK-300.1: the write-time-aggregate path must reproduce
-        exactly what the full-Scan path already computes, for every field it
-        covers - and must not change anything outside its scope."""
+        """AC#3 of TASK-300.1 and TASK-300.2: the write-time-aggregate path
+        (scalar counters + identity Sets together, exactly as the real write
+        path produces them) must reproduce what the full-Scan path computes,
+        for every field either subtask covers."""
         now_ms = 1785369600000
-        day0 = now_ms - 2 * 24 * 60 * 60 * 1000
-        day1 = now_ms - 1 * 24 * 60 * 60 * 1000
+        day0 = now_ms - 3 * 24 * 60 * 60 * 1000
+        day1 = now_ms - 2 * 24 * 60 * 60 * 1000
+        day2 = now_ms - 1 * 24 * 60 * 60 * 1000
         legacy_rows = [
             {"sessionId": "s1", "timestamp": day0 + 1000, "actionType": "dilemma_fetched",
-             "platform": "web", "language": "en", "timeZone": "Europe/Rome", "appVersion": "1.4.0",
+             "anonymousUserId": "user-1", "platform": "web", "language": "en",
+             "timeZone": "Europe/Rome", "appVersion": "1.4.0",
              "actionData": '{"dilemma_id": "trolley-1"}'},
             {"sessionId": "s2", "timestamp": day0 + 2000, "actionType": "vote_cast",
-             "platform": "android", "language": "it", "actionData": '{"dilemma_id": "trolley-1"}'},
+             "anonymousUserId": "user-2", "platform": "android", "language": "it",
+             "actionData": '{"dilemma_id": "trolley-1"}'},
+            # user-1 returns the next day too, so retention has a real D1 hit
+            # to reproduce identically on both paths.
+            {"sessionId": "s1", "timestamp": day1 + 500, "actionType": "vote_cast",
+             "anonymousUserId": "user-1", "platform": "web", "language": "en",
+             "actionData": '{"dilemma_id": "trolley-1"}'},
         ]
         product_rows = [
             {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-1", "occurredAt": day1 + 1000,
@@ -372,52 +513,111 @@ class AnalyticsDailyAggregateTests(unittest.TestCase):
             {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-4", "occurredAt": day1 + 5000,
              "actionType": "dilemma_fetched", "platform": "unknown", "language": "en",
              "properties": '{"dilemma_id": "trolley-2"}'},
+            # Party Room: one participant funnel plus a separate host action.
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-5", "occurredAt": day2 + 1000,
+             "actionType": "party_room_entered", "platform": "web", "language": "en"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-5", "occurredAt": day2 + 1500,
+             "actionType": "party_room_vote_submitted", "platform": "web", "language": "en"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-6", "occurredAt": day2 + 1600,
+             "actionType": "party_room_create_clicked", "platform": "web", "language": "en"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-6", "occurredAt": day2 + 900,
+             "actionType": "party_home_viewed", "platform": "web", "language": "en"},
+            # Moral Duel: challengeCreated doubles as creativeVariants' own
+            # "attempts" dimension and as challengeButtonCopy's exposure.
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-7", "occurredAt": day2 + 2000,
+             "actionType": "result_viewed", "platform": "web", "language": "en"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-7", "occurredAt": day2 + 2100,
+             "actionType": "challenge_share_ready", "platform": "web", "language": "en",
+             "properties": '{"variant": "archetype"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-8", "occurredAt": day2 + 2200,
+             "actionType": "challenge_landing_viewed", "platform": "web", "language": "en"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-8", "occurredAt": day2 + 2300,
+             "actionType": "challenge_joined_client", "platform": "web", "language": "en"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-8", "occurredAt": day2 + 2400,
+             "actionType": "challenge_completed_client", "platform": "web", "language": "en",
+             "utm": '{"utm_source": "whatsapp", "utm_content": "archetype"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-8", "occurredAt": day2 + 2500,
+             "actionType": "challenge_compare_viewed", "platform": "web", "language": "en"},
+            # Daily Moral Crime funnel.
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-9", "occurredAt": day2 + 3000,
+             "actionType": "daily_moral_crime_viewed", "platform": "android", "language": "en"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-9", "occurredAt": day2 + 3100,
+             "actionType": "daily_moral_crime_vote_cast", "platform": "android", "language": "en"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-9", "occurredAt": day2 + 3200,
+             "actionType": "daily_moral_crime_revealed", "platform": "android", "language": "en"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-9", "occurredAt": day2 + 3300,
+             "actionType": "daily_moral_crime_audience_shared", "platform": "android", "language": "en"},
+            # homeModeCopy copy experiment: landing_viewed -> mode_selected.
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-10", "occurredAt": day2 + 4000,
+             "actionType": "landing_viewed", "platform": "web", "language": "en"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-10", "occurredAt": day2 + 4100,
+             "actionType": "mode_selected", "platform": "web", "language": "en",
+             "properties": '{"mode": "party"}'},
         ]
 
         scan_only = build_analytics_overview(
-            legacy_rows=legacy_rows, product_rows=product_rows, days=7, now_ms=now_ms, platform="all",
+            legacy_rows=legacy_rows, product_rows=product_rows, days=10, now_ms=now_ms, platform="all",
         )
 
         # Reconstruct exactly what the write path would have produced for
         # these same rows (the real write path does this incrementally per
-        # event/batch - this test does it in one pass for comparison).
+        # event/batch - this test does it in one pass, merging scalar
+        # counters and identity Sets exactly like _apply_daily_aggregate_increments).
         day_increments: dict[str, dict[str, int]] = {}
+        day_set_increments: dict[str, dict[str, set[str]]] = {}
         for source, rows in (("legacy", legacy_rows), ("product", product_rows)):
             for row in rows:
                 normalized = normalize_analytics_event(row, source)
-                bucket = day_increments.setdefault(_analytics_day_key(normalized["occurredAt"]), {})
+                day_key = _analytics_day_key(normalized["occurredAt"])
+                bucket = day_increments.setdefault(day_key, {})
                 for attribute_name, delta in _scalar_aggregate_increments(normalized).items():
                     bucket[attribute_name] = bucket.get(attribute_name, 0) + delta
-        aggregate_items = [{"dayKey": day_key, **increments} for day_key, increments in day_increments.items()]
+                set_bucket = day_set_increments.setdefault(day_key, {})
+                for attribute_name, identities in _set_aggregate_increments(normalized).items():
+                    set_bucket[attribute_name] = set_bucket.get(attribute_name, set()) | identities
+        aggregate_items = [
+            {"dayKey": day_key, **day_increments.get(day_key, {}), **day_set_increments.get(day_key, {})}
+            for day_key in set(day_increments) | set(day_set_increments)
+        ]
 
         aggregate_backed = build_analytics_overview(
-            legacy_rows=legacy_rows, product_rows=product_rows, days=7, now_ms=now_ms, platform="all",
+            legacy_rows=legacy_rows, product_rows=product_rows, days=10, now_ms=now_ms, platform="all",
             aggregate_items=aggregate_items,
         )
 
         for field in (
             "eventCounts", "sourceCounts", "platformCounts", "platformBreakdown",
             "languageCounts", "timeZoneCounts", "appVersionCounts", "topDilemmas",
-            "interactionBreakdowns",
+            "interactionBreakdowns", "funnel", "dailyMoralCrime", "partyRoom", "moralDuel",
+            "retentionCohorts", "viralCoefficient", "creativeVariants", "copyExperiments",
         ):
             with self.subTest(field=field):
-                self.assertEqual(aggregate_backed[field], scan_only[field])
+                self.assertEqual(_order_insensitive(aggregate_backed[field]), _order_insensitive(scan_only[field]))
 
-        # sessions/users stay Scan-derived until TASK-300.2; events/web/
-        # android/ios/unknown must already match per day.
         scan_daily_by_date = {row["date"]: row for row in scan_only["daily"]}
         for row in aggregate_backed["daily"]:
             scan_row = scan_daily_by_date[row["date"]]
-            for key in ("events", "web", "android", "ios", "unknown"):
+            for key in ("events", "web", "android", "ios", "unknown", "users"):
                 with self.subTest(date=row["date"], key=key):
                     self.assertEqual(row[key], scan_row[key])
+            # sessions stays Scan-derived (no task migrates it yet).
             self.assertEqual(row["sessions"], scan_row["sessions"])
-            self.assertEqual(row["users"], scan_row["users"])
 
-        # Fields outside TASK-300.1's scope must be completely untouched.
-        for field in ("funnel", "retentionCohorts", "viralCoefficient", "abuseMonitoring", "dataQuality", "summary"):
+        # Fields no TASK-300.x step touches must still be completely untouched.
+        for field in ("abuseMonitoring", "dataQuality", "summary", "recentEvents"):
             with self.subTest(field=field):
                 self.assertEqual(aggregate_backed[field], scan_only[field])
+
+        # Sanity: the dataset actually exercises non-trivial funnels/joins,
+        # so this test would fail loudly (not vacuously pass) if the
+        # aggregate path silently produced all-zero output instead.
+        self.assertGreater(sum(stage["users"] for stage in scan_only["funnel"]), 0)
+        self.assertTrue(any(row["identities"] > 0 for row in scan_only["partyRoom"]["eventFunnel"]))
+        self.assertTrue(any(row["identities"] > 0 for row in scan_only["moralDuel"]["eventFunnel"]))
+        self.assertTrue(any(row["identities"] > 0 for row in scan_only["dailyMoralCrime"]["eventFunnel"]))
+        self.assertTrue(any(row["completedReferrals"] > 0 for row in scan_only["viralCoefficient"]))
+        self.assertTrue(any(row["completedReferrals"] > 0 for row in scan_only["creativeVariants"]))
+        self.assertTrue(any(row["exposed"] > 0 for row in scan_only["copyExperiments"]["homeModeCopy"]))
 
 
 class AnalyticsOverviewTests(unittest.TestCase):

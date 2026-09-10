@@ -9,7 +9,7 @@ import re
 import secrets
 import time
 from collections import Counter, defaultdict, deque
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from math import ceil
 from pathlib import Path
@@ -262,6 +262,21 @@ MORAL_DUEL_ANALYTICS_STAGES = (
     ("joined", "challenge_joined_client"),
     ("completed", "challenge_completed_client"),
     ("compared", "challenge_compare_viewed"),
+)
+
+# The generic solo-test funnel (test_started -> ... -> shared): each stage
+# accepts either of two event names because the legacy and product event
+# generations named the same milestone differently. Module-level (TASK-300.2/
+# ADR-137) so both build_analytics_overview's Scan-derived computation and
+# _set_aggregate_increments' write-time Set contributions share one
+# definition instead of risking two independently-maintained copies drifting
+# apart.
+GENERIC_FUNNEL_STAGES = (
+    ("test_started", frozenset({"test_started", "dilemma_fetched"})),
+    ("answered", frozenset({"answer_selected", "vote_cast"})),
+    ("test_completed", frozenset({"test_completed", "results_analyzed"})),
+    ("result_viewed", frozenset({"result_viewed", "results_analyzed"})),
+    ("shared", frozenset({"share_clicked"})),
 )
 
 # TASK-64: accounts and shareable profiles expire after twelve months without
@@ -1036,13 +1051,15 @@ def track_analytics_event(
         # Write to DynamoDB asynchronously (fire and forget)
         analytics_table.put_item(Item=event_data)
 
-        # TASK-300.1/ADR-137: contribute this event to its day's write-time
-        # aggregate, computed from the exact same normalized shape the read
-        # path (build_analytics_overview) already relies on.
+        # TASK-300.1/300.2/ADR-137: contribute this event to its day's
+        # write-time aggregate (both scalar counters and identity Sets),
+        # computed from the exact same normalized shape the read path
+        # (build_analytics_overview) already relies on.
         normalized_event = normalize_analytics_event(event_data, "legacy")
-        _apply_scalar_aggregate_increments(
+        _apply_daily_aggregate_increments(
             _analytics_day_key(normalized_event["occurredAt"]),
             _scalar_aggregate_increments(normalized_event),
+            _set_aggregate_increments(normalized_event),
             expiration_time,
         )
 
@@ -4273,10 +4290,12 @@ async def ingest_analytics_events(batch: AnalyticsBatchRequest, request: Request
     try:
         # eventId is the table key, so retries overwrite the same item instead of
         # inflating funnel counts. batch_writer also retries unprocessed writes.
-        # TASK-300.1/ADR-137: increments are grouped by day and applied after
-        # the raw writes succeed, one UpdateItem per distinct day the batch
-        # touches (almost always exactly one) rather than one per event.
+        # TASK-300.1/300.2/ADR-137: increments (both scalar counters and
+        # identity Sets) are grouped by day and applied after the raw writes
+        # succeed, one UpdateItem per distinct day the batch touches (almost
+        # always exactly one) rather than one per event.
         day_increments: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        day_set_increments: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
         with product_events_table.batch_writer(overwrite_by_pkeys=["eventId"]) as writer:
             for event in batch.events:
                 item = {
@@ -4311,9 +4330,16 @@ async def ingest_analytics_events(batch: AnalyticsBatchRequest, request: Request
                 day_key = _analytics_day_key(normalized_event["occurredAt"])
                 for attribute_name, delta in _scalar_aggregate_increments(normalized_event).items():
                     day_increments[day_key][attribute_name] += delta
+                for attribute_name, identities in _set_aggregate_increments(normalized_event).items():
+                    day_set_increments[day_key][attribute_name] |= identities
 
-        for day_key, increments in day_increments.items():
-            _apply_scalar_aggregate_increments(day_key, dict(increments), expiration_time)
+        for day_key in set(day_increments) | set(day_set_increments):
+            _apply_daily_aggregate_increments(
+                day_key,
+                dict(day_increments.get(day_key, {})),
+                dict(day_set_increments.get(day_key, {})),
+                expiration_time,
+            )
 
         return {"accepted": len(batch.events)}
     except Exception as e:
@@ -4536,32 +4562,128 @@ def _scalar_aggregate_increments(event: dict[str, Any]) -> dict[str, int]:
         add("authPromptShown", properties.get("surface") or "unknown")
     elif event_name == "auth_prompt_clicked":
         add("authPromptClicked", properties.get("surface") or "unknown")
+    elif event_name == "challenge_share_ready":
+        # TASK-300.2/ADR-137: creative-variant "attempts" (build_creative_
+        # variant_breakdown) is purely additive - counted here, alongside the
+        # other category-A dimensions, rather than needing its own identity
+        # Set the way the matching "completions" side does below.
+        add("challengeShareReadyVariant", properties.get("variant") or "unknown")
 
     return dict(increments)
 
 
-def _apply_scalar_aggregate_increments(
+# TASK-300.2/ADR-137 category B: every dimension below needs per-identity
+# dedup or a cross-event-type identity join, so it is tracked as a DynamoDB
+# String Set (idempotent ADD - the same identity added twice, even across
+# retried requests, is still counted once) instead of a scalar counter.
+def _set_aggregate_increments(event: dict[str, Any]) -> dict[str, set[str]]:
+    """Attribute-name -> identity-Set deltas for one already-normalized event.
+    Like _scalar_aggregate_increments, this operates on
+    normalize_analytics_event's own output so the write and read paths can
+    never disagree, and reuses the exact same stage/event-name registries
+    (GENERIC_FUNNEL_STAGES, DAILY_MORAL_CRIME_ANALYTICS_STAGES,
+    PARTY_ROOM_ANALYTICS_STAGES, PARTY_ROOM_HOST_ACTION_EVENTS,
+    MORAL_DUEL_ANALYTICS_STAGES, COPY_EXPERIMENTS) the Scan-derived builders
+    use, so the two can never drift apart on which events count toward which
+    stage."""
+    platform = event["platform"]
+    identity = event["identity"]
+    event_name = event["eventName"]
+    properties = event["properties"]
+    utm = event["utm"]
+    increments: dict[str, set[str]] = defaultdict(set)
+
+    def add_to_set(namespace: str, *value_parts: str) -> None:
+        segments = [namespace, platform] + [
+            _escape_analytics_aggregate_segment(str(part)[:_ANALYTICS_AGGREGATE_SEGMENT_MAX_LENGTH])
+            for part in value_parts
+        ]
+        increments["__".join(segments)].add(identity)
+
+    # Retention (build_retention_cohorts): every event counts toward "this
+    # identity was active on this UTC day", regardless of which event it is.
+    add_to_set("activeIdentity")
+
+    for stage_key, event_names in GENERIC_FUNNEL_STAGES:
+        if event_name in event_names:
+            add_to_set("funnelStage", stage_key)
+
+    for stage_key, mapped_event_name in DAILY_MORAL_CRIME_ANALYTICS_STAGES:
+        if event_name == mapped_event_name:
+            add_to_set("dailyStage", stage_key)
+
+    for stage_key, mapped_event_name in PARTY_ROOM_ANALYTICS_STAGES:
+        if event_name == mapped_event_name:
+            add_to_set("partyStage", stage_key)
+
+    for action_key, mapped_event_name in PARTY_ROOM_HOST_ACTION_EVENTS:
+        if event_name == mapped_event_name:
+            add_to_set("partyHostAction", action_key)
+
+    for stage_key, mapped_event_name in MORAL_DUEL_ANALYTICS_STAGES:
+        if event_name == mapped_event_name:
+            add_to_set("duelStage", stage_key)
+
+    if event_name == "challenge_completed_client":
+        # build_viral_coefficient / build_creative_variant_breakdown: the
+        # *recipient's* completion, joined back to the sharer's channel/
+        # variant purely via the anonymous UTM tag their link carried - the
+        # same non-identifying join TASK-33/41 already established.
+        add_to_set("viralCompletion", utm.get("utm_source") or "untagged")
+        add_to_set("variantCompletion", utm.get("utm_content") or "untagged")
+
+    for experiment_name, (exposure_event, conversion_event) in COPY_EXPERIMENTS.items():
+        if event_name == exposure_event:
+            variant = properties.get("variant") or "unknown"
+            add_to_set("experimentExposure", experiment_name, variant)
+        if event_name == conversion_event:
+            add_to_set("experimentConversion", experiment_name)
+
+    return dict(increments)
+
+
+def _apply_daily_aggregate_increments(
     day_key: str,
-    increments: dict[str, int],
+    numeric_increments: dict[str, int],
+    set_increments: dict[str, set[str]],
     expiration_time: int,
 ) -> None:
     """Best-effort: mirrors the existing 'never fail the request if analytics
     tracking fails' posture (track_analytics_event's own try/except, and the
     reason this function - not its caller - swallows the error) so a
     dashboard-only write can never turn a successful event/ingest write into
-    a client-visible failure."""
-    if not increments:
+    a client-visible failure. Combines both TASK-300.1's scalar counters and
+    TASK-300.2's identity Sets into one UpdateItem call per event/batch-day -
+    never two - since DynamoDB's ADD action already applies arithmetic
+    addition to a Number attribute and set-union to a Set attribute within
+    the same expression, as long as each attribute name is used as only one
+    of the two (true here: every namespace below is exclusively numeric or
+    exclusively a Set, never both)."""
+    if not numeric_increments and not set_increments:
         return
     try:
         update_parts = ["SET expirationTime = :expiration_time"]
         expression_attribute_names: dict[str, str] = {}
         expression_attribute_values: dict[str, Any] = {":expiration_time": expiration_time}
-        for index, (attribute_name, delta) in enumerate(increments.items()):
+        index = 0
+        for attribute_name, delta in numeric_increments.items():
             name_placeholder = f"#a{index}"
             value_placeholder = f":v{index}"
             expression_attribute_names[name_placeholder] = attribute_name
             expression_attribute_values[value_placeholder] = delta
             update_parts.append(f"{name_placeholder} {value_placeholder}")
+            index += 1
+        for attribute_name, identities in set_increments.items():
+            if not identities:
+                continue
+            name_placeholder = f"#a{index}"
+            value_placeholder = f":v{index}"
+            expression_attribute_names[name_placeholder] = attribute_name
+            expression_attribute_values[value_placeholder] = identities
+            update_parts.append(f"{name_placeholder} {value_placeholder}")
+            index += 1
+        if len(update_parts) == 1:
+            return
         analytics_daily_aggregates_table.update_item(
             Key={"dayKey": day_key},
             UpdateExpression=update_parts[0] + " ADD " + ", ".join(update_parts[1:]),
@@ -4636,6 +4758,7 @@ def parse_scalar_aggregate_items(
     share_clicked_counts: Counter = Counter()
     auth_prompt_shown_counts: Counter = Counter()
     auth_prompt_clicked_counts: Counter = Counter()
+    challenge_share_ready_variant_counts: Counter = Counter()
     daily_additive: dict[str, dict[str, int]] = {}
 
     for item in items:
@@ -4684,6 +4807,8 @@ def parse_scalar_aggregate_items(
                 auth_prompt_shown_counts[value_parts[0]] += value
             elif namespace == "authPromptClicked" and len(value_parts) == 1:
                 auth_prompt_clicked_counts[value_parts[0]] += value
+            elif namespace == "challengeShareReadyVariant" and len(value_parts) == 1:
+                challenge_share_ready_variant_counts[value_parts[0]] += value
 
     auth_prompt_ctr = []
     for surface in sorted(set(auth_prompt_shown_counts) | set(auth_prompt_clicked_counts)):
@@ -4724,7 +4849,107 @@ def parse_scalar_aggregate_items(
             "authPromptCtr": auth_prompt_ctr,
         },
         "dailyAdditive": daily_additive,
+        # Not a dashboard field itself - build_analytics_overview's
+        # aggregate-derived path feeds this into _creative_variant_rows
+        # alongside TASK-300.2's completions Sets (parse_set_aggregate_items).
+        "challengeShareReadyVariantCounts": challenge_share_ready_variant_counts,
     }
+
+
+# TASK-300.2/ADR-137 category B: reconstructs every identity-Set-based
+# dashboard field (funnels, retention, viral/variant/experiment conversion)
+# from the same write-time daily aggregate items parse_scalar_aggregate_items
+# already reads - no second table, no second fetch. Boto3's DynamoDB
+# resource deserializes a String Set attribute into a Python `set`, which is
+# how this distinguishes a category-B attribute from a category-A Decimal
+# one on the same item.
+def parse_set_aggregate_items(
+    items: list[dict[str, Any]],
+    platform_filter: str,
+) -> dict[str, Any]:
+    platforms = ("web", "android", "ios", "unknown") if platform_filter == "all" else (platform_filter,)
+    platform_set = set(platforms)
+
+    funnel_stage_identities: dict[str, set[str]] = defaultdict(set)
+    daily_stage_identities: dict[str, set[str]] = defaultdict(set)
+    party_stage_identities: dict[str, set[str]] = defaultdict(set)
+    party_host_action_identities: dict[str, set[str]] = defaultdict(set)
+    duel_stage_identities: dict[str, set[str]] = defaultdict(set)
+    active_identities_by_day: dict[str, set[str]] = defaultdict(set)
+    viral_completions_by_channel: dict[str, set[str]] = defaultdict(set)
+    variant_completions_by_variant: dict[str, set[str]] = defaultdict(set)
+    experiment_exposed: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
+    experiment_converted: dict[str, set[str]] = defaultdict(set)
+
+    for item in items:
+        day_key = str(item.get("dayKey", ""))
+        for attribute_name, raw_value in item.items():
+            if attribute_name in {"dayKey", "expirationTime"} or not isinstance(raw_value, set):
+                continue
+            parts = attribute_name.split("__")
+            if len(parts) < 2:
+                continue
+            namespace, item_platform = parts[0], parts[1]
+            if item_platform not in platform_set:
+                continue
+            value_parts = [_unescape_analytics_aggregate_segment(part) for part in parts[2:]]
+            identities = {str(identity) for identity in raw_value}
+            if not identities:
+                continue
+
+            if namespace == "activeIdentity" and not value_parts:
+                active_identities_by_day[day_key] |= identities
+            elif namespace == "funnelStage" and len(value_parts) == 1:
+                funnel_stage_identities[value_parts[0]] |= identities
+            elif namespace == "dailyStage" and len(value_parts) == 1:
+                daily_stage_identities[value_parts[0]] |= identities
+            elif namespace == "partyStage" and len(value_parts) == 1:
+                party_stage_identities[value_parts[0]] |= identities
+            elif namespace == "partyHostAction" and len(value_parts) == 1:
+                party_host_action_identities[value_parts[0]] |= identities
+            elif namespace == "duelStage" and len(value_parts) == 1:
+                duel_stage_identities[value_parts[0]] |= identities
+            elif namespace == "viralCompletion" and len(value_parts) == 1:
+                viral_completions_by_channel[value_parts[0]] |= identities
+            elif namespace == "variantCompletion" and len(value_parts) == 1:
+                variant_completions_by_variant[value_parts[0]] |= identities
+            elif namespace == "experimentExposure" and len(value_parts) == 2:
+                experiment_exposed[value_parts[0]][value_parts[1]] |= identities
+            elif namespace == "experimentConversion" and len(value_parts) == 1:
+                experiment_converted[value_parts[0]] |= identities
+
+    return {
+        "funnelStageIdentities": dict(funnel_stage_identities),
+        "dailyStageIdentities": dict(daily_stage_identities),
+        "partyStageIdentities": dict(party_stage_identities),
+        "partyHostActionIdentities": dict(party_host_action_identities),
+        "duelStageIdentities": dict(duel_stage_identities),
+        "activeIdentitiesByDay": dict(active_identities_by_day),
+        "viralCompletionsByChannel": dict(viral_completions_by_channel),
+        "variantCompletionsByVariant": dict(variant_completions_by_variant),
+        "experimentExposedByName": {
+            name: dict(variants) for name, variants in experiment_exposed.items()
+        },
+        "experimentConvertedByName": dict(experiment_converted),
+    }
+
+
+def _identity_active_days_from_daily_sets(
+    active_identities_by_day: dict[str, set[str]],
+) -> dict[str, set]:
+    """Inverts parse_set_aggregate_items' per-day active-identity Sets into
+    the dict[identity, set[date]] shape _retention_rates_from_identity_active_days
+    expects - the same structure build_retention_cohorts builds from raw
+    events, just assembled from unioned per-day Sets instead."""
+    identity_active_days: dict[str, set] = defaultdict(set)
+    for day_key, identities in active_identities_by_day.items():
+        try:
+            day = date.fromisoformat(day_key)
+        except ValueError:
+            continue
+        for identity in identities:
+            identity_active_days[identity].add(day)
+    return dict(identity_active_days)
 
 
 def _get_daily_moral_crime_current_aggregate() -> list[dict[str, Any]]:
@@ -4877,25 +5102,28 @@ def build_daily_moral_crime_analytics(
     stores no platform on its anonymous aggregate; explicitly label it global
     rather than implying a precision the data does not have.
     """
-    stage_identities = {stage: set() for stage, _ in DAILY_MORAL_CRIME_ANALYTICS_STAGES}
+    stage_identities: dict[str, set[str]] = {stage: set() for stage, _ in DAILY_MORAL_CRIME_ANALYTICS_STAGES}
     for event in events:
         for stage, event_name in DAILY_MORAL_CRIME_ANALYTICS_STAGES:
             if event["eventName"] == event_name:
                 stage_identities[stage].add(event["identity"])
+    funnel = _identity_funnel_from_stage_identities(stage_identities, DAILY_MORAL_CRIME_ANALYTICS_STAGES)
 
-    funnel = []
-    previous_count = None
-    for stage, _ in DAILY_MORAL_CRIME_ANALYTICS_STAGES:
-        identities = len(stage_identities[stage])
-        funnel.append({
-            "stage": stage,
-            "identities": identities,
-            "fromPreviousPct": (
-                round((identities / previous_count) * 100, 1) if previous_count else None
-            ),
-        })
-        previous_count = identities
+    return {
+        "eventFunnel": funnel,
+        "currentAggregate": _daily_moral_crime_current_aggregate_section(aggregate_rows, now_ms),
+    }
 
+
+def _daily_moral_crime_current_aggregate_section(
+    aggregate_rows: list[dict[str, Any]] | None,
+    now_ms: int,
+) -> dict[str, Any]:
+    """TASK-300.2/ADR-137: factored out of build_daily_moral_crime_analytics
+    so the write-time-aggregate path (which supplies its own `eventFunnel`
+    from parsed Sets) can reuse this vote-tally section unchanged - it never
+    depended on raw events in the first place, only on the separate
+    `aggregate_rows` GetItem result."""
     current_day_key = _daily_moral_crime_window(
         datetime.fromtimestamp(now_ms / 1000, tz=timezone.utc)
     )["dayKey"]
@@ -4912,18 +5140,42 @@ def build_daily_moral_crime_analytics(
     total_votes = first_votes + second_votes
 
     return {
-        "eventFunnel": funnel,
-        "currentAggregate": {
-            "available": aggregate_rows is not None,
-            "dayKey": current_day_key,
-            "scope": "all_platforms",
-            "firstVotes": first_votes,
-            "secondVotes": second_votes,
-            "totalVotes": total_votes,
-            "firstPct": round((first_votes / total_votes) * 100) if total_votes else 0,
-            "secondPct": round((second_votes / total_votes) * 100) if total_votes else 0,
-        },
+        "available": aggregate_rows is not None,
+        "dayKey": current_day_key,
+        "scope": "all_platforms",
+        "firstVotes": first_votes,
+        "secondVotes": second_votes,
+        "totalVotes": total_votes,
+        "firstPct": round((first_votes / total_votes) * 100) if total_votes else 0,
+        "secondPct": round((second_votes / total_votes) * 100) if total_votes else 0,
     }
+
+
+def _identity_funnel_from_stage_identities(
+    stage_identities: dict[str, set[str]],
+    stages: tuple[tuple[str, str], ...],
+    count_key: str = "identities",
+) -> list[dict[str, Any]]:
+    """TASK-300.2/ADR-137: the pure stage-count/percentage computation shared
+    by every identity funnel (generic, Daily, Party Room, Moral Duel),
+    factored out from the identity-set assembly so both the Scan-derived
+    path (which builds `stage_identities` from raw events) and the
+    write-time-aggregate path (TASK-300.2, which builds it from unioned
+    per-day Sets) compute the final funnel the exact same way and can never
+    disagree on the arithmetic."""
+    funnel = []
+    previous_count = None
+    for stage, _ in stages:
+        count = len(stage_identities.get(stage, set()))
+        funnel.append({
+            "stage": stage,
+            count_key: count,
+            "fromPreviousPct": (
+                round((count / previous_count) * 100, 1) if previous_count else None
+            ),
+        })
+        previous_count = count
+    return funnel
 
 
 def _build_identity_funnel(
@@ -4933,25 +5185,21 @@ def _build_identity_funnel(
     """Shared per-identity funnel builder (TASK-215): same shape as Daily
     Moral Crime's own inline version above, factored out since Party Room
     and Moral Duel both need the identical stage-set/identity-count logic."""
-    stage_identities = {stage: set() for stage, _ in stages}
+    stage_identities: dict[str, set[str]] = {stage: set() for stage, _ in stages}
     for event in events:
         for stage, event_name in stages:
             if event["eventName"] == event_name:
                 stage_identities[stage].add(event["identity"])
+    return _identity_funnel_from_stage_identities(stage_identities, stages)
 
-    funnel = []
-    previous_count = None
-    for stage, _ in stages:
-        count = len(stage_identities[stage])
-        funnel.append({
-            "stage": stage,
-            "identities": count,
-            "fromPreviousPct": (
-                round((count / previous_count) * 100, 1) if previous_count else None
-            ),
-        })
-        previous_count = count
-    return funnel
+
+def _party_room_host_action_counts_from_identities(
+    host_action_identities: dict[str, set[str]],
+) -> dict[str, int]:
+    return {
+        key: len(host_action_identities.get(key, set()))
+        for key, _ in PARTY_ROOM_HOST_ACTION_EVENTS
+    }
 
 
 def build_party_room_analytics(events: list[dict[str, Any]]) -> dict[str, Any]:
@@ -4959,7 +5207,7 @@ def build_party_room_analytics(events: list[dict[str, Any]]) -> dict[str, Any]:
     (entered -> voted -> shared) plus separate counts for the host-only
     actions, which would otherwise silently narrow a per-participant funnel
     down to "how many hosts" instead of "how many participants"."""
-    host_action_identities = {key: set() for key, _ in PARTY_ROOM_HOST_ACTION_EVENTS}
+    host_action_identities: dict[str, set[str]] = {key: set() for key, _ in PARTY_ROOM_HOST_ACTION_EVENTS}
     for event in events:
         for key, event_name in PARTY_ROOM_HOST_ACTION_EVENTS:
             if event["eventName"] == event_name:
@@ -4967,9 +5215,7 @@ def build_party_room_analytics(events: list[dict[str, Any]]) -> dict[str, Any]:
 
     return {
         "eventFunnel": _build_identity_funnel(events, PARTY_ROOM_ANALYTICS_STAGES),
-        "hostActions": {
-            key: len(identities) for key, identities in host_action_identities.items()
-        },
+        "hostActions": _party_room_host_action_counts_from_identities(host_action_identities),
     }
 
 
@@ -5054,34 +5300,32 @@ def build_interaction_breakdowns(events: list[dict[str, Any]]) -> dict[str, Any]
 RETENTION_MIN_COHORT_SAMPLE = 30
 
 
-def build_retention_cohorts(
-    events: list[dict[str, Any]],
+def _retention_rates_from_identity_active_days(
+    identity_active_days: dict[str, set],
     now_ms: int,
 ) -> dict[str, Any]:
-    """D1/D7 cohort retention (TASK-41 AC#1).
+    """TASK-300.2/ADR-137: the pure D1/D7 cohort computation, factored out of
+    build_retention_cohorts so the write-time-aggregate path (which
+    reconstructs `identity_active_days` from unioned per-day Sets instead of
+    from raw events) computes the exact same rates the same way.
 
-    Active-user definition (documented, per AC#1): an identity that fired at
-    least one analytics event on a given UTC calendar day - the same
-    definition the existing daily trend already uses for its per-day user
-    counts. Cohort day = the identity's earliest event within the caller's
-    already period/platform-filtered `events` list (AC#3: exact and inferred
-    platform never mix here because this function never re-scans raw rows -
-    it only ever sees what build_analytics_overview already filtered to the
-    caller's selected platform). An identity active before the window start
-    is left-censored into the first day it appears in this window, which
-    understates true tenure for cohorts near the window's start - documented
-    in the response (`windowLeftCensored`) rather than silently assumed away.
-    D1/D7 are pooled across all eligible cohort days, not shown per day,
-    because per-day cohorts at this traffic volume are single-digit samples;
-    only cohorts old enough for the D1/D7 checkpoint to already have
-    happened count, and the rate is withheld below RETENTION_MIN_COHORT_SAMPLE
-    identities rather than reported noisy.
+    Active-user definition (documented, per TASK-41 AC#1): an identity that
+    fired at least one analytics event on a given UTC calendar day - the
+    same definition the existing daily trend already uses for its per-day
+    user counts. Cohort day = the identity's earliest active day within the
+    caller's already period/platform-filtered window (AC#3: exact and
+    inferred platform never mix here because this function never re-scans
+    raw rows - it only ever sees what build_analytics_overview already
+    filtered to the caller's selected platform). An identity active before
+    the window start is left-censored into the first day it appears in this
+    window, which understates true tenure for cohorts near the window's
+    start - documented in the response (`windowLeftCensored`) rather than
+    silently assumed away. D1/D7 are pooled across all eligible cohort days,
+    not shown per day, because per-day cohorts at this traffic volume are
+    single-digit samples; only cohorts old enough for the D1/D7 checkpoint
+    to already have happened count, and the rate is withheld below
+    RETENTION_MIN_COHORT_SAMPLE identities rather than reported noisy.
     """
-    identity_active_days: dict[str, set] = defaultdict(set)
-    for event in events:
-        day = datetime.fromtimestamp(event["occurredAt"] / 1000, tz=timezone.utc).date()
-        identity_active_days[event["identity"]].add(day)
-
     active_user_definition = (
         "An identity with at least one analytics event on a given UTC calendar day."
     )
@@ -5131,6 +5375,41 @@ def build_retention_cohorts(
     }
 
 
+def build_retention_cohorts(
+    events: list[dict[str, Any]],
+    now_ms: int,
+) -> dict[str, Any]:
+    """D1/D7 cohort retention (TASK-41 AC#1) - Scan-derived wrapper around
+    _retention_rates_from_identity_active_days; see that function's
+    docstring for the active-user definition and cohort-day rules."""
+    identity_active_days: dict[str, set] = defaultdict(set)
+    for event in events:
+        day = datetime.fromtimestamp(event["occurredAt"] / 1000, tz=timezone.utc).date()
+        identity_active_days[event["identity"]].add(day)
+    return _retention_rates_from_identity_active_days(identity_active_days, now_ms)
+
+
+def _viral_coefficient_rows(
+    share_attempts_by_channel: Counter,
+    completions_by_channel: dict[str, set[str]],
+) -> list[dict[str, Any]]:
+    """TASK-300.2/ADR-137: pure computation, shared by the Scan-derived and
+    write-time-aggregate paths - see build_viral_coefficient for the join
+    semantics this implements."""
+    channels = sorted(set(share_attempts_by_channel) | set(completions_by_channel))
+    rows = []
+    for channel in channels:
+        attempts = share_attempts_by_channel.get(channel, 0)
+        completions = len(completions_by_channel.get(channel, set()))
+        rows.append({
+            "channel": channel,
+            "shareAttempts": attempts,
+            "completedReferrals": completions,
+            "viralCoefficient": round(completions / attempts, 3) if attempts else None,
+        })
+    return rows
+
+
 def build_viral_coefficient(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Per-channel viral coefficient proxy (TASK-41 AC#2): completed Duel
     referrals per share attempt, by channel. Joined through the anonymous
@@ -5151,16 +5430,25 @@ def build_viral_coefficient(events: list[dict[str, Any]]) -> list[dict[str, Any]
             channel = event["utm"].get("utm_source") or "untagged"
             completions_by_channel[channel].add(event["identity"])
 
-    channels = sorted(set(share_attempts_by_channel) | set(completions_by_channel))
+    return _viral_coefficient_rows(share_attempts_by_channel, completions_by_channel)
+
+
+def _creative_variant_rows(
+    attempts_by_variant: Counter,
+    completions_by_variant: dict[str, set[str]],
+) -> list[dict[str, Any]]:
+    """TASK-300.2/ADR-137: pure computation, shared by the Scan-derived and
+    write-time-aggregate paths - see build_creative_variant_breakdown."""
+    variants = sorted(set(attempts_by_variant) | set(completions_by_variant))
     rows = []
-    for channel in channels:
-        attempts = share_attempts_by_channel.get(channel, 0)
-        completions = len(completions_by_channel.get(channel, set()))
+    for variant in variants:
+        attempts = attempts_by_variant.get(variant, 0)
+        completions = len(completions_by_variant.get(variant, set()))
         rows.append({
-            "channel": channel,
+            "variant": variant,
             "shareAttempts": attempts,
             "completedReferrals": completions,
-            "viralCoefficient": round(completions / attempts, 3) if attempts else None,
+            "conversionRatePct": round(completions / attempts * 100, 1) if attempts else None,
         })
     return rows
 
@@ -5185,16 +5473,26 @@ def build_creative_variant_breakdown(events: list[dict[str, Any]]) -> list[dict[
             variant = event["utm"].get("utm_content") or "untagged"
             completions_by_variant[variant].add(event["identity"])
 
-    variants = sorted(set(attempts_by_variant) | set(completions_by_variant))
+    return _creative_variant_rows(attempts_by_variant, completions_by_variant)
+
+
+def _experiment_breakdown_rows(
+    exposed_by_variant: dict[str, set[str]],
+    converted_identities: set[str],
+) -> list[dict[str, Any]]:
+    """TASK-300.2/ADR-137: pure computation, shared by the Scan-derived and
+    write-time-aggregate paths - see build_experiment_breakdown."""
     rows = []
-    for variant in variants:
-        attempts = attempts_by_variant.get(variant, 0)
-        completions = len(completions_by_variant.get(variant, set()))
+    for variant in sorted(exposed_by_variant):
+        exposed = exposed_by_variant[variant]
+        converted = len(exposed & converted_identities)
+        trusted = len(exposed) >= RETENTION_MIN_COHORT_SAMPLE
         rows.append({
             "variant": variant,
-            "shareAttempts": attempts,
-            "completedReferrals": completions,
-            "conversionRatePct": round(completions / attempts * 100, 1) if attempts else None,
+            "exposed": len(exposed),
+            "converted": converted,
+            "conversionRatePct": round(converted / len(exposed) * 100, 1) if exposed and trusted else None,
+            "insufficientSample": not trusted,
         })
     return rows
 
@@ -5230,19 +5528,7 @@ def build_experiment_breakdown(
         elif event["eventName"] == conversion_event:
             converted_identities.add(event["identity"])
 
-    rows = []
-    for variant in sorted(exposed_by_variant):
-        exposed = exposed_by_variant[variant]
-        converted = len(exposed & converted_identities)
-        trusted = len(exposed) >= RETENTION_MIN_COHORT_SAMPLE
-        rows.append({
-            "variant": variant,
-            "exposed": len(exposed),
-            "converted": converted,
-            "conversionRatePct": round(converted / len(exposed) * 100, 1) if exposed and trusted else None,
-            "insufficientSample": not trusted,
-        })
-    return rows
+    return _experiment_breakdown_rows(exposed_by_variant, converted_identities)
 
 
 # TASK-219/220/221/222: (experiment name -> exposure event, conversion event)
@@ -5324,14 +5610,7 @@ def build_analytics_overview(
 
     platform_details = defaultdict(lambda: Counter({"total": 0, "exact": 0, "inferred": 0, "unknown": 0}))
     dilemma_counts = Counter()
-    funnel_definitions = [
-        ("test_started", {"test_started", "dilemma_fetched"}),
-        ("answered", {"answer_selected", "vote_cast"}),
-        ("test_completed", {"test_completed", "results_analyzed"}),
-        ("result_viewed", {"result_viewed", "results_analyzed"}),
-        ("shared", {"share_clicked"}),
-    ]
-    funnel_identities = {key: set() for key, _ in funnel_definitions}
+    funnel_identities: dict[str, set[str]] = {key: set() for key, _ in GENERIC_FUNNEL_STAGES}
 
     for event in events:
         day_key = datetime.fromtimestamp(event["occurredAt"] / 1000, tz=timezone.utc).date().isoformat()
@@ -5349,7 +5628,7 @@ def build_analytics_overview(
         if dilemma_id:
             dilemma_counts[str(dilemma_id)] += 1
 
-        for stage_key, event_names in funnel_definitions:
+        for stage_key, event_names in GENERIC_FUNNEL_STAGES:
             if event["eventName"] in event_names:
                 funnel_identities[stage_key].add(event["identity"])
 
@@ -5359,6 +5638,18 @@ def build_analytics_overview(
     # the fallback rather than being removed in this step.
     scalar_aggregates = (
         parse_scalar_aggregate_items(aggregate_items, platform)
+        if aggregate_items is not None
+        else None
+    )
+    # TASK-300.2/ADR-137: identity-Set-based ("category B") fields switch to
+    # the same write-time aggregate items when available - parsed from the
+    # exact items scalar_aggregates already reads, no second fetch. See this
+    # function's own docstring; `funnel`/`dailyMoralCrime`/`partyRoom`/
+    # `moralDuel`/`retentionCohorts`/`viralCoefficient`/`creativeVariants`/
+    # `copyExperiments` below all prefer set_aggregates when present, falling
+    # back to the Scan-derived computation otherwise.
+    set_aggregates = (
+        parse_set_aggregate_items(aggregate_items, platform)
         if aggregate_items is not None
         else None
     )
@@ -5381,20 +5672,16 @@ def build_analytics_overview(
                 "ios": additive["ios"],
                 "unknown": additive["unknown"],
             })
+        if set_aggregates is not None:
+            row["users"] = len(set_aggregates["activeIdentitiesByDay"].get(date_key, set()))
         daily_rows.append(row)
 
-    funnel = []
-    previous_count = None
-    for stage_key, _ in funnel_definitions:
-        count = len(funnel_identities[stage_key])
-        funnel.append({
-            "stage": stage_key,
-            "users": count,
-            "fromPreviousPct": (
-                round((count / previous_count) * 100, 1) if previous_count else None
-            ),
-        })
-        previous_count = count
+    if set_aggregates is not None:
+        funnel = _identity_funnel_from_stage_identities(
+            set_aggregates["funnelStageIdentities"], GENERIC_FUNNEL_STAGES, count_key="users"
+        )
+    else:
+        funnel = _identity_funnel_from_stage_identities(funnel_identities, GENERIC_FUNNEL_STAGES, count_key="users")
 
     total_events = len(events)
     exact_events = platform_resolution_counts["exact"]
@@ -5414,21 +5701,69 @@ def build_analytics_overview(
             "properties": event["properties"],
         })
     abuse_monitoring = build_abuse_monitoring(events)
-    daily_moral_crime = build_daily_moral_crime_analytics(
-        events,
-        daily_moral_crime_aggregates,
-        now_ms,
-    )
-    party_room = build_party_room_analytics(events)
-    moral_duel = build_moral_duel_analytics(events)
     interaction_breakdowns = build_interaction_breakdowns(events)
-    retention_cohorts = build_retention_cohorts(events, now_ms)
-    viral_coefficient = build_viral_coefficient(events)
-    creative_variants = build_creative_variant_breakdown(events)
-    copy_experiments = {
-        name: build_experiment_breakdown(events, exposure_event, conversion_event)
-        for name, (exposure_event, conversion_event) in COPY_EXPERIMENTS.items()
-    }
+
+    if set_aggregates is not None:
+        daily_moral_crime = {
+            "eventFunnel": _identity_funnel_from_stage_identities(
+                set_aggregates["dailyStageIdentities"], DAILY_MORAL_CRIME_ANALYTICS_STAGES
+            ),
+            "currentAggregate": _daily_moral_crime_current_aggregate_section(
+                daily_moral_crime_aggregates, now_ms
+            ),
+        }
+        party_room = {
+            "eventFunnel": _identity_funnel_from_stage_identities(
+                set_aggregates["partyStageIdentities"], PARTY_ROOM_ANALYTICS_STAGES
+            ),
+            "hostActions": _party_room_host_action_counts_from_identities(
+                set_aggregates["partyHostActionIdentities"]
+            ),
+        }
+        moral_duel = {
+            "eventFunnel": _identity_funnel_from_stage_identities(
+                set_aggregates["duelStageIdentities"], MORAL_DUEL_ANALYTICS_STAGES
+            ),
+        }
+        retention_cohorts = _retention_rates_from_identity_active_days(
+            _identity_active_days_from_daily_sets(set_aggregates["activeIdentitiesByDay"]),
+            now_ms,
+        )
+        # build_viral_coefficient's "share attempts" are already TASK-300.1's
+        # shareClicked breakdown summed across object types per channel - no
+        # new dimension needed for that half, only for the completions Set.
+        share_attempts_by_channel: Counter = Counter()
+        for row in scalar_aggregates["interactionBreakdowns"]["shareClicked"]:
+            share_attempts_by_channel[row["channel"]] += row["count"]
+        viral_coefficient = _viral_coefficient_rows(
+            share_attempts_by_channel, set_aggregates["viralCompletionsByChannel"]
+        )
+        creative_variants = _creative_variant_rows(
+            scalar_aggregates["challengeShareReadyVariantCounts"],
+            set_aggregates["variantCompletionsByVariant"],
+        )
+        copy_experiments = {
+            name: _experiment_breakdown_rows(
+                set_aggregates["experimentExposedByName"].get(name, {}),
+                set_aggregates["experimentConvertedByName"].get(name, set()),
+            )
+            for name in COPY_EXPERIMENTS
+        }
+    else:
+        daily_moral_crime = build_daily_moral_crime_analytics(
+            events,
+            daily_moral_crime_aggregates,
+            now_ms,
+        )
+        party_room = build_party_room_analytics(events)
+        moral_duel = build_moral_duel_analytics(events)
+        retention_cohorts = build_retention_cohorts(events, now_ms)
+        viral_coefficient = build_viral_coefficient(events)
+        creative_variants = build_creative_variant_breakdown(events)
+        copy_experiments = {
+            name: build_experiment_breakdown(events, exposure_event, conversion_event)
+            for name, (exposure_event, conversion_event) in COPY_EXPERIMENTS.items()
+        }
 
     overview = {
         "generatedAt": now_ms,
