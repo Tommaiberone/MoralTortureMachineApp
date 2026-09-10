@@ -5411,6 +5411,58 @@ production frontend build.
   task deliberately did not touch those two, keeping its own diff scoped to
   category C only.
 
+### ADR-141 — `TASK-300.4` implemented and executed: one-off backfill of historical `analytics_daily_aggregates`
+
+Context: `TASK-300.1`/`300.2`'s write-time aggregates only populate for
+events written from their deploy onward. The ~51k raw rows already in
+`user_analytics`/`product_events` (still inside their 90-day TTL) had no
+corresponding aggregate - without a backfill, `TASK-300.5`'s cutover would
+show a hole in every migrated field for every day before deploy.
+
+Decision: `backend/scripts/backfill_analytics_daily_aggregates.py` reuses
+`normalize_analytics_event`/`_scalar_aggregate_increments`/
+`_set_aggregate_increments` - the exact functions the live write path
+calls - rather than a second, independently-written computation that could
+drift from what those tasks actually produce. `compute_full_day_aggregates`
+recomputes each day's *full* total from every currently-visible raw row,
+and `_day_item`/`run` write it via `PutItem` (full replace), never `ADD`:
+this is what makes the script idempotent by construction (a rerun
+recomputes the same total from the same underlying data and writes the
+same item again, rather than accumulating on top of a previous run the way
+the live path's `ADD` would if mistakenly reused for a bulk backfill). The
+current UTC day is always skipped, since the live path already covers it
+from deploy onward and replacing it here could race a concurrent live
+`ADD` and undercount it.
+
+Verified in three layers: (1) 5 unit tests (deterministic/idempotent
+computation, `expirationTime` takes the max seen for the day, current-day
+skip, and a direct cross-check against `build_analytics_overview`'s
+Scan-derived output on synthetic data); (2) a real dry-run against
+production via the `mtm-analytics-ro` read-only profile (no writes
+possible with that profile) - 34,686 legacy + 16,656 product rows, 90
+eligible historical days, largest computed item 298 attributes, confirming
+the item-size-safety assumption `ADR-139`/`TASK-300.2` made was correct in
+practice, not just in estimate; (3) after the user's explicit confirmation
+(required by this task's own `AC#3` and CLAUDE.md's risky-action protocol
+- prod writes are never run without it), executed with `--execute` via the
+`personal` profile: all 90 days (`2026-06-12` through `2026-09-09`) written
+successfully, spot-verified with a `GetItem` against the live table.
+
+### Consequences
+
+- `analytics_daily_aggregates` now has continuous daily coverage back to
+  the start of the raw tables' current TTL window, so `TASK-300.5`'s
+  cutover will not show a historical gap.
+- The script is safe to run again in the future (e.g. after a long gap
+  without a dashboard load, or to double-check consistency) since it is
+  idempotent and always recomputes from whatever raw data is currently
+  visible - but it is a one-off operational tool, not part of any
+  scheduled job or the request path.
+- This was the last planned full-table `Scan` against `user_analytics`/
+  `product_events` outside `TASK-300.5`'s own removal work - from here,
+  every remaining Scan in `analytics_overview` is dead code waiting to be
+  deleted, not a live dependency.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

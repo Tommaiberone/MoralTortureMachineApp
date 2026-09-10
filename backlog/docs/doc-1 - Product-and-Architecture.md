@@ -820,6 +820,17 @@ dev table, or `/dev` SSM hierarchy.
   `analytics_overview` still calls `_scan_all_rows` for `dataQuality`/
   `summary` and the category A/B fallback path in this step - removing the
   Scans entirely is `TASK-300.5`.
+
+  `TASK-300.4` (ADR-141) backfilled `analytics_daily_aggregates` for every
+  historical day still inside the raw tables' 90-day TTL, via
+  `backend/scripts/backfill_analytics_daily_aggregates.py` - a one-off,
+  idempotent (`PutItem` full replace, never `ADD`) script that reuses the
+  same `normalize_analytics_event`/`_scalar_aggregate_increments`/
+  `_set_aggregate_increments` functions the live write path calls, run
+  once against production with the user's explicit confirmation
+  (`2026-06-12` through `2026-09-09`, 90 days). It is not part of any
+  scheduled job; safe to re-run manually if ever needed, but not expected
+  to be.
 - Abuse monitoring groups events using a server-generated, HMAC-peppered network
   pseudonym where available, falling back to anonymous or session identity. The
   dashboard returns only a short derived mask, behavioral counts, thresholds,
