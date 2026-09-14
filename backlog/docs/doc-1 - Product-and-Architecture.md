@@ -895,11 +895,31 @@ dev table, or `/dev` SSM hierarchy.
   *challenges*), since `challenge_token` is deliberately excluded from
   analytics for privacy (TASK-200) and an exact count would need a new
   non-identifying server-side counter (`TASK-304`). The same audit found
-  `doc-2`'s "invitees creating another challenge" gate has no tracking at
-  all yet (`TASK-303`) and a genuine, higher-priority instance of
-  `TASK-300`'s original Scan-on-every-request bug on `GET /users/me/archetype`/
-  `duel-stats` (routine user-facing pages, not an admin-only dashboard -
-  `TASK-301`).
+  a genuine, higher-priority instance of `TASK-300`'s original
+  Scan-on-every-request bug on `GET /users/me/archetype`/`duel-stats`
+  (routine user-facing pages, not an admin-only dashboard - `TASK-301`).
+
+  `TASK-303` (2026-09-14) closed the one gap that audit found: `doc-2`'s
+  fifth gate, "invitees creating another challenge", had no tracking at
+  all. Unlike the other four, it needed a real (small) backend addition -
+  `MORAL_DUEL_ANALYTICS_STAGES` already tracks both `joined` (invitee) and
+  `challengeCreated` (creator) as identity Sets for the existing Duel
+  funnel, on both the Scan-derived and write-time-aggregate paths, so the
+  new `moralDuel.inviteesCreatingAnotherChallenge` field
+  (`_invitee_creates_another_challenge_rate`) is a pure intersection of
+  Sets that already existed - no new write path, no backfill, no
+  `challenge_token` involved. Like every other write-time-aggregated
+  dimension here, it answers "did this identity have both roles within the
+  period", not "was the invite strictly before the challenge they went on
+  to create" - a per-day identity Set has no cheap way to preserve
+  within-window event order, the same accepted limitation as retention/
+  copy-experiment gates. Below `RETENTION_MIN_COHORT_SAMPLE` (30) invitees
+  the rate is withheld the same way every sibling gate withholds a noisy
+  one. Surfaced in the "Growth gates" panel without a pass/fail verdict -
+  `doc-2` defines this gate as "tracked and improving each release," not a
+  fixed percentage like the other four, so the panel's table gained a
+  neutral "Tracked" status alongside its existing pass/fail badges instead
+  of forcing this gate through that binary.
 - Abuse monitoring groups events using a server-generated, HMAC-peppered network
   pseudonym where available, falling back to anonymous or session identity. The
   dashboard returns only a short derived mask, behavioral counts, thresholds,

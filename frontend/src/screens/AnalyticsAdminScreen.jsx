@@ -198,6 +198,7 @@ const AnalyticsAdminScreen = () => {
   const sharedStage = stageByKey(genericFunnel, 'shared');
   const duelLandingStage = stageByKey(duelFunnel, 'landingViewed');
   const duelCompletedStage = stageByKey(duelFunnel, 'completed');
+  const inviteeCreatesAnotherChallenge = moralDuel.inviteesCreatingAnotherChallenge || {};
 
   const gateFromRatio = (numerator, denominator, thresholdPct) => {
     if (!denominator) return { pct: null, sample: 0, insufficientSample: true, passed: null };
@@ -238,6 +239,18 @@ const AnalyticsAdminScreen = () => {
       sample: retentionD7.cohortSize || 0,
       insufficientSample: Boolean(retentionD7.insufficientSample),
       passed: retentionD7.insufficientSample ? null : (retentionD7.retentionPct ?? 0) >= 12,
+    },
+    {
+      // TASK-303: doc-2 defines this gate as "tracked and improving each
+      // release", not a fixed percentage like the other four - so unlike
+      // them it never renders a pass/fail verdict, only the measured rate.
+      key: 'gateInviteeCreatesAnotherChallenge',
+      threshold: null,
+      thresholdLabel: 'tracked',
+      pct: inviteeCreatesAnotherChallenge.conversionRatePct ?? null,
+      sample: inviteeCreatesAnotherChallenge.invitees || 0,
+      insufficientSample: Boolean(inviteeCreatesAnotherChallenge.insufficientSample),
+      passed: null,
     },
   ];
   const northStarProxy = duelCompletedStage?.identities ?? 0;
@@ -466,6 +479,8 @@ const AnalyticsAdminScreen = () => {
                   <td data-label={t('analyticsAdmin.gateStatus')}>
                     {gate.insufficientSample ? (
                       <span className="analytics-badge analytics-badge--review">{t('analyticsAdmin.retentionInsufficientSample')}</span>
+                    ) : gate.passed === null ? (
+                      <span className="analytics-badge">{t('analyticsAdmin.gateTracked')}</span>
                     ) : (
                       <span className={`analytics-badge analytics-badge--${gate.passed ? 'normal' : 'suspicious'}`}>
                         {t(gate.passed ? 'analyticsAdmin.gatePassed' : 'analyticsAdmin.gateBelow')}
@@ -481,6 +496,18 @@ const AnalyticsAdminScreen = () => {
           <strong>{t('analyticsAdmin.northStarTitle')}</strong>
           <span>{t('analyticsAdmin.northStarValue', { value: formatNumber(northStarProxy) })}</span>
           <small>{t('analyticsAdmin.northStarCaveat')}</small>
+        </aside>
+        <aside className="analytics-abuse-note">
+          <strong>{t('analyticsAdmin.gateInviteeCreatesAnotherChallenge')}</strong>
+          <span>
+            {inviteeCreatesAnotherChallenge.insufficientSample
+              ? t('analyticsAdmin.retentionInsufficientSample')
+              : t('analyticsAdmin.inviteeCreatesAnotherChallengeValue', {
+                  became: formatNumber(inviteeCreatesAnotherChallenge.becameCreator || 0),
+                  invitees: formatNumber(inviteeCreatesAnotherChallenge.invitees || 0),
+                })}
+          </span>
+          <small>{t('analyticsAdmin.inviteeCreatesAnotherChallengeCaveat')}</small>
         </aside>
       </section>
       )}

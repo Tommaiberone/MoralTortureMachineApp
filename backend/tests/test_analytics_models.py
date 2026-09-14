@@ -550,6 +550,14 @@ class AnalyticsDailyAggregateTests(unittest.TestCase):
              "utm": '{"utm_source": "whatsapp", "utm_content": "archetype"}'},
             {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-8", "occurredAt": day2 + 2500,
              "actionType": "challenge_compare_viewed", "platform": "web", "language": "en"},
+            # TASK-303: user-11 is both an invitee (joined) and later a
+            # creator (challenge_share_ready) - the one identity that should
+            # show up in inviteesCreatingAnotherChallenge's intersection.
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-11", "occurredAt": day2 + 2600,
+             "actionType": "challenge_joined_client", "platform": "web", "language": "en"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-11", "occurredAt": day2 + 2700,
+             "actionType": "challenge_share_ready", "platform": "web", "language": "en",
+             "properties": '{"variant": "provocative"}'},
             # Daily Moral Crime funnel.
             {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-9", "occurredAt": day2 + 3000,
              "actionType": "daily_moral_crime_viewed", "platform": "android", "language": "en"},
@@ -631,6 +639,7 @@ class AnalyticsDailyAggregateTests(unittest.TestCase):
         self.assertGreater(sum(stage["users"] for stage in scan_only["funnel"]), 0)
         self.assertTrue(any(row["identities"] > 0 for row in scan_only["partyRoom"]["eventFunnel"]))
         self.assertTrue(any(row["identities"] > 0 for row in scan_only["moralDuel"]["eventFunnel"]))
+        self.assertEqual(scan_only["moralDuel"]["inviteesCreatingAnotherChallenge"]["becameCreator"], 1)
         self.assertTrue(any(row["identities"] > 0 for row in scan_only["dailyMoralCrime"]["eventFunnel"]))
         self.assertTrue(any(row["completedReferrals"] > 0 for row in scan_only["viralCoefficient"]))
         self.assertTrue(any(row["completedReferrals"] > 0 for row in scan_only["creativeVariants"]))
@@ -1324,6 +1333,64 @@ class AnalyticsOverviewTests(unittest.TestCase):
         self.assertEqual(d1["retainedCount"], 5)
         self.assertIsNone(d1["retentionPct"])
         self.assertTrue(d1["insufficientSample"])
+
+    def test_invitees_creating_another_challenge_gate(self):
+        """doc-2 validation gate "Invitees creating another challenge"
+        (TASK-303): of everyone who was ever a Duel invitee, what fraction
+        also ever created their own challenge in the same period."""
+        now_ms = 1785369600000
+        product_rows = []
+        # 32 invitees (>= the 30-sample floor), 8 of them also create their
+        # own challenge later in the same window.
+        for index in range(32):
+            product_rows.append({
+                "eventId": str(uuid.uuid4()), "anonymousUserId": f"invitee-{index}",
+                "occurredAt": now_ms - 20000, "actionType": "challenge_joined_client", "platform": "web",
+            })
+            if index < 8:
+                product_rows.append({
+                    "eventId": str(uuid.uuid4()), "anonymousUserId": f"invitee-{index}",
+                    "occurredAt": now_ms - 10000, "actionType": "challenge_share_ready", "platform": "web",
+                    "properties": '{"variant": "archetype"}',
+                })
+        # A pure creator, never an invitee, must not be counted as one.
+        product_rows.append({
+            "eventId": str(uuid.uuid4()), "anonymousUserId": "creator-only",
+            "occurredAt": now_ms - 15000, "actionType": "challenge_share_ready", "platform": "web",
+            "properties": '{"variant": "radar"}',
+        })
+
+        overview = build_analytics_overview(
+            legacy_rows=[], product_rows=product_rows, days=7, now_ms=now_ms, platform="web",
+        )
+
+        self.assertEqual(overview["moralDuel"]["inviteesCreatingAnotherChallenge"], {
+            "invitees": 32, "becameCreator": 8, "conversionRatePct": 25.0, "insufficientSample": False,
+        })
+
+    def test_invitees_creating_another_challenge_withholds_rate_below_minimum_sample(self):
+        now_ms = 1785369600000
+        product_rows = []
+        for index in range(5):  # below RETENTION_MIN_COHORT_SAMPLE (30)
+            product_rows.append({
+                "eventId": str(uuid.uuid4()), "anonymousUserId": f"small-invitee-{index}",
+                "occurredAt": now_ms - 20000, "actionType": "challenge_joined_client", "platform": "web",
+            })
+            if index < 2:
+                product_rows.append({
+                    "eventId": str(uuid.uuid4()), "anonymousUserId": f"small-invitee-{index}",
+                    "occurredAt": now_ms - 10000, "actionType": "challenge_share_ready", "platform": "web",
+                })
+
+        overview = build_analytics_overview(
+            legacy_rows=[], product_rows=product_rows, days=7, now_ms=now_ms, platform="web",
+        )
+        gate = overview["moralDuel"]["inviteesCreatingAnotherChallenge"]
+
+        self.assertEqual(gate["invitees"], 5)
+        self.assertEqual(gate["becameCreator"], 2)
+        self.assertIsNone(gate["conversionRatePct"])
+        self.assertTrue(gate["insufficientSample"])
 
     def test_flags_rapid_replay_without_exposing_source_identity(self):
         now_ms = 1785369600000

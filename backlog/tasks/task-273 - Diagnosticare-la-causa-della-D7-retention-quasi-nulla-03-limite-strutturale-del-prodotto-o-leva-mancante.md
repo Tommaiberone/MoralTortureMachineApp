@@ -6,7 +6,7 @@ title: >-
 status: Backlog
 assignee: []
 created_date: '2026-09-07 08:18'
-updated_date: '2026-09-07 08:29'
+updated_date: '2026-09-14 08:13'
 labels:
   - growth
   - analytics
@@ -46,3 +46,22 @@ Questo e' un primo segnale, non una diagnosi: il differenziale (0,1% Solo vs 5,1
 <!-- SECTION:NOTES:BEGIN -->
 2026-09-07: messo in standby su richiesta esplicita dell'utente. Invece di completare la diagnosi (benchmark di categoria, conferma campione, elenco leve) prima di decidere, l'utente ha scelto di procedere direttamente sulla leva gia' piu' evidente dal primo taglio dati (Duel D1 11,4%/D7 0%): TASK-274/275/45 partono ora per costruire le notifiche push. Questa card resta utile per dopo: quando le push saranno misurabili, riprenderla per (a) verificare se hanno davvero spostato la D7 complessiva, e (b) le AC ancora aperte (benchmark di categoria, differenziale Solo/Party/Duel su campione piu' ampio) restano un controllo di solidita' indipendente dal fatto che si sia gia' agito su una leva.
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-09-14 08:13
+---
+Aggiornamento 2026-09-14 (deep-dive analytics-optimize, sola lettura, nessun cambio di stato del task): ripetuta la segmentazione per modalita' di primo contatto su TUTTA la storia disponibile (2469 identita', nessun left-censoring, invece della finestra 60gg originale) - stesso _retention_rates_from_identity_active_days riusato, nessuna metrica reinventata.
+
+Distribuzione primo contatto: solo=1895 (76,8%), other_unclassified=334 (13,5%), duel_invitee=112 (4,5%), party=88 (3,6%), daily=40 (1,6%). duel_creator=0 (nessuno entra "a freddo" creando una sfida, coerente: serve gia' un profilo da Solo Eval).
+
+D1/D7 per modalita' (campione ora piu' ampio del taglio 60gg originale su duel/party):
+- solo: D1=2,9% (n=1892), D7=0,2% (n=1749) - sostanzialmente confermato lo 0,1%/91% letto a 60gg.
+- party: D1=5,7% (n=88), D7=2,7% (n=75) - ancora il miglior D7 dei tre, ma piu' basso del 5,1% letto a 60gg su campione piu' piccolo (n=59); resta comunque muy sotto gate 12-15%.
+- duel_invitee: D1=13,4% (n=112), D7=0,0% (0/97) - conferma quasi esatta dell'11,4%/0% originale, ora su un campione piu' ampio (97 vs 93 idonee a D7). Il pull-back rapido e' un pattern stabile, non rumore di campione piccolo.
+- daily: D1=2,6% (n=39), D7 campione insufficiente (20<30).
+
+AC#1 di questo task (ripetere su campione piu' ampio) e' quindi soddisfatto nella sostanza da questa lettura full-history, senza bisogno di attendere altre settimane. Il differenziale Solo << Party/Duel(D1) regge. Nessuna azione su questo task: resta in standby per scelta esplicita dell'utente (ADR-122) mentre TASK-274 (fatto)/TASK-275/TASK-45 (ancora To Do, la vera leva) procedono. Le AC#2/3 (perche' il loop Duel si esaurisce; benchmark di categoria) restano aperte.
+---
+<!-- COMMENTS:END -->

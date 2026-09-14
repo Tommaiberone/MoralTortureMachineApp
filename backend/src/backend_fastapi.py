@@ -5339,6 +5339,23 @@ def _identity_funnel_from_stage_identities(
     return funnel
 
 
+def _stage_identities_from_events(
+    events: list[dict[str, Any]],
+    stages: tuple[tuple[str, str], ...],
+) -> dict[str, set[str]]:
+    """Per-stage identity Sets for a (stage_key, event_name) stage list, one
+    pass over events. Factored out of _build_identity_funnel (TASK-303) so a
+    caller that needs the raw Sets themselves - not just the funnel counts
+    derived from them, e.g. to intersect two stages - doesn't have to
+    re-scan events a second time."""
+    stage_identities: dict[str, set[str]] = {stage: set() for stage, _ in stages}
+    for event in events:
+        for stage, event_name in stages:
+            if event["eventName"] == event_name:
+                stage_identities[stage].add(event["identity"])
+    return stage_identities
+
+
 def _build_identity_funnel(
     events: list[dict[str, Any]],
     stages: tuple[tuple[str, str], ...],
@@ -5346,12 +5363,9 @@ def _build_identity_funnel(
     """Shared per-identity funnel builder (TASK-215): same shape as Daily
     Moral Crime's own inline version above, factored out since Party Room
     and Moral Duel both need the identical stage-set/identity-count logic."""
-    stage_identities: dict[str, set[str]] = {stage: set() for stage, _ in stages}
-    for event in events:
-        for stage, event_name in stages:
-            if event["eventName"] == event_name:
-                stage_identities[stage].add(event["identity"])
-    return _identity_funnel_from_stage_identities(stage_identities, stages)
+    return _identity_funnel_from_stage_identities(
+        _stage_identities_from_events(events, stages), stages
+    )
 
 
 def _party_room_host_action_counts_from_identities(
@@ -5385,8 +5399,10 @@ def build_moral_duel_analytics(events: list[dict[str, Any]]) -> dict[str, Any]:
     landing viewed -> joined -> completed -> compared. Intentionally counts
     distinct identities across both the creator and the invitee side of the
     invite, since the loop is inherently two-sided."""
+    stage_identities = _stage_identities_from_events(events, MORAL_DUEL_ANALYTICS_STAGES)
     return {
-        "eventFunnel": _build_identity_funnel(events, MORAL_DUEL_ANALYTICS_STAGES),
+        "eventFunnel": _identity_funnel_from_stage_identities(stage_identities, MORAL_DUEL_ANALYTICS_STAGES),
+        "inviteesCreatingAnotherChallenge": _invitee_creates_another_challenge_rate(stage_identities),
     }
 
 
@@ -5635,6 +5651,38 @@ def build_creative_variant_breakdown(events: list[dict[str, Any]]) -> list[dict[
             completions_by_variant[variant].add(event["identity"])
 
     return _creative_variant_rows(attempts_by_variant, completions_by_variant)
+
+
+def _invitee_creates_another_challenge_rate(
+    duel_stage_identities: dict[str, set[str]],
+) -> dict[str, Any]:
+    """doc-2 validation gate "Invitees creating another challenge" (TASK-303):
+    of every identity that was ever a Duel invitee (MORAL_DUEL_ANALYTICS_STAGES
+    stage 'joined'), what fraction also ever created their own challenge
+    (stage 'challengeCreated') within the same period - identity-Set
+    intersection, not event-order comparison. A per-day write-time Set
+    aggregate (TASK-300.2) has no cheap way to preserve within-window event
+    order across days, the same constraint every other TASK-300.x dimension
+    already accepts, so like every sibling gate here this answers "did both
+    roles happen in the period", not "was the invite strictly before the
+    challenge they went on to create". Withholds the rate below
+    RETENTION_MIN_COHORT_SAMPLE invitees, same threshold/reasoning as
+    build_retention_cohorts/build_experiment_breakdown. No challenge_token is
+    read or exposed - purely an identity-Set intersection, the same privacy
+    pattern build_viral_coefficient/build_creative_variant_breakdown already
+    established for joining Duel sides without a token.
+    """
+    invitees = duel_stage_identities.get("joined", set())
+    became_creator = invitees & duel_stage_identities.get("challengeCreated", set())
+    trusted = len(invitees) >= RETENTION_MIN_COHORT_SAMPLE
+    return {
+        "invitees": len(invitees),
+        "becameCreator": len(became_creator),
+        "conversionRatePct": (
+            round(len(became_creator) / len(invitees) * 100, 1) if invitees and trusted else None
+        ),
+        "insufficientSample": not trusted,
+    }
 
 
 def _experiment_breakdown_rows(
@@ -5914,6 +5962,9 @@ def build_analytics_overview(
         moral_duel = {
             "eventFunnel": _identity_funnel_from_stage_identities(
                 set_aggregates["duelStageIdentities"], MORAL_DUEL_ANALYTICS_STAGES
+            ),
+            "inviteesCreatingAnotherChallenge": _invitee_creates_another_challenge_rate(
+                set_aggregates["duelStageIdentities"]
             ),
         }
         retention_cohorts = _retention_rates_from_identity_active_days(

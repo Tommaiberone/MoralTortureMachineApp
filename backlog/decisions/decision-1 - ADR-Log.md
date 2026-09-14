@@ -5692,6 +5692,232 @@ untouched) and the full 264-test backend suite.
   allowance (`users`: 1/1 RCU-WCU beyond the base table's own 1/1;
   `dilemmas`: on-demand, same billing mode as the base table already had).
 
+### ADR-145 — `TASK-231` closed: result-to-share still under gate, all four copy experiments still without a significant winner (TASK-223)
+
+Context: `TASK-231` blocked any conclusion before 2026-09-15 (14 full days
+after `TASK-33`/`TASK-156`/`TASK-219`-`222` all deployed 2026-09-01), the
+same discipline `ADR-121` (2026-09-07, 8 days early) explicitly refused to
+break. The user asked to run this checkpoint one day early (2026-09-14),
+simulating "today is the 15th" for the window's end boundary. Real
+production data cannot extend past real wall-clock time, so the effective
+window is 13 full days plus a partial 14th, not 14 full days - noted in the
+`TASK-231` comment as a <1-day shortfall, immaterial to every result below
+(none is within a day's traffic of its decision threshold). Same method as
+`ADR-106`/`ADR-121`: direct scan via `mtm-analytics-readonly` (confirmed
+non-root), `build_analytics_overview` reused unmodified, `days=14`,
+`now_ms` pinned to 2026-09-15T00:00Z, window 2026-09-01/2026-09-15
+(35,725 legacy rows, 18,729 product rows scanned).
+
+Findings:
+
+- **Result-to-share** (gate >=15%): 26/235 = 11.06%, essentially unchanged
+  from `TASK-166`'s 11.86% (2026-08-31, pre-`TASK-33`/`156`) and `ADR-121`'s
+  10.6% (2026-09-07). `TASK-33` (attribution/creative variants) and
+  `TASK-156` (unified primary share CTA) shipping did not move this gate in
+  either direction outside noise. Sample sufficient (235 >= 30). Per
+  `TASK-231` AC#2, staying under gate calls for reporting the outcome and
+  any residual levers to the user, not an automatic new escalation task -
+  reported in chat; no task opened unilaterally.
+- **`homeModeCopy`**: `direct` 125/170 = 73.5% vs. `hook` (reference, most
+  exposed) 148/183 = 80.9%, z = -1.647. Not significant.
+- **`challengeButtonCopy`**: `direct` 15/70 = 21.4% vs. `rival` (reference)
+  12/75 = 16.0%, z = 0.839; `baseline` 6/66 = 9.1% vs. `rival` (reference),
+  z = -1.227. Neither significant. (`direct` vs. the literal `baseline`
+  variant alone would read z = 1.990 - noted for completeness but not acted
+  on: it is not the reference-variant comparison the skill's method
+  specifies, and treating it as a finding would be exactly the
+  early-peeking/multiple-comparisons mistake `ADR-121` already flagged the
+  discipline against.)
+- **`authPromptCopy`** / **`partyCreateCopy`**: still `insufficientSample`
+  on every variant (3 total tagged exposures across `authPromptCopy`'s three
+  variants combined; `partyCreateCopy` at 24/20 exposed, just under the
+  30 floor). `authPromptCopy`'s dominant `unknown` bucket (18 of 21 raw
+  events) is explained, not a bug: `ChallengeCompareScreen.jsx`'s
+  `challenge_compare` surface fires `auth_prompt_shown` without a `variant`
+  property by design (`TASK-219`'s AC deliberately excludes that surface as
+  an optional upsell, not a hard gate), so its events fall into `unknown`
+  alongside any genuinely pre-instrumentation traffic - verified by reading
+  the four `auth_prompt_shown` call sites directly rather than assumed.
+- **`creativeVariants`**: `archetype` 3/12 = 25.0%, `provocative` 6/16 =
+  37.5%, `radar` 1/5 = 20.0%, `unknown` 0/2 - every row under the 30-sample
+  floor (`build_creative_variant_breakdown`/`_creative_variant_rows` has no
+  `insufficientSample` field at all, unlike `build_experiment_breakdown`;
+  the skill's own fallback of defaulting to 30 was applied here, and
+  formalizing that field on the creative-variant/viral-coefficient paths
+  the way `TASK-219`-`222`'s experiments already have it is a small gap
+  worth a low-priority task if a future run finds it still missing - not
+  filed now, since it changed no conclusion this run).
+- `viralCoefficient` (outside `TASK-231`'s AC, read for context only):
+  `copy_link` 8/21, `whatsapp` 2/6, `facebook` 0/1 - same sub-30 floor.
+
+Decision: no code changed. No experiment cleared `|z| >= 1.96` on its
+sanctioned reference comparison, so per the skill's own rule ("an experiment
+without a clear winner stays on") all four `TASK-219`-`222` bucketings and
+`TASK-33`'s creative-variant bucketing remain live, unmodified.
+`TASK-231`'s four acceptance criteria are satisfied as the task's own
+description scoped them (recompute the window; evaluate all four
+experiments; evaluate `creativeVariants` if sample allows) - "evaluated,
+no winner yet" is a valid, anticipated outcome of that description, not a
+narrower reading of it - so `TASK-231` closes Done rather than staying open
+on an unmet bar the task never set.
+
+Consequences:
+
+- `TASK-58`/`TASK-83` (Open Points gating paid acquisition/subscription on
+  retention) remain the correct pre-existing escalation for the broader
+  "is this growing" question; this ADR does not add a new one for
+  result-to-share specifically, matching `TASK-231` AC#2's own instruction.
+- The next natural checkpoint is the next `/analytics-optimize` invocation:
+  `authPromptCopy` and `partyCreateCopy` need materially more traffic before
+  any z-test is possible at all; `homeModeCopy`/`challengeButtonCopy` already
+  have sample on both sides of their reference comparison and just need
+  more of it (or a real effect) to cross 1.96.
+- This run was executed one calendar day before `TASK-231`'s literal
+  2026-09-15 unlock, at the user's explicit request to simulate that date;
+  future readers should not infer that the 14-day discipline `ADR-121`
+  upheld was abandoned - the shortfall was <1 day and did not change any
+  outcome above.
+
+### ADR-146 — Deeper growth-hacker read after `TASK-231`: the loop doesn't chain, retention is near-zero everywhere except a shipped-but-untriggered fix, and Android's short test drops out at half web's rate (`TASK-223`)
+
+Context: right after closing `TASK-231` (`ADR-145`), the user asked for a
+deeper, more growth-hacker-style pass with concrete next steps, not just the
+four scheduled A/B tests. Same read-only method, same cached scan from
+`ADR-145` reused rather than re-scanned (35,725 legacy + 18,729 product rows,
+`mtm-analytics-readonly`). Three analyses go beyond what
+`build_analytics_overview`/the dashboard already expose today.
+
+**1. Full-history D1/D7 retention by first-touch mode** (2,469 identities,
+no window left-censoring, vs. `ADR-121`'s and `TASK-273`'s 60-day cut):
+`solo` (76.8% of identities) D1 2.9%/D7 0.2%; `party` (3.6%) D1 5.7%/D7 2.7%;
+`duel_invitee` (4.5%) D1 13.4%/D7 **0.0%** (0/97); `daily` (1.6%) D7 sample
+still under 30. This reconfirms `TASK-273`'s core finding on a larger,
+uncensored sample rather than contradicting it: Moral Duel pulls people back
+hard on day 1 (4-5x every other surface) and loses every one of them by day
+7 - a short-loop problem, not a "this category doesn't retain" problem. Added
+as a comment on `TASK-273` (still correctly in standby per `ADR-122`'s
+explicit user choice - not reopened) rather than restarting that spike.
+
+**2. `doc-2`'s fifth, still-untracked gate - "invitees creating another
+challenge" (`TASK-303`, still To Do)** - measured manually for the first time
+(identity-only, no `challenge_token`, same privacy pattern as
+`build_viral_coefficient`): of 50 identities that were ever a Duel invitee,
+**0 (0.0%)** went on to create their own challenge afterward (2 had created
+one earlier, before being invited - the reverse direction). Read together
+with finding 1, the loop is currently one hop deep: an invitee answers, sees
+the comparison, and neither returns nor propagates the invite forward. This
+is the most direct explanation available today for why `viralCoefficient`
+sits at 0.1-0.4 per channel rather than approaching or exceeding 1. Logged
+as a comment on `TASK-303` with a priority-bump suggestion left for the user
+to decide, not applied unilaterally.
+
+**3. New finding, not previously tracked - Android's short-test completion
+is roughly half web's**: 30-day `test_started` -> `test_completed` = 44.9%
+(44/98) on Android vs. 86.8% (534/615) on web, two-proportion z = -9.84 (not
+sampling noise). Checked against two alternative explanations before filing:
+not an instrumentation artifact (`TASK-7`, already Done, verified event
+parity/coverage across platforms separately - this reuses that same verified
+`normalize_analytics_event`), and not a single stale-build regression already
+fixed elsewhere (the gap persists across app versions: `1.6.4`, the
+highest-volume old build, at 49.2%; `1.13.0`, the latest distributed build,
+at 38.5%). `test_started` -> `answered` is also weaker on Android (78.6% vs.
+97.7%), so part of the drop-off happens in the first seconds, not only deep
+in the flow. Root cause unknown - filed as `TASK-306` (bug, High, To Do) to
+investigate on a real device/emulator before any fix is attempted, not
+guessed at from aggregates alone; its AC#4 also asks `TASK-305`'s Growth
+gates panel to consider a per-platform view of the short-test-completion
+gate, since the aggregate-only view today hides exactly this kind of gap
+behind web's larger volume.
+
+**Trend context**: weekly active identities over the last 9 weeks (7/20
+through today) - 216, 141, 146, 201, 183, 180, 249, 210, 255 - flat-to-mildly-up,
+noisy, no acceleration yet. Read together with the above, the bottleneck
+today is depth (retention, loop continuation) rather than top-of-funnel
+volume, which matches `doc-2`'s own sequencing (referral/retention measured
+before paid acquisition, `TASK-58`/`83`).
+
+Decision: no code changed by this analysis itself (`TASK-306` needs
+reproduction first; `TASK-275`/`TASK-45`, already filed by `ADR-122`, remain
+the correct pending implementation for the retention lever findings 1-2
+point at, since their shared backend, `TASK-274`, already shipped and is
+sitting unused - `send_push_notification` has no caller yet). Ranked next
+steps given to the user: (a) implement `TASK-275`/`TASK-45` (Duel
+opponent-responds push trigger) as the highest-leverage pending item -
+infra done, triggers not; (b) investigate `TASK-306` (Android completion
+gap) since it is concrete, high-confidence, and affects a real platform's
+worth of the top-of-funnel; (c) implement `TASK-303`'s dashboard field once
+convenient, now backed by a real (if small) manual reading; (d) keep cycling
+`TASK-231`-style A/B checkpoints as sample grows, lower urgency than a-c.
+
+Consequences: two tasks changed by this run - `TASK-306` created (bug,
+High, To Do); `TASK-273`/`TASK-303` got comments, not status changes, since
+their current standby/To-Do state was itself a prior explicit decision this
+run had no mandate to override. No commit/push (read-only analysis, same
+rule `ADR-145` applied) beyond the Backlog.md/decision-log files this run
+itself edited.
+
+### ADR-147 — `TASK-303` implemented: "invitees creating another challenge" is a pure Set-intersection of data already being aggregated, no new write path
+
+Context: right after `ADR-146` measured this doc-2 gate manually for the
+first time (0/50 invitees ever became a creator, full product history), the
+user asked to implement `TASK-303` for real.
+
+Decision: no new write-time aggregate namespace was needed.
+`MORAL_DUEL_ANALYTICS_STAGES` already tracks `joined` (`challenge_joined_client`,
+invitee) and `challengeCreated` (`challenge_share_ready`, creator) as identity
+Sets for the existing Duel funnel, on both the Scan-derived path
+(`build_moral_duel_analytics`) and the write-time-aggregate path
+(`set_aggregates["duelStageIdentities"]`, TASK-300.2). Refactored
+`_build_identity_funnel` to expose those per-stage Sets via a new
+`_stage_identities_from_events` (previously only the reduced funnel-count
+list was returned) and added `_invitee_creates_another_challenge_rate`, a
+pure function taking that same `{stage: set(identity)}` shape from either
+path, so it can never disagree between them the same way every other
+TASK-300.x dimension already can't. New response field:
+`moralDuel.inviteesCreatingAnotherChallenge` = `{invitees, becameCreator,
+conversionRatePct, insufficientSample}`, withheld below
+`RETENTION_MIN_COHORT_SAMPLE` (30) invitees like every sibling gate.
+
+Explicitly order-agnostic, documented as such in the function's own
+docstring: it answers "did this identity have both roles within the
+period", not "was the invite strictly before the challenge they went on to
+create" - a per-day write-time Set aggregate has no cheap way to preserve
+within-window event order across days, the same constraint every other
+TASK-300.x dimension already accepts (an identity that created a challenge
+*before* ever being invited would count the same as one who was invited
+first - a real but accepted imprecision, not a bug). No `challenge_token`
+is read or exposed anywhere in this computation - the same identity-Set-only
+join pattern `build_viral_coefficient`/`build_creative_variant_breakdown`
+already established.
+
+Frontend (`AnalyticsAdminScreen.jsx`): added as a fifth row to `TASK-305`'s
+"Growth gates" table. Unlike the other four gates, `doc-2` defines this one
+as "tracked and improving each release," not a fixed percentage, so it
+never renders a pass/fail verdict - the table's status cell gained a
+neutral "Tracked" badge for `gate.passed === null`, used only by this row.
+Also added a caveat aside (same treatment as the existing North Star proxy
+note) spelling out the order-agnostic limitation above so the number is
+never read as more precise than it is. New strings added to `en.json` only
+(`it.json` drift exception).
+
+Verified by two new unit tests (sufficient-sample computation with a known
+overlap; below-`RETENTION_MIN_COHORT_SAMPLE` withholds the rate) plus a
+third identity added to the existing scan-vs-aggregate consistency test
+(`test_aggregate_derived_fields_match_scan_derived_fields`) with a
+non-vacuous sanity assertion, so the new field's two computation paths are
+proven to agree the same way every other TASK-300.x field already is. No
+dedicated "write path" test was needed or added: the write side is the
+pre-existing, already-tested `duelStage` Set increments for `joined`/
+`challengeCreated` (untouched by this change) - only the read-side
+intersection is new. `pnpm lint`/`pnpm build:prod` pass; full backend suite
+(all `backend/tests/test_*.py` modules) passes.
+
+Consequences: `doc-1`'s `TASK-305` paragraph updated (it previously said
+"four measurable validation gates" and separately noted this one as
+untracked - both corrected). No Android rebuild warning needed (admin-only
+web dashboard field, no client contract change). No app version bump
+(web/backend-only, dashboard not packaged into the APK).
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
