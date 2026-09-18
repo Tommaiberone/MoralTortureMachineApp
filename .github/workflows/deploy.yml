@@ -462,6 +462,14 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # TASK-308: the action's own default ("tools platform-tools") requests
+          # the legacy monolithic "tools" package, which Google has removed from
+          # the SDK repository - sdkmanager now exits 1 trying to fetch it.
+          # platform-tools is enough here: build-tools/platforms for compileSdk
+          # 36 (frontend/android/variables.gradle) are resolved and downloaded
+          # by the Android Gradle Plugin itself during the Gradle build below.
+          packages: 'platform-tools'
 
       - name: Install dependencies
         working-directory: frontend
