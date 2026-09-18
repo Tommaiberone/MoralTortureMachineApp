@@ -1539,6 +1539,32 @@ class PartyRoomPollRateLimitKeyTests(unittest.TestCase):
         called_keys = [call.args[0] for call in consume.call_args_list]
         self.assertEqual(called_keys, [f"global:{expected_key}", f"public_read:{expected_key}"])
 
+    def test_party_room_write_request_consumes_duel_write_with_the_participant_key(self):
+        # TASK-290: join/vote/advance/start hit the "duel_write" rule, which
+        # shares the exact same same-WiFi/NAT false-positive risk ADR-069
+        # already fixed for polling ("party_room_poll"/"global").
+        request = self._fake_request("/party-rooms/ROOM1/advance", method="POST")
+        expected_key = _rate_limit_participant_source(request)
+
+        with patch.object(backend_module, "_consume_burst_window", return_value=(True, 0)) as consume:
+            asyncio.run(enforce_zero_cost_burst_guard(request, self._call_next))
+
+        called_keys = [call.args[0] for call in consume.call_args_list]
+        self.assertEqual(called_keys, [f"global:{expected_key}", f"duel_write:{expected_key}"])
+
+    def test_non_party_room_duel_write_request_stays_ip_only(self):
+        # Control: TASK-290 scopes the participant key to Party Room paths
+        # only, so an unrelated duel_write endpoint (e.g. creating a Moral
+        # Duel challenge) must keep the IP-only abuse backstop.
+        request = self._fake_request("/challenges", method="POST")
+        expected_key = _rate_limit_source(request)
+
+        with patch.object(backend_module, "_consume_burst_window", return_value=(True, 0)) as consume:
+            asyncio.run(enforce_zero_cost_burst_guard(request, self._call_next))
+
+        called_keys = [call.args[0] for call in consume.call_args_list]
+        self.assertEqual(called_keys, [f"global:{expected_key}", f"duel_write:{expected_key}"])
+
     def test_rate_limit_log_uses_a_route_signature_not_the_private_path(self):
         request = self._fake_request("/profiles/private-profile-token")
         request.scope = {}

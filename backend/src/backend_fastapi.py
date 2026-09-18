@@ -1597,15 +1597,21 @@ async def enforce_zero_cost_burst_guard(request: Request, call_next):
     if not rules:
         return await call_next(request)
 
-    # TASK-132/ADR-069: a Party Room poll is the one traffic pattern where
-    # several distinct, legitimate participants (same room, often same
-    # WiFi/NAT) are expected to share an IP, so both rules that fire for it
-    # ("global" and "party_room_poll") use the per-participant key instead
-    # of the IP-only one; every other request keeps the IP-only source.
-    is_party_room_poll = any(rule_name == "party_room_poll" for rule_name, _ in rules)
+    # TASK-132/ADR-069: several distinct, legitimate Party Room participants
+    # (same room, often same WiFi/NAT) are expected to share an IP, so every
+    # rule that fires for a Party Room request ("global" plus "party_room_poll"
+    # for polling, or "duel_write" for join/vote/advance/start) uses the
+    # per-participant key instead of the IP-only one; every other request
+    # keeps the IP-only source. TASK-290 extended this from GET-only polling
+    # to the Party Room write endpoints, which shared the exact same
+    # false-positive risk on the plain "duel_write" IP-only bucket.
+    is_party_room_path = request.url.path == "/party-rooms" or request.url.path.startswith("/party-rooms/")
+    uses_participant_source = is_party_room_path and any(
+        rule_name in ("party_room_poll", "duel_write") for rule_name, _ in rules
+    )
     source = (
         _rate_limit_participant_source(request)
-        if is_party_room_poll
+        if uses_participant_source
         else _rate_limit_source(request)
     )
     for rule_name, limit in rules:

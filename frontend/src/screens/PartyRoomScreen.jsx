@@ -232,6 +232,7 @@ const PartyRoomScreen = () => {
   };
 
   const handleStart = async () => {
+    if (starting) return;
     setStarting(true);
     try {
       const response = await fetch(`${API_URL}/party-rooms/${roomCode}/start`, {
@@ -275,6 +276,7 @@ const PartyRoomScreen = () => {
   // TASK-123: the only thing that ends the reveal phase under normal play -
   // no timer does this any more.
   const handleAdvance = async () => {
+    if (advancing) return;
     setAdvancing(true);
     try {
       const response = await fetch(`${API_URL}/party-rooms/${roomCode}/advance`, {
@@ -293,6 +295,7 @@ const PartyRoomScreen = () => {
   // TASK-123 AC8: quickest path back into a new game is a fresh room, since
   // there is no account system to auto-invite the same people to one.
   const handleRematch = async () => {
+    if (rematching) return;
     setRematching(true);
     try {
       const response = await fetch(`${API_URL}/party-rooms`, {

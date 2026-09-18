@@ -5987,6 +5987,68 @@ build until `TASK-308` is fixed (likely: pin `Setup Android SDK`'s
 legacy `tools` request). Until then, any task that legitimately needs a
 new Android build/rebuild-warning release is blocked on `TASK-308` first.
 
+### ADR-149 — Party Room `duel_write` rate limit extended to the per-participant key (TASK-290)
+
+Found during `ops-alerts-sweep` (2026-09-18): a single `(429,
+rate_limit:duel_write)` row from 2026-09-05. `_rate_limit_rules_for_request`
+routes every Party Room POST (join/vote/advance/start) to the `duel_write`
+rule, which still keyed its bucket on `_rate_limit_source` (IP-only) - the
+exact same same-WiFi/NAT false-positive shape `ADR-069`/`TASK-132` already
+confirmed and fixed for `party_room_poll` (GET), just on the write side
+instead. `ADR-069` had scoped the participant key to polling deliberately at
+the time, not by oversight, but the underlying risk (co-located participants
+sharing one IP and one rate budget) is identical for writes. Normally
+`TASK-290`'s own AC#1 called for confirming this via a future recurrence
+before acting, since 429 rules don't carry the literal path and a single
+historical row can't be proven to be Party Room traffic. Implemented
+immediately instead, at the user's explicit request to resolve every task
+surfaced by the same sweep rather than let it wait indefinitely: the fix is
+additive only (adds `X-Anonymous-User-Id` on top of the existing IP, mirrors
+`ADR-069` exactly, does not weaken the IP-only abuse backstop for any other
+endpoint), so acting on the analogy carries effectively no downside even if
+the one historical occurrence turns out not to have been Party Room traffic.
+`enforce_zero_cost_burst_guard` now uses `_rate_limit_participant_source()`
+for both `party_room_poll` and `duel_write` whenever the request path is
+`/party-rooms` or `/party-rooms/*`; every other `duel_write` route
+(`/profiles`, `/challenges/*`) is unchanged. Tests added to
+`PartyRoomPollRateLimitKeyTests`: a Party Room POST consumes `duel_write`
+with the participant key, and a non-Party-Room `duel_write` route (POST
+`/challenges`) stays on the IP-only key as a control. Backend suite: 268/268
+passing. The now-explained alert row was deleted from
+`ops_error_alerts` since its root cause is fixed in code with (by
+definition) no occurrence since.
+
+### ADR-150 — `/analyze-results` 429 burst accepted as unconfirmed, low-impact risk (TASK-309)
+
+Found during the same `ops-alerts-sweep` (2026-09-18): 6 `(429,
+/analyze-results)` rows, 5 of them in a ~2s cluster on 2026-09-12 and 1
+isolated on 2026-09-15, against the `ai` rule's 12/minute IP-only budget -
+implying up to ~17 requests from one source within under a minute, more than
+a single `ResultsScreen` load should generate. Read `ResultsScreen.jsx`'s
+`fetchAiAnalysis` `useEffect` (dependencies: `answers`, `dilemmasWithChoices`,
+`i18n.language`, `t`) looking for an unstable dependency that could cause a
+render loop: in normal navigation both `answers`/`dilemmasWithChoices` come
+from a stable `location.state` reference, and `i18n.language` cannot change
+post-init under the `TASK-101` EN-only lockdown (no `LanguageDetector`
+registered) - no reproducible client-side loop found from static code
+reading alone. Could not correlate against CloudWatch logs (the
+`mtm-ops-alerts-writer` profile this skill runs under is scoped to
+`dynamodb`/`sns` only on this one table/topic, and `CLAUDE.md` bars using the
+root `personal` profile for routine automation) to determine whether the
+burst was a bot/scanner hitting an AI-cost endpoint, a manual retry, or an
+unreproduced render bug. `TASK-309`'s own AC#3 already accounted for this
+outcome ("if excluded or judged too low-frequency/impact, close with the
+reasoning recorded"): closed on that branch, at the user's explicit request
+to resolve every task from the same sweep, without fabricating confirmation
+this pass could not obtain. Unlike `ADR-149`, no code changed and the
+underlying cause remains genuinely open, so the 6 alert rows were
+deliberately left in `ops_error_alerts` rather than deleted - the burst
+guard already did its job (no user-visible harm beyond the existing
+`rate_limit_error` copy, no AI spend beyond the requests that got through),
+and a single cluster in two-plus weeks of data with no recurrence since does
+not yet justify further investigation, but the historical data stays
+available if the pattern reappears.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
