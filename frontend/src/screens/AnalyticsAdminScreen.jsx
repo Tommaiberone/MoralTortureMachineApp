@@ -878,7 +878,7 @@ const AnalyticsAdminScreen = () => {
                   <YAxis allowDecimals={false} width={42} stroke="#c9c9c5" tick={{ fill: '#5d5c58', fontSize: 12 }} />
                   <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e3e3e0', borderRadius: '6px', color: '#2b2924' }} />
                   <Legend wrapperStyle={{ fontSize: '0.82rem' }} />
-                  <Line type="monotone" dataKey="events" name={t('analyticsAdmin.events')} stroke="#1a6fc4" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="sessions" name={t('analyticsAdmin.sessions')} stroke="#1a6fc4" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
                   <Line type="monotone" dataKey="users" name={t('analyticsAdmin.activeIdentities')} stroke="#2b2924" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
                 </LineChart>
               </ResponsiveContainer>

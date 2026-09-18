@@ -5918,6 +5918,39 @@ untracked - both corrected). No Android rebuild warning needed (admin-only
 web dashboard field, no client contract change). No app version bump
 (web/backend-only, dashboard not packaged into the APK).
 
+### ADR-148 — `TASK-307` implemented: the admin daily trend chart's "events" line swapped for "sessions"
+
+Context: reviewing the Trends panel in `AnalyticsAdminScreen.jsx`, the raw
+`events` line (total analytics events fired per day, every event name
+pooled together) was flagged as a poor top-of-dashboard marker. `EvaluationDilemmasScreen.jsx`
+fires `answer_selected` once per dilemma answered (up to `MAX_DILEMMAS`
+times per test), while almost every other event fires once per session
+(`test_started`, `test_completed`, share clicks, etc.) - so the daily total
+is dominated by average dilemmas-completed-per-session, not by usage or
+growth, and can rise on a day when *fewer* people abandon the test early
+(the opposite of the intuitive read).
+
+Decision: swap the `LineChart`'s `events` `dataKey` for `sessions`
+(`frontend/src/screens/AnalyticsAdminScreen.jsx`), reusing the
+`analyticsAdmin.sessions` i18n label already defined for the daily table
+column - no new key needed. `trendDescription` in `en.json` updated to
+match. No backend change: `build_analytics_overview` already computes
+`sessions` per day (`daily[day_key]["sessions"]`, distinct non-"unknown"
+`sessionId` count) alongside `events`; only the frontend's choice of which
+field to plot changed. The `events` field itself is untouched and stays in
+the API response and the daily table column - it remains the source for
+`eventsByType` (funnel panel) and `abuseMonitoring.peakEventsPerDay`,
+neither of which this change touches.
+
+Consequences: the primary trend chart now pairs `sessions` with
+`activeIdentities` (per-session vs. per-identity view of the same days)
+instead of pairing a noisy, funnel-composition-dependent volume count with
+identities. Raw event-volume sanity-checking is still available via the
+daily table's `events` column and the funnel panel, just no longer
+headline. No Android rebuild warning needed (admin-only web dashboard,
+no client contract change). No app version bump (web-only change, not
+packaged into the APK). `pnpm lint`/`pnpm build:prod` pass.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

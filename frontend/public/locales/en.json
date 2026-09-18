@@ -227,7 +227,7 @@
     "ctrRate": "Click-through",
     "exactPlatform": "Exact platform",
     "trend": "Daily trend",
-    "trendDescription": "Event volume and active identities in the selected period.",
+    "trendDescription": "Sessions and active identities in the selected period.",
     "platforms": "Web vs Android",
     "platformDescription": "Origin split by measurement quality.",
     "exact": "Exact",
