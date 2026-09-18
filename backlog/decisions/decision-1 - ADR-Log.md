@@ -5951,6 +5951,42 @@ headline. No Android rebuild warning needed (admin-only web dashboard,
 no client contract change). No app version bump (web-only change, not
 packaged into the APK). `pnpm lint`/`pnpm build:prod` pass.
 
+### `[regression]` `TASK-308` found: `Build Android APK` CI job broken by an external SDK repository change, unrelated to the triggering commit
+
+Context: after pushing `TASK-307` (a web-only `AnalyticsAdminScreen.jsx`
+chart change, no Android/CI files touched), `gh run list` showed `Deploy
+Full Stack` failed for the first time in several pushes. `Deploy Backend
+(prod)` and `Build & Deploy Frontend (prod)` both succeeded - the failure
+was isolated to the `Build Android APK` job's `Setup Android SDK` step
+(`android-actions/setup-android@v3`, `.github/workflows/deploy.yml:464`,
+no explicit `packages:` so the action's own default install list applies).
+
+Root cause: `sdkmanager tools` now exits 1 with "Warning: Failed to find
+package 'tools'". The immediately preceding push four days earlier (run
+`34823091389`, 2026-09-14) completed this same job successfully with no
+workflow changes in between - confirming this is an external regression
+(Google's SDK repository dropping the legacy `tools` package from its
+index, a long-deprecated package superseded by `cmdline-tools`), not
+something introduced by `TASK-307` or any other change in this repository.
+Every future push will hit the same failure until the workflow's package
+list is fixed, regardless of what it touches.
+
+Decision: do not silently patch the workflow as a "low-impact" fix -
+CI/CD configuration falls under this repo's "deployment" scope, which
+`CLAUDE.md` excludes from auto-do-and-notify; filed `TASK-308`
+(`[regression]`, `To Do`, High priority) instead and notified the user
+before touching `.github/workflows/deploy.yml`, per the regression and
+scope-expansion rules in `CLAUDE.md`'s "Autonomous backlog management".
+
+Consequences: no impact on the shipped product - the web/backend deploy
+for `TASK-307` completed normally, and no Android-relevant change was
+pending that needed a new APK/AAB. But no new APK/AAB or Play artifact can
+build until `TASK-308` is fixed (likely: pin `Setup Android SDK`'s
+`packages:` explicitly to `platform-tools` plus the `build-tools`/
+`platforms` versions `frontend/android` actually needs, dropping the
+legacy `tools` request). Until then, any task that legitimately needs a
+new Android build/rebuild-warning release is blocked on `TASK-308` first.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
