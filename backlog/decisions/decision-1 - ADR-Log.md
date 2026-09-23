@@ -6216,6 +6216,40 @@ Verified: two new tests
   completed work mapped onto its acceptance criteria rather than skipped
   silently.
 
+### ADR-153 — Gamebook Christmas 2026 launch plan: KDP paperback, English/global, AI-only art, two-person split (user decision, 2026-09-23)
+
+Context: with the QR mechanism functional (`ADR-151`/`ADR-152`), the user
+decided to target a physical release on Amazon KDP print-on-demand in time
+for Christmas 2026, as a two-person team (developer + creative), with no
+hired designers - all artwork AI-generated under the creative's
+supervision.
+
+Decision: five Backlog milestones (M1 kickoff by 4 Oct, M2 content freeze
+by 1 Nov, M3 print proof 2-13 Nov, M4 publish by 16 Nov with 23 Nov as the
+hard latest before Black Friday on 27 Nov, M5 launch and holiday push to
+15 Dec) and 53 atomic tasks (`TASK-312`-`TASK-364`), labelled `gamebook` plus
+an area label (`decisioni`, `contenuti`, `arte-ai`, `tecnico`, `kdp`,
+`marketing`, `legale`) and assigned to `@tommaso` (app, print pipeline,
+KDP, Ads) or `@creativo` (content, AI art direction, sales copy, social).
+English-only and global, consistent with `TASK-101`. Planning surfaced two
+real pre-print defects, filed rather than assumed away: the closing-page QR
+(`/book/closing`) 404s (`TASK-322`), and the dilemma populate script's full
+mode wipes the table, so copy edits need a non-destructive update path
+(`TASK-323`). It also surfaced two legal checks: provenance of the dilemmas
+derived from the list supplied in `TASK-280` (`TASK-343`), and KDP's
+AI-content disclosure (`TASK-350`).
+
+### Consequences
+
+- The critical path is themes -> 80 dilemmas -> page count -> cover spine
+  -> proof copy; a slip in `TASK-314` or the chapter tasks moves the launch.
+- AI-generated art is probably not protected by copyright, and the book's
+  AI-drafted text must be declared to KDP - both accepted as known trade-offs
+  of the no-designer decision.
+- `TASK-286` (in-app per-dilemma images) stays out of this plan; book art is
+  produced with a consumer tool at the team's own cost, not app
+  infrastructure.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
