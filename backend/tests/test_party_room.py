@@ -17,8 +17,10 @@ from backend.src.backend_fastapi import (  # noqa: E402
     JoinPartyRoomRequest,
     SubmitPartyVoteRequest,
     _delete_party_data,
+    _resolve_gamebook_slug,
     advance_party_room,
     create_party_room,
+    get_gamebook_chapter,
     get_party_room,
     join_party_room,
     start_party_room,
@@ -163,7 +165,12 @@ class _FakeTable:
         raise NotImplementedError(condition)
 
 
-class PartyRoomTestCase(unittest.TestCase):
+class _PartyRoomFixtureMixin:
+    """Shared fake-DynamoDB fixture and request helpers for Party Room
+    tests. Not a TestCase itself - mixed into PartyRoomTestCase and
+    GamebookChapterTestCase below so the latter doesn't also re-run every
+    PartyRoomTestCase test method under its own name."""
+
     def setUp(self):
         self.rooms = _FakeTable(("roomCode",))
         self.participants = _FakeTable(("roomCode", "participantId"))
@@ -238,6 +245,8 @@ class PartyRoomTestCase(unittest.TestCase):
         self.rooms._items[(room_code,)]["phaseEndsAt"] = 0
         backend_module._party_room_read_cache.pop(room_code, None)
 
+
+class PartyRoomTestCase(_PartyRoomFixtureMixin, unittest.TestCase):
     def test_create_room_makes_host_the_first_participant(self):
         result = self._create_room()
         self.assertEqual(result["status"], "lobby")
@@ -602,6 +611,78 @@ class PartyRoomTestCase(unittest.TestCase):
 
         self.assertEqual(raised.exception.status_code, 410)
         self.assertIn("participant left", raised.exception.detail)
+
+
+class GamebookChapterTestCase(_PartyRoomFixtureMixin, unittest.TestCase):
+    """TASK-291: the printed gamebook's QR codes resolve to a fixed, ordered
+    dilemma set instead of Party Room's usual random sample. Reuses the same
+    fake DynamoDB fixture as PartyRoomTestCase - chapterSlug resolution
+    itself reads the real backend/data/gamebook_chapters.json from disk, not
+    DynamoDB, so only create_party_room's write path needs the fakes."""
+
+    def _resolve(self, slug):
+        return asyncio.run(get_gamebook_chapter(slug, request_with_headers({})))
+
+    def test_solo_and_party_slug_of_the_same_chapter_share_one_dilemma_sequence(self):
+        # AC#4: scanning either QR of chapter c1 must open the identical
+        # sequence of dilemmas, in the identical order.
+        solo = _resolve_gamebook_slug("c1-solo")
+        party = _resolve_gamebook_slug("c1-party")
+        self.assertIsNotNone(solo)
+        self.assertIsNotNone(party)
+        solo_key, solo_mode, solo_ids = solo
+        party_key, party_mode, party_ids = party
+        self.assertEqual(solo_key, party_key)
+        self.assertEqual(solo_mode, "solo")
+        self.assertEqual(party_mode, "party")
+        self.assertEqual(solo_ids, party_ids)
+        self.assertEqual(len(solo_ids), 10)
+
+    def test_get_gamebook_chapter_endpoint_resolves_solo_slug(self):
+        result = self._resolve("c1-solo")
+        self.assertEqual(result["chapterKey"], "c1")
+        self.assertEqual(result["mode"], "solo")
+        self.assertEqual(len(result["dilemmaBaseIds"]), 10)
+
+    def test_get_gamebook_chapter_endpoint_404s_on_unknown_slug(self):
+        with self.assertRaises(Exception) as raised:
+            self._resolve("does-not-exist")
+        self.assertEqual(raised.exception.status_code, 404)
+
+    def test_create_party_room_with_chapter_slug_uses_the_fixed_ordered_set(self):
+        room = asyncio.run(create_party_room(
+            CreatePartyRoomRequest(displayName="Host", chapterSlug="c1-party"),
+            request_with_headers({"X-Anonymous-User-Id": "host-1"}),
+        ))
+        _, _, expected_ids = _resolve_gamebook_slug("c1-party")
+        stored = self.rooms._items[(room["roomCode"],)]
+        self.assertEqual(stored["dilemmaBaseIds"], expected_ids)
+        self.assertEqual(stored["chapterKey"], "c1")
+
+    def test_create_party_room_rejects_a_solo_slug(self):
+        with self.assertRaises(Exception) as raised:
+            asyncio.run(create_party_room(
+                CreatePartyRoomRequest(displayName="Host", chapterSlug="c1-solo"),
+                request_with_headers({"X-Anonymous-User-Id": "host-1"}),
+            ))
+        self.assertEqual(raised.exception.status_code, 400)
+
+    def test_create_party_room_rejects_an_unknown_chapter_slug(self):
+        with self.assertRaises(Exception) as raised:
+            asyncio.run(create_party_room(
+                CreatePartyRoomRequest(displayName="Host", chapterSlug="zzz-party"),
+                request_with_headers({"X-Anonymous-User-Id": "host-1"}),
+            ))
+        self.assertEqual(raised.exception.status_code, 404)
+
+    def test_ordinary_random_party_room_creation_is_unaffected(self):
+        # Guards TASK-291 AC#1: chapterSlug is opt-in only, no regression to
+        # the pre-existing random creation path used by every non-gamebook room.
+        room = self._create_room(count=4)
+        self.assertEqual(len(room["participantId"]), len("host-1"))
+        stored = self.rooms._items[(room["roomCode"],)]
+        self.assertEqual(len(stored["dilemmaBaseIds"]), 4)
+        self.assertNotIn("chapterKey", stored)
 
 
 if __name__ == "__main__":

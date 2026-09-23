@@ -407,6 +407,7 @@
   "party": {
     "homeTitle": "[ PARTY ROOM ]",
     "homeSubtitle": "Play the same dilemmas together, live.",
+    "chapterSubtitle": "Convene the tribunal for this Case File - everyone follows along on their own phone.",
     "createTab": "Create",
     "joinTab": "Join",
     "yourNameLabel": "Your name",
@@ -465,6 +466,13 @@
     "rematchButton": "Play again",
     "shareRecapButton": "Share recap",
     "recapShareText": "We just played Moral Torture Machine Party Room."
+  },
+  "book": {
+    "loading": "Opening the case file...",
+    "error_title": "Case File Unavailable",
+    "error_not_found": "This case file doesn't exist, or the printed code was mistyped.",
+    "error_unknown": "Could not open this case file. Please try again.",
+    "view_results_button": "See your verdict"
   },
   "errorBoundary": {
     "title": "Something went wrong",

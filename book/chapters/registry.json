@@ -11,7 +11,12 @@
       { "id": "d79f5805acda6ce3c4e373c3", "title": "The Payphone Return" },
       { "id": "49b0bdaae2f53e5ad3da9878", "title": "The Sidewalk Wallet" },
       { "id": "d4c00488a99cacdd2a22b76a", "title": "The Self-Checkout Glitch" },
-      { "id": "266cd2a23b20baf1bb788df4", "title": "The Padded Invoice" }
+      { "id": "266cd2a23b20baf1bb788df4", "title": "The Padded Invoice" },
+      { "id": "bc392a13784ced2e4af65dec", "title": "The Blank Receipt" },
+      { "id": "e1491c15bfc474ea73af8e36", "title": "The Uncollected Increase" },
+      { "id": "cf396aad73131330ff8527c4", "title": "The Missed Bag" },
+      { "id": "7914c65cd8f808b3409da665", "title": "The Phantom Credit Slip" },
+      { "id": "48b75d176e07e164e97da5bb", "title": "The Long-Distance Line" }
     ]
   },
   "c2": {
@@ -26,7 +31,12 @@
       { "id": "d70e41cc1f5118fc2895864c", "title": "The Peace Offering" },
       { "id": "de8dea47c292ec5a795c40b0", "title": "The Unraveling Counsel" },
       { "id": "74d8775b1ba112e4c610f752", "title": "The Medication Error" },
-      { "id": "bfb1c4aa421707d88db2cafd", "title": "The Interview Leak" }
+      { "id": "bfb1c4aa421707d88db2cafd", "title": "The Interview Leak" },
+      { "id": "40c0ba87857fc7399db2d6fc", "title": "The Layoff List" },
+      { "id": "5abc86f8ccb2e86b0b5cc0e8", "title": "The Family Secret" },
+      { "id": "56a824f08a3aa6ed34ee6dc1", "title": "The Reference Letter" },
+      { "id": "fdb443319692f34c68e8dcb7", "title": "The Second Fender-Bender" },
+      { "id": "3649f97c2cbeea5d81df8a8d", "title": "The Plagiarized Paper" }
     ]
   }
 }

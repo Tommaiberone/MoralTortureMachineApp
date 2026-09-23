@@ -6049,6 +6049,128 @@ and a single cluster in two-plus weeks of data with no recurrence since does
 not yet justify further investigation, but the historical data stays
 available if the pattern reappears.
 
+### ADR-151 — `TASK-291` implemented: gamebook QR codes resolve to a fixed, ordered dilemma set; chapter size changed to ten dilemmas (user request, 2026-09-23)
+
+Context: `ADR-129`/`ADR-131` had already flagged `TASK-291` as the hard
+prerequisite before the printed gamebook's QR codes did anything real -
+neither `create_party_room` (always `_pick_random_dilemma_base_ids`) nor
+solo Evaluation's `get_dilemma` (one random dilemma at a time) could start a
+session from a caller-specified, fixed, ordered list. The user separately
+asked to target a global English-language KDP release (not an Italian
+edition - consistent with `TASK-101`'s EN-only app lockdown and the
+`it.json` drift exception, since production analytics show Italian under 1%
+of historical events) and, in the same request, to change each Case File
+from five dilemmas to ten (ten chapters of ten, full manuscript deferred to
+a later session).
+
+Decision: `backend/data/gamebook_chapters.json` is the new canonical,
+*deployed* mapping (`{chapterKey: {number, soloSlug, partySlug,
+dilemmaBaseIds}}`), loaded and validated once by `_load_gamebook_chapters()`
+(same lazy-cache-and-validate shape as `_load_daily_moral_crime_catalog()`)
+and resolved by `_resolve_gamebook_slug(slug)`. It lives under
+`backend/data/` rather than being read from `book/chapters/registry.json`
+directly because `book/` is deliberately excluded from every deployment
+(`ADR-128`) - confirmed by reading `.github/workflows/deploy.yml`'s Lambda
+packaging step, which copies named files individually
+(`archetypes.json`, `daily_moral_crime_v1.json`, now also
+`gamebook_chapters.json`) rather than the whole `backend/data/` directory,
+and does not touch `book/` at all. Rather than hand-maintaining two
+independently-editable files and only catching drift after the fact,
+`book/qr/generate_qr.py` gained `sync_gamebook_chapters()`, run
+unconditionally before every QR (re)generation: it *regenerates*
+`backend/data/gamebook_chapters.json` from `book/chapters/registry.json`
+(extracting just `{number, soloSlug, partySlug, dilemmaBaseIds}` from each
+chapter entry), the same "generate, don't hand-edit" treatment this script
+already gives the QR PNGs. `registry.json` stays the one place a human
+edits a chapter's slugs or dilemma ids - satisfying `TASK-291` AC#3's
+"lives in one place" literally, not just its "can't go out of sync" intent
+via a separate guard. `registry.json` itself was deliberately left in its
+existing shape rather than trimmed to only book-only fields (title,
+themeIntro, stamp, per-dilemma titles) with `typst/template.typ` reading
+`gamebook_chapters.json` for ids/slugs instead: that would have required
+editing already-shipped, working Typst template code
+(`chapter-page`/`find-dilemma`) for a cosmetic gain, versus generating
+*from* the existing registry shape, which needed no template change at all
+and was verified by actually recompiling the book (see below), not assumed
+safe.
+
+`GET /book/chapters/{slug}` is the new anonymous-first read endpoint the
+frontend's `/book/:slug` route calls first; for `mode: "solo"` the frontend
+then reuses the existing `GET /dilemmas/by-ids` to fetch content (the same
+endpoint a Duel invitee already uses) rather than adding a second
+dilemma-content path. `CreatePartyRoomRequest` gained optional
+`chapterSlug`; when present it bypasses `_pick_random_dilemma_base_ids`
+entirely, 400s a solo slug, 404s an unknown one, and stores `chapterKey` on
+the room item - `dilemmaCount`/random creation for ordinary rooms is
+untouched. Ten dilemmas needed no Party Room constant change: it already
+sits inside the existing `PARTY_ROOM_MIN_DILEMMAS`/`PARTY_ROOM_MAX_DILEMMAS`
+(3-12) range from `TASK-203`; `PARTY_ROOM_DEFAULT_DILEMMAS` stays `5` for
+non-book rooms, and `EvaluationDilemmasScreen.jsx`'s own `MAX_DILEMMAS = 5`
+(`TASK-203`/`ADR-090`'s fixed-length activation decision) was deliberately
+left untouched too - "ten per chapter" was read as book-specific scope
+("per capitolo"), not a request to change the app's own short-test length.
+
+The frontend landing screen is a new `BookChapterEntryScreen.jsx`
+(`/book/:slug`), not a modification of `EvaluationDilemmasScreen.jsx`: it
+mirrors `ChallengeLandingScreen.jsx`'s existing fixed-ordered-dilemma
+pattern (fetch by ids, step through, vote, tease, pie chart, advance) almost
+line for line, including reusing `ChallengeLandingScreen.css` directly
+(confirmed by the production build emitting no separate CSS chunk for the
+new screen). For `mode: "party"` it redirects to
+`/party?chapterSlug=<slug>`; `PartyRoomHomeScreen.jsx` reads that param,
+hides the join tab, forces the create form, and threads `chapterSlug` into
+its existing `POST /party-rooms` call - no new party-creation UI. For
+`mode: "solo"` it ends at `/results` with the same `{answers,
+dilemmasWithChoices}` state contract `EvaluationDilemmasScreen` already
+established, plus `chapterKey`; `ResultsScreen.jsx`'s `result_viewed` event
+now reports `mode: "book_chapter"` (and `chapter_key`) instead of
+`"evaluation"` when that key is present, so book traffic can't silently
+blend into the main activation funnel's numbers - the exact failure mode
+`CLAUDE.md`'s "keep analytics current" rule and `TASK-216`/`TASK-303` exist
+to prevent.
+
+This is the third near-identical copy of the same "fixed ordered dilemma
+sequence" UI logic (`EvaluationDilemmasScreen`'s random variant,
+`ChallengeLandingScreen`'s fixed variant, now this one) - deliberately not
+unified in this task, since doing so would touch two stable,
+experiment-instrumented production screens for no functional gain here;
+filed as `TASK-310` (To Do, low) per `CLAUDE.md`'s reuse-over-duplicate
+rule instead of silently left unflagged.
+
+`book/chapters/registry.json` was expanded from five to ten dilemmas per
+chapter for `c1`/`c2` (with `gamebook_chapters.json` regenerated from it,
+not hand-edited separately), picking five additional real ids per chapter
+from `dilemmas_en.json` in the same thematic register as each chapter's
+existing five (unwatched petty-honesty windfalls for `c1`;
+loyalty-vs-disclosure toward someone close for `c2`), with new book-only
+Exhibit titles. Verified by running `generate_qr.py` (regenerated
+`gamebook_chapters.json` and all five QR PNGs without error) and recompiling
+`book/main.typ` with `typst compile` (27 page objects, up from `ADR-131`'s
+10-page/5-dilemma version, no `find-dilemma` hard-fail, confirming every
+new id resolves in `dilemmas_en.json`) - the remaining eight chapters'
+themes and manuscript content are explicitly deferred to a later session,
+per the user's own phasing ("code first, book-writing after").
+
+### Consequences
+
+- `backend/data/gamebook_chapters.json` is generated, committed output, not
+  a second hand-edited source - `book/chapters/registry.json` is the only
+  file a future chapter edit should touch; `book/qr/generate_qr.py` must be
+  re-run (and its regenerated `gamebook_chapters.json` committed) afterward
+  for the backend/deployed copy to pick up the change, exactly like the
+  QR PNGs it already regenerates in the same run.
+- The gamebook's QR mechanism is now genuinely functional end to end
+  (solo and party of the same chapter provably open the identical
+  sequence - `GamebookChapterTestCase`), but the manuscript itself is still
+  only two of ten planned chapters; `book/` remains non-production tooling
+  until real content and a demand signal justify a print run.
+- A third copy of the fixed-dilemma-sequence UI pattern now exists in the
+  frontend; `TASK-310` tracks consolidating it, deliberately out of this
+  task's scope.
+- `EvaluationDilemmasScreen`'s `MAX_DILEMMAS` and `PARTY_ROOM_DEFAULT_DILEMMAS`
+  are unchanged - the ten-dilemma chapter size is scoped to the gamebook
+  only, not a change to the app's own short-test/Party-Room defaults.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

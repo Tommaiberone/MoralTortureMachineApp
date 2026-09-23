@@ -397,6 +397,7 @@ _burst_request_count = 0
 _ops_notification_last_sent: dict[str, float] = {}
 _ops_notification_lock = Lock()
 _daily_moral_crime_catalog_cache: dict[str, Any] | None = None
+_gamebook_chapters_cache: dict[str, dict[str, Any]] | None = None
 _dynamodb_type_serializer = TypeSerializer()
 
 def get_groq_api_key() -> str:
@@ -1175,6 +1176,12 @@ class CreatePartyRoomRequest(BaseModel):
         ge=PARTY_ROOM_MIN_DILEMMAS,
         le=PARTY_ROOM_MAX_DILEMMAS,
     )
+    # TASK-291: an optional printed-gamebook chapter slug (e.g. "c1-party").
+    # When present, it overrides dilemmaCount - the room's dilemma set comes
+    # from that chapter's fixed, ordered list (resolved server-side via
+    # _resolve_gamebook_slug) instead of a random sample, so a QR-scanning
+    # table opens the exact dilemmas printed on the page.
+    chapterSlug: str | None = Field(default=None, min_length=1, max_length=64)
 
 class JoinPartyRoomRequest(BaseModel):
     displayName: str = Field(..., min_length=1, max_length=40)
@@ -2521,6 +2528,75 @@ async def get_dilemmas_by_ids(ids: str, request: Request, language: str = "en"):
     return {"dilemmas": ordered}
 
 
+def _load_gamebook_chapters() -> dict[str, dict[str, Any]]:
+    """Load the physical gamebook's chapter -> dilemma mapping (TASK-291).
+
+    backend/data/gamebook_chapters.json is a generated file - the real,
+    hand-edited source of truth is book/chapters/registry.json, and
+    book/qr/generate_qr.py regenerates this file from it on every run (see
+    that script's sync_gamebook_chapters). It's committed here, not
+    gitignored, because book/'s own Typst pipeline is deliberately not part
+    of any deployment (see book/README.md) and this is what the deployed
+    backend actually reads at runtime - don't hand-edit it directly."""
+    global _gamebook_chapters_cache
+    if _gamebook_chapters_cache is not None:
+        return _gamebook_chapters_cache
+
+    candidates = (
+        Path(__file__).with_name("gamebook_chapters.json"),
+        Path(__file__).resolve().parent.parent / "data" / "gamebook_chapters.json",
+    )
+    chapters_path = next((path for path in candidates if path.exists()), None)
+    if chapters_path is None:
+        raise RuntimeError("Gamebook chapter catalog is unavailable")
+
+    with chapters_path.open(encoding="utf-8") as chapters_file:
+        raw_chapters = json.load(chapters_file)
+
+    for key, chapter in raw_chapters.items():
+        base_ids = chapter.get("dilemmaBaseIds")
+        if (
+            not isinstance(base_ids, list)
+            or not (PARTY_ROOM_MIN_DILEMMAS <= len(base_ids) <= PARTY_ROOM_MAX_DILEMMAS)
+            or any(not isinstance(base_id, str) or not base_id for base_id in base_ids)
+            or not chapter.get("soloSlug")
+            or not chapter.get("partySlug")
+        ):
+            raise RuntimeError(f"Gamebook chapter catalog entry '{key}' is invalid")
+
+    _gamebook_chapters_cache = raw_chapters
+    return _gamebook_chapters_cache
+
+
+def _resolve_gamebook_slug(slug: str) -> tuple[str, str, list[str]] | None:
+    """Resolve a printed QR slug (e.g. 'c1-solo') to its chapter key, mode
+    ('solo' or 'party'), and fixed ordered dilemma base ids - or None if the
+    slug matches no known chapter."""
+    for chapter_key, chapter in _load_gamebook_chapters().items():
+        if slug == chapter["soloSlug"]:
+            return chapter_key, "solo", chapter["dilemmaBaseIds"]
+        if slug == chapter["partySlug"]:
+            return chapter_key, "party", chapter["dilemmaBaseIds"]
+    return None
+
+
+@app.get("/book/chapters/{slug}")
+async def get_gamebook_chapter(slug: str, request: Request):
+    """Resolve a printed gamebook QR slug to a session mode and its fixed,
+    ordered dilemma set (TASK-291). Solo: the frontend fetches the actual
+    dilemma content itself via the existing /dilemmas/by-ids, exactly like a
+    Duel invitee is served the creator's set. Party: the frontend then calls
+    POST /party-rooms with this same slug as chapterSlug, which re-resolves
+    it server-side rather than trusting a client-supplied id list, so the
+    two QR codes of one chapter can never diverge from each other."""
+    resolved = _resolve_gamebook_slug(slug)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="Unknown gamebook chapter")
+    chapter_key, mode, dilemma_base_ids = resolved
+    _track_duel_event(request, "book_chapter_opened", {"chapter_key": chapter_key, "mode": mode})
+    return {"chapterKey": chapter_key, "mode": mode, "dilemmaBaseIds": dilemma_base_ids}
+
+
 def _load_daily_moral_crime_catalog() -> dict[str, Any]:
     """Load the immutable v1 Daily deck from the repository/deployment
     package. The deck is a versioned selection of the existing EN catalog,
@@ -3328,7 +3404,21 @@ async def create_party_room(create_request: CreatePartyRoomRequest, request: Req
     """Host creates a room (TASK-46). Anonymous-first, like every other core
     endpoint: only the existing X-Anonymous-User-Id identity is required."""
     anonymous_user_id = require_anonymous_user_id(request)
-    dilemma_base_ids = _pick_random_dilemma_base_ids(create_request.language, create_request.dilemmaCount)
+
+    chapter_key = None
+    if create_request.chapterSlug is not None:
+        # TASK-291: a printed gamebook QR always names its own chapter's
+        # party slug server-side - resolved here rather than trusting a
+        # client-supplied dilemma list, so the solo/party QR pair of one
+        # chapter can never open different dilemmas.
+        resolved = _resolve_gamebook_slug(create_request.chapterSlug)
+        if resolved is None:
+            raise HTTPException(status_code=404, detail="Unknown gamebook chapter")
+        chapter_key, mode, dilemma_base_ids = resolved
+        if mode != "party":
+            raise HTTPException(status_code=400, detail="This chapter slug opens a solo Evaluation, not a Party Room")
+    else:
+        dilemma_base_ids = _pick_random_dilemma_base_ids(create_request.language, create_request.dilemmaCount)
 
     now = int(time.time() * 1000)
     expiration_time = int(time.time()) + PARTY_ROOM_TTL_SECONDS
@@ -3336,27 +3426,30 @@ async def create_party_room(create_request: CreatePartyRoomRequest, request: Req
     for _ in range(10):
         candidate = _generate_room_code()
         try:
+            room_item = {
+                "roomCode": candidate,
+                "hostParticipantId": anonymous_user_id,
+                "status": "lobby",
+                "language": create_request.language,
+                "dilemmaBaseIds": dilemma_base_ids,
+                "currentRoundIndex": 0,
+                "phaseEndsAt": 0,
+                "hostAdvanceRequested": False,
+                "createdAt": now,
+                "expirationTime": expiration_time,
+                # TASK-270 follow-up: participantCount is kept on the
+                # room item so the hot polling/advance paths never need
+                # to Query every participant just to answer "how many" -
+                # see join_party_room. Per-round vote tallies (see
+                # _party_room_vote_tally_attr) need no initialization
+                # here: ADD creates each one at 0 the first time a vote
+                # touches it.
+                "participantCount": 1,
+            }
+            if chapter_key is not None:
+                room_item["chapterKey"] = chapter_key
             party_rooms_table.put_item(
-                Item={
-                    "roomCode": candidate,
-                    "hostParticipantId": anonymous_user_id,
-                    "status": "lobby",
-                    "language": create_request.language,
-                    "dilemmaBaseIds": dilemma_base_ids,
-                    "currentRoundIndex": 0,
-                    "phaseEndsAt": 0,
-                    "hostAdvanceRequested": False,
-                    "createdAt": now,
-                    "expirationTime": expiration_time,
-                    # TASK-270 follow-up: participantCount is kept on the
-                    # room item so the hot polling/advance paths never need
-                    # to Query every participant just to answer "how many" -
-                    # see join_party_room. Per-round vote tallies (see
-                    # _party_room_vote_tally_attr) need no initialization
-                    # here: ADD creates each one at 0 the first time a vote
-                    # touches it.
-                    "participantCount": 1,
-                },
+                Item=room_item,
                 ConditionExpression="attribute_not_exists(roomCode)",
             )
             room_code = candidate
@@ -3376,7 +3469,10 @@ async def create_party_room(create_request: CreatePartyRoomRequest, request: Req
         "votes": {},
         "expirationTime": expiration_time,
     })
-    _track_duel_event(request, "party_room_created", {"dilemma_count": len(dilemma_base_ids)})
+    track_data = {"dilemma_count": len(dilemma_base_ids)}
+    if chapter_key is not None:
+        track_data["chapter_key"] = chapter_key
+    _track_duel_event(request, "party_room_created", track_data)
     return {"roomCode": room_code, "participantId": anonymous_user_id, "status": "lobby"}
 
 

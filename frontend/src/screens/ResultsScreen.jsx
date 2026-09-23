@@ -22,7 +22,7 @@ const ResultsScreen = () => {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const auth = useAuth();
-  const { answers, dilemmasWithChoices } = location.state || { answers: [], dilemmasWithChoices: [] };
+  const { answers, dilemmasWithChoices, chapterKey } = location.state || { answers: [], dilemmasWithChoices: [] };
   const [aiAnalysis, setAiAnalysis] = useState('');
   const [archetype, setArchetype] = useState(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
@@ -70,8 +70,14 @@ const ResultsScreen = () => {
     if (!hasResults || resultTracked.current) return;
     resultTracked.current = true;
     trackEvent('result_viewed', {
-      mode: 'evaluation',
+      // TASK-291: a printed gamebook chapter's Solo Verdict lands here too
+      // (via BookChapterEntryScreen) - distinguishing its mode/chapter_key
+      // keeps it out of the main 'evaluation' activation funnel it isn't
+      // part of, instead of silently blending a 10-dilemma book session
+      // into the standard 5-dilemma test's numbers.
+      mode: chapterKey ? 'book_chapter' : 'evaluation',
       completed_dilemmas: answers.length,
+      ...(chapterKey ? { chapter_key: chapterKey } : {}),
       // TASK-221: exposure signal for the challenge-button copy experiment -
       // this fires slightly before the archetype (and therefore the button
       // itself) has loaded, so it is a small conservative overcount of
@@ -79,7 +85,7 @@ const ResultsScreen = () => {
       variant: challengeButtonVariant,
     });
     trackGoogleAnalyticsEvent('result_viewed');
-  }, [answers, hasResults, challengeButtonVariant]);
+  }, [answers, hasResults, challengeButtonVariant, chapterKey]);
 
   useEffect(() => {
     // Block browser back button

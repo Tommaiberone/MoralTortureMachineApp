@@ -15,20 +15,23 @@ reversed (white-on-black) panels below lean on that.
 
 ## Design
 
-Each chapter is a **Case File**: five dilemmas sharing one theme. The
+Each chapter is a **Case File**: ten dilemmas sharing one theme. The
 chapter opener prints two QR codes, not one:
 
 - **Solo Verdict** — opens a single-player Evaluation session with that
-  chapter's five dilemmas.
-- **Convene Tribunal** — creates a Party Room with the same five dilemmas,
+  chapter's ten dilemmas.
+- **Convene Tribunal** — creates a Party Room with the same ten dilemmas,
   for however many people are at the table. One person narrates by reading
   each Exhibit aloud and turning the page; everyone else follows on their
   own phone.
 
-Both codes open the *same* five dilemmas — only the QR scanned changes
-whether they're played alone or live with a group. Five dilemmas per
-chapter matches the app's own Party Room default
-(`PARTY_ROOM_DEFAULT_DILEMMAS = 5`).
+Both codes open the *same* ten dilemmas — only the QR scanned changes
+whether they're played alone or live with a group. Ten is a deliberate
+book-specific choice (`TASK-291`'s 2026-09-23 follow-up), not the app's own
+Party Room default (`PARTY_ROOM_DEFAULT_DILEMMAS` stays `5` for ordinary,
+non-book rooms - it falls within Party Room's existing `3-12`
+(`PARTY_ROOM_MIN_DILEMMAS`/`PARTY_ROOM_MAX_DILEMMAS`) range, so it needed no
+backend constant change, only a chapter-specific dilemma list).
 
 Each dilemma gets its own page: a title, a bordered image placeholder
 (no artwork exists yet), the dilemma text, and its two answers as
@@ -47,14 +50,21 @@ nothing earlier in the book did. Every chapter page's footer shows that
 chapter's title alongside the page number, so flipping through the middle
 of the book still tells you which Case File you're in.
 
-**Known gap, not yet built (`TASK-291`, High, To Do):** today neither
-Party Room creation nor solo Evaluation accepts a client-supplied,
-fixed list of dilemma ids — both flows pick dilemmas at random
-server-side. The QR codes in this repo are placeholders (`segno`-generated
-PNGs pointing at a URL the backend doesn't resolve to a fixed set yet).
-Scanning one today would not reliably reopen the exact five dilemmas
-printed on the page. Read `TASK-291` before treating this book as
-functional, not just print-ready.
+**`TASK-291` implemented:** `POST /party-rooms` accepts an optional
+`chapterSlug` (e.g. `"c1-party"`), which bypasses random selection and uses
+that chapter's fixed, ordered `dilemmaBaseIds` instead; `GET
+/book/chapters/{slug}` resolves either QR's slug to its chapter key, mode
+(`solo`/`party`), and that same ordered id list, so the frontend's
+`/book/:slug` route can either fetch the dilemmas by id (solo, reusing the
+existing `/dilemmas/by-ids`, same as a Duel invitee) or hand the slug to
+`POST /party-rooms` (party). The mapping's canonical, *deployed* copy is
+`backend/data/gamebook_chapters.json` — `book/` itself is intentionally not
+part of any deployment (see below), so the backend cannot read this
+directory's `registry.json` at runtime; `book/qr/generate_qr.py` instead
+*regenerates* that file from `registry.json` before every QR (re)generation,
+so `registry.json` stays the one place a human edits a chapter's slugs or
+dilemma ids (`TASK-291` AC#3). Backend test coverage:
+`backend/tests/test_party_room.py`'s `GamebookChapterTestCase`.
 
 ## Why Typst, not the usual HTML/CSS+headless-browser route
 
@@ -98,8 +108,11 @@ Typst files use.
 ## Build
 
 ```bash
-# 1. Generate every QR the book needs (reads book/chapters/registry.json
-#    plus the fixed non-chapter slugs in generate_qr.py's EXTRA_SLUGS)
+# 1. Generate every QR the book needs (first regenerates
+#    backend/data/gamebook_chapters.json from book/chapters/registry.json,
+#    then reads the registry for chapter -> solo/party slugs plus the fixed
+#    non-chapter slugs in generate_qr.py's EXTRA_SLUGS) - commit the
+#    regenerated gamebook_chapters.json alongside any registry.json change
 book/.venv/Scripts/python.exe book/qr/generate_qr.py
 
 # 2. Compile the whole book - MUST pass --root as the repo root so
@@ -141,22 +154,27 @@ since the label lookup needs the whole book compiled together).
 - `typst/colophon.typ` — the edition/copyright page (right after the title
   page): honest about what's still a placeholder (no real ISBN exists
   until there's an actual print run, `TASK-281`) rather than inventing one.
-- `chapters/registry.json` — **the single source of truth** for every
-  chapter: title, theme intro, stamp text, solo/party QR slugs, and its
-  five dilemmas as `{id, title}` (the real dilemma `_id` from
+- `chapters/registry.json` — **the single source of truth**, full stop, for
+  every chapter: title, theme intro, stamp text, solo/party QR slugs, and
+  its ten dilemmas as `{id, title}` (the real dilemma `_id` from
   `dilemmas_en.json` plus the book's own title for that Exhibit's page —
   `dilemmas_en.json` has no title field, so this is book-only content, not
   duplicated app data). A chapter file is just
   `#chapter-page(key: "c1") <chapter-c1>` — the label is what lets the
   table of contents resolve that chapter's real page number (see below).
-  In spirit, this is the same shape `TASK-291`'s eventual backend mapping
-  should share, so the book and the backend can't define two different
-  "chapter c1" sets.
-- `qr/generate_qr.py` — reads the registry and generates every chapter's
-  QR pair plus any fixed non-chapter slugs (`EXTRA_SLUGS`, e.g. the
-  closing page's) in one run; pass specific slugs as arguments to
-  regenerate only those. Generated PNGs are gitignored — regenerate them,
-  don't hand-edit or commit them.
+  `backend/data/gamebook_chapters.json` (the backend's own deployed copy of
+  just the slugs/dilemma-id-order shape, `TASK-291`) is *generated from
+  this file* by `qr/generate_qr.py` on every run — never hand-edit it, edit
+  `registry.json` and regenerate.
+- `qr/generate_qr.py` — regenerates `backend/data/gamebook_chapters.json`
+  from `registry.json`, then reads the registry and generates every
+  chapter's QR pair plus any fixed non-chapter slugs (`EXTRA_SLUGS`, e.g.
+  the closing page's) in one run; pass specific slugs as arguments to
+  regenerate only the QR PNGs (the chapters-file regeneration still runs
+  first regardless). Generated QR PNGs are gitignored — regenerate them,
+  don't hand-edit or commit them. `gamebook_chapters.json` is the opposite:
+  regenerate it too, but *do* commit it — the deployed backend reads it
+  directly and has no build step of its own to regenerate it first.
 
 ## Bleed
 
@@ -181,7 +199,6 @@ exactly the bug this went through before landing on `extra-top`.
 
 ## Known follow-ups
 
-- `TASK-291` (above) — the QR codes don't functionally work yet.
 - Fonts are Typst's bundled OFL fonts (Libertinus Serif, DejaVu Sans Mono) —
   deliberately not a Windows-supplied commercial font, since KDP requires
   every font to be embeddable and most commercial Windows fonts restrict

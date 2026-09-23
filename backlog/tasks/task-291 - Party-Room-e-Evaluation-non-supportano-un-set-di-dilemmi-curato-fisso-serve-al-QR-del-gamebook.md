@@ -3,10 +3,10 @@ id: TASK-291
 title: >-
   Party Room e Evaluation non supportano un set di dilemmi curato/fisso (serve
   al QR del gamebook)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-09 13:45'
-updated_date: '2026-09-09 13:45'
+updated_date: '2026-09-23 09:39'
 labels: []
 dependencies: []
 priority: high
@@ -22,8 +22,14 @@ Scoperto scrivendo il mini-libro di TASK-292: il design scelto per il gamebook f
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 CreatePartyRoomRequest guadagna un modo per specificare un set fisso di dilemma base id (es. via uno slug di capitolo lato server, o una lista esplicita) che bypassa _pick_random_dilemma_base_ids quando presente, senza rompere la creazione random esistente per le party room ordinarie
-- [ ] #2 Esiste un modo equivalente per avviare una sessione Evaluation solitaria con lo stesso set fisso e ordinato di dilemmi, invece del flusso get_dilemma a estrazione casuale
-- [ ] #3 Il mapping slug-capitolo -> lista di dilemma base id vive in un posto solo, condiviso tra generazione del QR (book/) e backend, cosi' i due non possono andare fuori sincro
-- [ ] #4 Verificato con un test end-to-end che scansionare il QR solo e quello party dello stesso capitolo producano entrambi la stessa identica sequenza di 5 dilemmi
+- [x] #1 CreatePartyRoomRequest guadagna un modo per specificare un set fisso di dilemma base id (es. via uno slug di capitolo lato server, o una lista esplicita) che bypassa _pick_random_dilemma_base_ids quando presente, senza rompere la creazione random esistente per le party room ordinarie
+- [x] #2 Esiste un modo equivalente per avviare una sessione Evaluation solitaria con lo stesso set fisso e ordinato di dilemmi, invece del flusso get_dilemma a estrazione casuale
+- [x] #3 Il mapping slug-capitolo -> lista di dilemma base id vive in un posto solo, condiviso tra generazione del QR (book/) e backend, cosi' i due non possono andare fuori sincro
+- [x] #4 Verificato con un test end-to-end che scansionare il QR solo e quello party dello stesso capitolo producano entrambi la stessa identica sequenza di 5 dilemmi
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implementato con dimensione capitolo cambiata da 5 a 10 dilemmi (richiesta esplicita dell'utente, 2026-09-23, non modifica di questo task ma contestuale) - i criteri di accettazione sopra dicono ancora 5/cinque nel testo originale, il comportamento reale e i test coprono 10. Vedi ADR-151 (decision-1) per il dettaglio completo: backend/data/gamebook_chapters.json e' generato da book/chapters/registry.json via book/qr/generate_qr.py (mai hand-edited), GET /book/chapters/{slug} + chapterSlug su POST /party-rooms, frontend BookChapterEntryScreen.jsx + PartyRoomHomeScreen ?chapterSlug=. Restano fuori scope di questo task: la stesura dei restanti 8 capitoli/80 dilemmi (fase successiva concordata con l'utente) e TASK-310 (deduplicazione del pattern UI 'sequenza fissa di dilemmi', ora triplicato).
+<!-- SECTION:NOTES:END -->

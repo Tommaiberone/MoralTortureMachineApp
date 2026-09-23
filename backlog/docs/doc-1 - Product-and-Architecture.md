@@ -475,7 +475,7 @@ dev table, or `/dev` SSM hierarchy.
   account-deletion cascade or the retention-sweep scan (`TASK-284` tracks
   deciding that question for both tables together, not just this new one).
 
-- **`book/` (`TASK-287`/`TASK-292`/`TASK-293`/`TASK-294`/`TASK-295`/`TASK-297`/`TASK-298`/`TASK-299`)** is a standalone
+- **`book/` (`TASK-287`/`TASK-291`/`TASK-292`/`TASK-293`/`TASK-294`/`TASK-295`/`TASK-297`/`TASK-298`/`TASK-299`)** is a standalone
   local Typst print pipeline for the physical gamebook's "Case File"
   content, living at the repo root alongside `frontend`/`backend`/`backlog`
   - not part of the shipped web/native app, not wired into
@@ -490,23 +490,31 @@ dev table, or `/dev` SSM hierarchy.
   against KDP's published help pages, not memory - re-check it before a
   real print run in case Amazon's numbers moved.
 
-  Each chapter is a **Case File**: five dilemmas sharing one theme, opened
+  Each chapter is a **Case File**: ten dilemmas sharing one theme, opened
   by two QR codes printed side by side, not one - "Solo Verdict" (a
-  single-player Evaluation session with those five dilemmas) and "Convene
-  Tribunal" (a Party Room with the same five, for a table of people; one
+  single-player Evaluation session with those ten dilemmas) and "Convene
+  Tribunal" (a Party Room with the same ten, for a table of people; one
   narrator reads each Exhibit aloud and turns the page, everyone else
-  follows on their own phone). Both codes open the *same* five dilemmas;
-  five was chosen to match the app's own `PARTY_ROOM_DEFAULT_DILEMMAS`.
-  `book/chapters/registry.json` is the single source of truth per chapter
-  (title, theme intro, stamp text, solo/party QR slugs, the five real
-  dilemma `_id`s) - a chapter file is just
+  follows on their own phone). Both codes open the *same* ten dilemmas.
+  Ten is a book-specific choice (`TASK-291`'s 2026-09-23 follow-up,
+  superseding the original five); it needed no Party Room backend-constant
+  change since it already fits the existing `PARTY_ROOM_MIN_DILEMMAS`/
+  `PARTY_ROOM_MAX_DILEMMAS` (3-12) range - `PARTY_ROOM_DEFAULT_DILEMMAS`
+  itself stays `5` for ordinary, non-book rooms.
+  `book/chapters/registry.json` is the single source of truth for the
+  book's own per-chapter content (title, theme intro, stamp text, solo/party
+  QR slugs, the ten real dilemma `_id`s) - a chapter file is just
   `#chapter-page(key: "c1") <chapter-c1>`; `typst/template.typ`'s
   `chapter-page(key:)` reads that entry, and its `find-dilemma(id)` reads
   `backend/data/dilemmas_en.json` at compile time via Typst's `json()` -
   chapters reference real dilemma `_id`s, never retyped text, so the book
-  and the app's live content can't drift apart. In spirit, the registry is
-  the shape `TASK-291`'s eventual backend mapping should share, so the
-  book and the backend can't define two different "chapter c1" sets.
+  and the app's live content can't drift apart. `registry.json` is also now
+  the single hand-edited source for `backend/data/gamebook_chapters.json`
+  (the backend's own deployed copy of just the slugs/dilemma-id-order shape,
+  `TASK-291`) - `qr/generate_qr.py`'s `sync_gamebook_chapters()`
+  regenerates that file from `registry.json` on every run, since `book/`
+  itself is never deployed (see below) and the backend cannot read
+  `registry.json` directly at runtime.
   `qr/generate_qr.py` reads the registry and (re)generates every chapter's
   QR pair plus any fixed non-chapter slugs (`EXTRA_SLUGS`, e.g. the
   closing page's `closing`) in one run; generated PNGs and the compiled
@@ -588,15 +596,54 @@ dev table, or `/dev` SSM hierarchy.
   flipping mid-book tell which Case File they're in; front/back-matter
   pages call it with no label.
 
-  **Not yet functional** (`TASK-291`, High, To Do): the QR codes are
-  placeholders. Neither `create_party_room` nor solo Evaluation's
-  `get_dilemma` currently accepts a caller-supplied, fixed list of dilemma
-  ids - `create_party_room` always calls `_pick_random_dilemma_base_ids`
-  (`random.sample` over the full pool), and `get_dilemma` returns one
-  random dilemma at a time, excluding only what's already been seen. A
-  printed chapter's QR cannot reliably reopen its own five dilemmas until
-  both flows gain a way to start from a fixed, ordered set instead of
-  random selection.
+  **`TASK-291` implemented:** the printed QR codes are now functional. The
+  backend's canonical mapping is `backend/data/gamebook_chapters.json`
+  (`{chapterKey: {number, soloSlug, partySlug, dilemmaBaseIds}}`), loaded
+  once and cached by `_load_gamebook_chapters()`
+  (`backend_fastapi.py`, same lazy-load-and-validate pattern as
+  `_load_daily_moral_crime_catalog()`), and resolved by
+  `_resolve_gamebook_slug(slug)`. `GET /book/chapters/{slug}` is the QR's
+  landing endpoint: it resolves a slug to `{chapterKey, mode, dilemmaBaseIds}`
+  with no auth required (anonymous-first, like every other core read).
+  `CreatePartyRoomRequest` gained an optional `chapterSlug`; when present,
+  `create_party_room` resolves it via the same function, rejects a solo
+  slug with 400 and an unknown slug with 404, and uses the chapter's fixed,
+  ordered `dilemmaBaseIds` directly (storing `chapterKey` on the room item)
+  instead of calling `_pick_random_dilemma_base_ids` - `dilemmaCount` is
+  ignored whenever `chapterSlug` is set, and ordinary random room creation
+  is completely untouched when it's absent. Solo Evaluation gained no new
+  backend endpoint: the frontend fetches the resolved dilemma ids' actual
+  content via the existing `/dilemmas/by-ids` (the same endpoint a Duel
+  invitee already uses), a deliberate reuse rather than a second dilemma-set
+  boot path. `frontend/src/screens/BookChapterEntryScreen.jsx` (route
+  `/book/:slug`) is the QR's actual landing page: it calls
+  `GET /book/chapters/:slug`, and for `mode: "party"` redirects to
+  `/party?chapterSlug=<slug>` (`PartyRoomHomeScreen` reads that query param,
+  forces the create-only form, hides the join tab, and threads `chapterSlug`
+  into its existing `POST /party-rooms` call - no new party-creation UI was
+  built); for `mode: "solo"` it fetches the dilemmas by id and plays them
+  through a fixed-order answering flow modeled on
+  `ChallengeLandingScreen.jsx`'s existing pattern (reusing its CSS file
+  directly), ending at `/results` with the same `{answers,
+  dilemmasWithChoices}` route-state contract `EvaluationDilemmasScreen.jsx`
+  already uses, plus `chapterKey` - which `ResultsScreen.jsx`'s
+  `result_viewed` analytics event now reads to report `mode: "book_chapter"`
+  instead of `"evaluation"` for these sessions, so a 10-dilemma book session
+  can't silently blend into the standard 5-dilemma test's activation-funnel
+  numbers. `.github/workflows/deploy.yml`'s Lambda package step now also
+  copies `data/gamebook_chapters.json`, the same way it already does for
+  `daily_moral_crime_v1.json`. Backend test coverage:
+  `backend/tests/test_party_room.py`'s `GamebookChapterTestCase`, including
+  AC#4's exact requirement (`c1-solo` and `c1-party` resolve to the
+  identical ordered id list).
+
+  This repurposes an existing, three-times-duplicated "fixed ordered
+  dilemma sequence" UI pattern (`EvaluationDilemmasScreen`,
+  `ChallengeLandingScreen`, now `BookChapterEntryScreen`) rather than
+  extracting a shared component - flagged as `TASK-310` (To Do, low) per
+  the reuse-over-duplicate rule, deliberately not done inside this task
+  since the other two are stable, experiment-instrumented production
+  screens a speculative refactor could regress for no functional gain here.
 
   Adding this table initially brought the account's total `PROVISIONED`
   DynamoDB capacity to exactly 25/25 RCU and 25/25 WCU - the entire shared

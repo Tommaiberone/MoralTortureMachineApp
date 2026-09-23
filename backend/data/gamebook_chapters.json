@@ -1,0 +1,36 @@
+{
+  "c1": {
+    "number": 1,
+    "soloSlug": "c1-solo",
+    "partySlug": "c1-party",
+    "dilemmaBaseIds": [
+      "ff17a739213221e7f8c043a2",
+      "d79f5805acda6ce3c4e373c3",
+      "49b0bdaae2f53e5ad3da9878",
+      "d4c00488a99cacdd2a22b76a",
+      "266cd2a23b20baf1bb788df4",
+      "bc392a13784ced2e4af65dec",
+      "e1491c15bfc474ea73af8e36",
+      "cf396aad73131330ff8527c4",
+      "7914c65cd8f808b3409da665",
+      "48b75d176e07e164e97da5bb"
+    ]
+  },
+  "c2": {
+    "number": 2,
+    "soloSlug": "c2-solo",
+    "partySlug": "c2-party",
+    "dilemmaBaseIds": [
+      "72328ca1590ea2ba93c532c1",
+      "d70e41cc1f5118fc2895864c",
+      "de8dea47c292ec5a795c40b0",
+      "74d8775b1ba112e4c610f752",
+      "bfb1c4aa421707d88db2cafd",
+      "40c0ba87857fc7399db2d6fc",
+      "5abc86f8ccb2e86b0b5cc0e8",
+      "56a824f08a3aa6ed34ee6dc1",
+      "fdb443319692f34c68e8dcb7",
+      "3649f97c2cbeea5d81df8a8d"
+    ]
+  }
+}

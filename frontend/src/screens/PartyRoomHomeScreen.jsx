@@ -1,6 +1,6 @@
 // screens/PartyRoomHomeScreen.jsx
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import { getAnonymousUserId, getApiHeaders } from '../utils/session';
@@ -17,6 +17,12 @@ const PARTY_CREATE_COPY_VARIANTS = ['baseline', 'dramatic'];
 const PartyRoomHomeScreen = () => {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
+  const [searchParams] = useSearchParams();
+  // TASK-291: a printed gamebook QR's "Convene Tribunal" lands here via
+  // BookChapterEntryScreen's redirect to /party?chapterSlug=... - forcing
+  // create-only (a chapter room is always freshly created, never joined by
+  // code) and passing the slug straight through to POST /party-rooms.
+  const chapterSlug = searchParams.get('chapterSlug');
   const [mode, setMode] = useState('create');
   const [displayName, setDisplayName] = useState('');
   const [joinCode, setJoinCode] = useState('');
@@ -28,8 +34,8 @@ const PartyRoomHomeScreen = () => {
   useEffect(() => {
     if (viewTracked.current) return;
     viewTracked.current = true;
-    trackEvent('party_home_viewed', { variant: partyCreateCopyVariant });
-  }, [partyCreateCopyVariant]);
+    trackEvent('party_home_viewed', { variant: partyCreateCopyVariant, chapter_slug: chapterSlug || undefined });
+  }, [partyCreateCopyVariant, chapterSlug]);
 
   const handleCreate = async (event) => {
     event.preventDefault();
@@ -40,11 +46,15 @@ const PartyRoomHomeScreen = () => {
       const response = await fetch(`${API_URL}/party-rooms`, {
         method: 'POST',
         headers: getApiHeaders(),
-        body: JSON.stringify({ displayName: displayName.trim(), language: i18n.language }),
+        body: JSON.stringify({
+          displayName: displayName.trim(),
+          language: i18n.language,
+          ...(chapterSlug ? { chapterSlug } : {}),
+        }),
       });
       if (!response.ok) throw new Error(`create failed: ${response.status}`);
       const data = await response.json();
-      trackEvent('party_room_create_clicked', { variant: partyCreateCopyVariant });
+      trackEvent('party_room_create_clicked', { variant: partyCreateCopyVariant, chapter_slug: chapterSlug || undefined });
       navigate(`/party/${data.roomCode}`);
     } catch (fetchError) {
       console.error('Error creating party room:', fetchError);
@@ -64,24 +74,26 @@ const PartyRoomHomeScreen = () => {
   return (
     <main className="screen-container party-home-screen">
       <h1 className="screen-title-large">{t('party.homeTitle')}</h1>
-      <p className="screen-subtitle">{t('party.homeSubtitle')}</p>
+      <p className="screen-subtitle">{chapterSlug ? t('party.chapterSubtitle') : t('party.homeSubtitle')}</p>
 
-      <div className="party-home-tabs">
-        <button
-          type="button"
-          className={`party-home-tab ${mode === 'create' ? 'active' : ''}`}
-          onClick={() => setMode('create')}
-        >
-          {t('party.createTab')}
-        </button>
-        <button
-          type="button"
-          className={`party-home-tab ${mode === 'join' ? 'active' : ''}`}
-          onClick={() => setMode('join')}
-        >
-          {t('party.joinTab')}
-        </button>
-      </div>
+      {!chapterSlug && (
+        <div className="party-home-tabs">
+          <button
+            type="button"
+            className={`party-home-tab ${mode === 'create' ? 'active' : ''}`}
+            onClick={() => setMode('create')}
+          >
+            {t('party.createTab')}
+          </button>
+          <button
+            type="button"
+            className={`party-home-tab ${mode === 'join' ? 'active' : ''}`}
+            onClick={() => setMode('join')}
+          >
+            {t('party.joinTab')}
+          </button>
+        </div>
+      )}
 
       {mode === 'create' ? (
         <form className="party-home-form" onSubmit={handleCreate}>
