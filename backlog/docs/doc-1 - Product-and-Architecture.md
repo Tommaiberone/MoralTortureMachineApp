@@ -637,6 +637,19 @@ dev table, or `/dev` SSM hierarchy.
   AC#4's exact requirement (`c1-solo` and `c1-party` resolve to the
   identical ordered id list).
 
+  **`TASK-311` implemented:** in book mode the dilemma's prose is already
+  printed on the page, so the app only shows the two answer options, not
+  the dilemma text - `BookChapterEntryScreen.jsx` never renders
+  `currentDilemma.dilemma` at all. `PartyRoomScreen.jsx` conditionally
+  suppresses `room.currentDilemma.dilemma` in both the `question` and
+  `reveal` phases, gated on `room.chapterKey` being present, so ordinary
+  (non-book) Party Rooms are completely unaffected. `get_party_room`'s
+  response gained `chapterKey` (mirrored from the room item, `null` for
+  ordinary rooms) specifically so the frontend can make that distinction
+  without guessing. Test coverage:
+  `test_get_party_room_exposes_chapter_key_for_the_frontend_to_hide_dilemma_text`
+  and `test_get_party_room_has_no_chapter_key_for_an_ordinary_room`.
+
   This repurposes an existing, three-times-duplicated "fixed ordered
   dilemma sequence" UI pattern (`EvaluationDilemmasScreen`,
   `ChallengeLandingScreen`, now `BookChapterEntryScreen`) rather than

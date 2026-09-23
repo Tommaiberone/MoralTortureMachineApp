@@ -684,6 +684,21 @@ class GamebookChapterTestCase(_PartyRoomFixtureMixin, unittest.TestCase):
         self.assertEqual(len(stored["dilemmaBaseIds"]), 4)
         self.assertNotIn("chapterKey", stored)
 
+    def test_get_party_room_exposes_chapter_key_for_the_frontend_to_hide_dilemma_text(self):
+        # TASK-291 follow-up: PartyRoomScreen.jsx suppresses room.currentDilemma.dilemma
+        # (already printed in the book) exactly when room.chapterKey is present.
+        room = asyncio.run(create_party_room(
+            CreatePartyRoomRequest(displayName="Host", chapterSlug="c1-party"),
+            request_with_headers({"X-Anonymous-User-Id": "host-1"}),
+        ))
+        state = self._get_state(room["roomCode"], "host-1")
+        self.assertEqual(state["chapterKey"], "c1")
+
+    def test_get_party_room_has_no_chapter_key_for_an_ordinary_room(self):
+        room = self._create_room()
+        state = self._get_state(room["roomCode"], "host-1")
+        self.assertIsNone(state["chapterKey"])
+
 
 if __name__ == "__main__":
     unittest.main()

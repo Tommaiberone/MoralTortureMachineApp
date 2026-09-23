@@ -220,8 +220,11 @@ const BookChapterEntryScreen = () => {
     <main className="challenge-screen">
       <SEO title="Moral Torture Machine — The Gamebook" noindex />
       <p className="challenge-progress">{currentIndex + 1} / {dilemmas.length}</p>
+      {/* TASK-291 follow-up: no dilemma text here on purpose - the physical
+          book already carries it (Exhibit N on the printed page), so this
+          screen is only ever the two options plus voting/reveal, not a
+          second copy of the case. */}
       <div className="card-default challenge-dilemma-card">
-        <p className="text-box-default challenge-dilemma-text">{currentDilemma.dilemma}</p>
         {!choiceMade ? (
           <div className="evaluation-response-buttons">
             <button className="btn-yes" onClick={() => handleChoice('first')} disabled={voting}>{currentDilemma.firstAnswer}</button>

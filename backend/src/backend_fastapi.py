@@ -3882,6 +3882,12 @@ async def get_party_room(room_code: str, request: Request, language: str = "en")
         "hasJoined": caller is not None,
         "participantCount": room.get("participantCount", len(participants)),
         "dilemmaCount": len(room["dilemmaBaseIds"]),
+        # TASK-291 follow-up: a room created from a printed gamebook chapter
+        # (see create_party_room's chapterSlug) - the frontend uses this to
+        # suppress the dilemma text during play, since the physical page
+        # already carries it and re-printing it on screen is redundant. Only
+        # present at all for chapter-sourced rooms; absent/None otherwise.
+        "chapterKey": room.get("chapterKey"),
         "currentRoundIndex": room["currentRoundIndex"],
         "phaseEndsAt": room["phaseEndsAt"] or None,
         "participants": [

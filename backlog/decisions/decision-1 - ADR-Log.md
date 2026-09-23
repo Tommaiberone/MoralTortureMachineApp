@@ -6171,6 +6171,51 @@ per the user's own phasing ("code first, book-writing after").
   are unchanged - the ten-dilemma chapter size is scoped to the gamebook
   only, not a change to the app's own short-test/Party-Room defaults.
 
+### ADR-152 — `TASK-311` implemented: book-mode sessions show only the two answer options, never the dilemma text (user request, 2026-09-23)
+
+Context: right after `ADR-151` shipped a functional gamebook QR flow, the
+user pointed out the app was still displaying the full dilemma prose during
+a book-triggered session - redundant, since the reader already has it
+printed in front of them (the whole point of `book/typst/instructions.typ`'s
+"read each Exhibit... the book carries the full case either way" framing).
+The fix had to be scoped precisely: ordinary (non-book) Solo Evaluation,
+Duel, and Party Room sessions have no printed page to fall back on, so they
+must keep showing the dilemma text exactly as before.
+
+Decision: `BookChapterEntryScreen.jsx` (Solo Verdict) simply never renders
+`currentDilemma.dilemma` - every session reaching that screen is book-mode
+by construction, so no conditional was needed. `PartyRoomScreen.jsx`
+(Convene Tribunal, which is also the *same* component ordinary Party Rooms
+use) needed a runtime signal to tell the two cases apart: `get_party_room`'s
+response gained a `chapterKey` field (mirrored straight from the room
+item `create_party_room` already started setting for chapter-sourced rooms
+in `TASK-291`, but had not previously exposed to callers), `null` for a
+room created the ordinary random way. `PartyRoomScreen.jsx`'s `question` and
+`reveal` phases both gate their dilemma-text `<p>` on `!room.chapterKey`,
+leaving every other element (progress, answer buttons, tease, pie chart,
+vote split, participant list) untouched in both modes. Chose a frontend
+conditional over having the backend omit `currentDilemma.dilemma` entirely
+for chapter rooms, since the text isn't sensitive (`/dilemmas/by-ids` and
+`/get-dilemma` already serve it to anyone) and keeping the API shape uniform
+was simpler than a second response contract.
+
+Verified: two new tests
+(`test_get_party_room_exposes_chapter_key_for_the_frontend_to_hide_dilemma_text`,
+`test_get_party_room_has_no_chapter_key_for_an_ordinary_room`) plus the full
+`test_party_room.py` suite (34 tests), backend `py_compile`, and frontend
+`pnpm lint`/`pnpm build:prod`, all passing.
+
+### Consequences
+
+- A Party Room's frontend behavior now branches on `chapterKey`, the first
+  such branch in `PartyRoomScreen.jsx` - a future gamebook-specific Party
+  Room tweak has a precedent to extend rather than a new mechanism to invent.
+- This task was implemented before a matching Backlog task existed, contrary
+  to `CLAUDE.md`'s mandatory pre-task protocol - `TASK-311` was created and
+  moved through the status lifecycle immediately afterward, with the
+  completed work mapped onto its acceptance criteria rather than skipped
+  silently.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

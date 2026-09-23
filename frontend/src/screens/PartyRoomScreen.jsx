@@ -406,7 +406,11 @@ const PartyRoomScreen = () => {
         <p className="screen-subtitle">
           {t('party.roundProgress', { current: room.currentRoundIndex + 1, total: room.dilemmaCount })}
         </p>
-        <p className="text-box-default">{room.currentDilemma.dilemma}</p>
+        {/* TASK-291 follow-up: a chapter-sourced room's dilemma text is
+            already printed in the book - the narrator reads it aloud, so
+            repeating it here would just be redundant, not a fallback for
+            anyone who can't see the page. */}
+        {!room.chapterKey && <p className="text-box-default">{room.currentDilemma.dilemma}</p>}
 
         {room.hasVotedThisRound ? (
           <div className="party-room-waiting">
@@ -465,7 +469,9 @@ const PartyRoomScreen = () => {
         <p className="screen-subtitle">
           {t('party.roundProgress', { current: room.currentRoundIndex + 1, total: room.dilemmaCount })}
         </p>
-        {room.currentDilemma && <p className="text-box-default party-reveal-dilemma">{room.currentDilemma.dilemma}</p>}
+        {room.currentDilemma && !room.chapterKey && (
+          <p className="text-box-default party-reveal-dilemma">{room.currentDilemma.dilemma}</p>
+        )}
 
         <h2 className="screen-title">{t(splitFlavorKey(result.firstVotes, result.secondVotes))}</h2>
         {isMostDividedSoFar && <p className="party-reveal-badge">{t('party.mostDividedSoFar')}</p>}
