@@ -16,9 +16,9 @@
   page-count: 24,
   band: (kicker: "Intake Protocol", title: "How to Open a Case File"),
 )[
-  Every chapter in this dossier is a *Case File*: five linked dilemmas,
+  Every chapter in this dossier is a *Case File*: ten linked dilemmas,
   one theme, one moment where the file is opened. Nothing in it changes
-  depending on how you open it - the same five dilemmas are waiting either
+  depending on how you open it - the same ten dilemmas are waiting either
   way. What changes is who is in the room with you.
 
   #v(1.1em)
@@ -27,7 +27,7 @@
     columns: (1fr, 1fr),
     column-gutter: 1.2em,
     procedure-panel("PROCEDURE A", "Solo Verdict")[
-      Scan the left code. You will answer the five dilemmas on your own,
+      Scan the left code. You will answer the ten dilemmas on your own,
       at your own pace, and receive your verdict privately when you
       finish. Read each Exhibit printed below before or after you answer
       in the app - the book carries the full case either way.
@@ -47,8 +47,8 @@
   #line(length: 100%, stroke: 0.3pt)
   #v(1em)
 
-  A code only ever opens *its own* Case File - the five dilemmas printed
-  under it, never a different five. Once a Tribunal delivers its verdict
+  A code only ever opens *its own* Case File - the ten dilemmas printed
+  under it, never a different ten. Once a Tribunal delivers its verdict
   under protocol #redacted(width: 3.5em), the room cannot be reopened -
   scan the code again for a fresh case elsewhere in the file.
 ]
