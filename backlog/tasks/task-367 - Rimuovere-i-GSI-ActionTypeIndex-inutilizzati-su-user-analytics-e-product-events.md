@@ -3,10 +3,10 @@ id: TASK-367
 title: >-
   Rimuovere i GSI ActionTypeIndex inutilizzati su user-analytics e
   product-events
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-09-30 12:43'
-updated_date: '2026-09-30 13:17'
+updated_date: '2026-09-30 13:36'
 labels:
   - cost
   - aws
@@ -34,4 +34,6 @@ Misura 2026-09-30 (TASK-365): a settembre ActionTypeIndex ha avuto 0 letture su 
 
 <!-- SECTION:NOTES:BEGIN -->
 Nessun chiamante di ActionTypeIndex in backend/src, scripts, .claude, .github (grep sull'intero repo): solo l'esempio CLI in ANALYTICS_GUIDE.md, ora riscritto su DayIndex. Rimossi i due GSI e l'attributo actionType dalle definizioni di user_analytics e product_events (non era chiave di nient'altro). terraform validate ok. ADR-155.
+
+Verificato live dopo il deploy 36720626625 (success): user-analytics ha solo DayIndex, product-events AnonymousUserIndex + DayIndex, entrambe ACTIVE.
 <!-- SECTION:NOTES:END -->

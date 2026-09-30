@@ -6324,6 +6324,56 @@ Heavy identities still dominate their own shard, so the gain at today's
 volume is 3-4x rather than 16x; it grows with traffic, which is where it
 matters. The 400KB ceiling moves out by roughly 16x.
 
+### ADR-156 — `analytics-optimize` run of 2026-09-30: completion and Duel gates pass, share and D7 do not, new users falling for two weeks, no A/B winner by the reference rule (`TASK-223`)
+
+Context: the user asked for an analytics analysis. Same method as
+`ADR-145`/`146`: full scan through `mtm-analytics-readonly` (37,442 legacy
+and 25,534 product rows), `build_analytics_overview` and
+`_retention_rates_from_identity_active_days` reused unmodified; 30-day
+window 2026-08-31 to 2026-09-30, plus full history for retention by
+first-touch mode.
+
+Gates (30 days, all platforms):
+
+- Short-test completion 468/571 = 82.0% (gate >=60%): passes. Android
+  53/87 = 60.9%, up from 44.9% on 09-14 but still far below web's 85.7%
+  (z = -5.5); noted on `TASK-306`.
+- Result-to-share 46/464 = 9.9% (gate >=15%): fails, slightly worse than
+  11.06% on 09-14.
+- Duel open-to-complete 20/58 = 34.5% (gate >=25%): passes; the main loss
+  is landing to join (39.7%).
+- Invitees creating another challenge: 0/23, insufficient sample (0/50 over
+  full history in `ADR-146`).
+- D7 retention 6/783 = 0.8% (gate 12-15%): fails. By first-touch mode over
+  full history: solo 0.4% (7/1944), party 2.8% (3/107), Duel invitee 0.0%
+  (0/123, D1 13.5%). Daily Moral Crime: 173 of 190 voters voted on a single
+  day; 14/154 voted again within 7 days (noted on `TASK-275`).
+
+A/B tests (two-proportion z against the most-exposed variant, per the
+skill): `homeModeCopy` direct vs hook z = -1.55; `challengeButtonCopy`
+direct vs rival z = 1.05 and baseline vs rival z = -1.76; `partyCreateCopy`
+baseline vs dramatic z = -0.34; `authPromptCopy` still under sample. No
+winner by the rule. `challengeButtonCopy` direct (21.3%) vs the literal
+baseline copy (9.4%) reads z = 2.73, which survives a Bonferroni correction
+for its three pairwise comparisons; reported to the user as a decision, not
+acted on.
+
+Other findings: new identities per week fell from 279 (week of 09-07) to
+212 and 154, entirely in referrer-less web traffic (144 -> 89), while search
+(~20/week) and Android (~22/week) held; distinct weekly actives track new
+identities almost one to one, so traffic is acquisition-driven. Daily Moral
+Crime has the highest share rate of any surface (78/187 = 41.7% of
+revealers vs 9.9% for solo results), and Party hosts rematch often (28
+rematches for 24 started rooms). The gamebook teaser (since 09-08) converts
+25 of 422 viewers (5.9%) to the waitlist; the signup event is counted twice
+(`TASK-369`).
+
+Decision: no code changed. Existing escalations stand (`TASK-58`/`83` in
+Open Points; `TASK-273` in standby per `ADR-122`). Created `TASK-368`
+(Open Points, Party Room capacity before the gamebook launch, from the same
+session's capacity estimate) and `TASK-369` (Backlog, duplicate signup
+event).
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

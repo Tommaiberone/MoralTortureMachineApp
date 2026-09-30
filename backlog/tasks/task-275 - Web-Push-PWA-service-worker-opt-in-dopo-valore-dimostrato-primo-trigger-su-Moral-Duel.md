@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-09-07 08:28'
+updated_date: '2026-09-30 13:34'
 labels:
   - growth
   - retention
@@ -40,3 +41,9 @@ Primo trigger da costruire, non un digest generico: sul Moral Duel, dove TASK-27
 - [ ] #5 Opt-out facile e persistente (stessa superficie account/impostazioni delle altre preferenze utente)
 - [ ] #6 Nuove chiavi i18n solo in en.json (it.json drift exception); pnpm lint e pnpm build:prod passano
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Dato a supporto (2026-09-30, storia completa): dei 190 votanti del Daily Moral Crime, 173 hanno votato un solo giorno; solo 14 su 154 idonei sono tornati a votare entro 7 giorni dal primo voto. Il Daily, pensato come abitudine quotidiana, oggi non richiama nessuno senza un promemoria: e' il caso d'uso piu' diretto per il push, insieme al trigger Duel gia' previsto.
+<!-- SECTION:NOTES:END -->

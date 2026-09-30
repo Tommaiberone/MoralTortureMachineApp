@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-09-14 08:12'
+updated_date: '2026-09-30 13:34'
 labels:
   - growth
   - analytics
@@ -36,3 +37,9 @@ Non e' un problema di strumentazione (TASK-7, gia' Done, ha verificato copertura
 - [ ] #3 Se confermato un bug reale, fix implementato e completion rate Android rimisurata post-fix per verificare il recupero verso il livello web
 - [ ] #4 Pannello Growth gates (TASK-305) valuta se mostrare anche la scomposizione per piattaforma del gate short-test-completion, non solo l'aggregato, cosi' un futuro gap non resti nascosto dal volume web
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Rimisura 2026-09-30 (analytics-optimize, 30 giorni, mtm-analytics-readonly): completamento del test breve su Android salito a 53/87 = 60,9% (sulla 1.13.0 46/75 = 61%), contro il 44,9% del 14/09; web 415/484 = 85,7%. Il divario resta significativo (z = -5,5), e test_started -> answered su Android e' 81/87 = 93% contro 96% su web: la perdita si e' spostata piu' avanti nel flusso. Task ancora valido.
+<!-- SECTION:NOTES:END -->
