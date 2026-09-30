@@ -6374,6 +6374,48 @@ Open Points; `TASK-273` in standby per `ADR-122`). Created `TASK-368`
 session's capacity estimate) and `TASK-369` (Backlog, duplicate signup
 event).
 
+### ADR-157 — Every provisioned DynamoDB table moved to on-demand with a per-table throughput cap: an explicit Free Tier exception (`TASK-368`, user decision, 2026-09-30)
+
+Context: `TASK-368` measured Party Room's ceiling at roughly 4-6 concurrent
+rooms of five on its 5/5 provisioned tables, with a full 20-player room able
+to exceed it alone, and the gamebook QR codes route party chapters through
+Party Room before a Christmas launch (`ADR-153`). The 1/1 user, profile and
+Duel tables have the same kind of hard ceiling for a viral spike. `ADR-118`
+had left on-demand for Party Room pending the user's explicit cost approval.
+The user asked to move to on-demand everything that benefits from it.
+
+Options: (1) keep provisioned and raise capacity beyond the Free Tier
+(fixed hourly cost whether used or not); (2) on-demand for Party Room only;
+(3) on-demand for every table where a throughput ceiling is a real risk.
+
+Decision: option 3, applied to all seven formerly provisioned tables
+(`users`, `moral_profiles`, `challenges`, `challenge_participants`,
+`party_rooms`, `party_participants`, `daily_moral_crime_votes`) and their
+GSIs. Every one serves a user-facing flow that could spike, and none has a
+reason to prefer a hard ceiling to a few cents. Cost, verified against the
+rates this account was actually billed in eu-west-1 in September 2026
+(USD 0.1415 per million read units, 0.705 per million write units): the
+seven consumed ~54k read and ~6k write units that month, about USD 0.01;
+even 100x that volume stays near USD 1/month, and at that scale API Gateway
+(USD 1.11 per million requests) dominates, not DynamoDB. Owner: the user.
+Guardrails: an `on_demand_throughput` cap on each of the seven (1000 read
+/ 200 write request units per second, about 4-5x an optimistic launch peak
+of ~800 concurrent Party Room players), which bounds abuse to roughly
+USD 1 per table-hour at the cap, plus the existing monthly budget alerts at
+USD 10/50/200. Kill switch: set a table's `billing_mode` back to
+`PROVISIONED` with explicit capacities; AWS limits how often a table can
+change mode within 24 hours.
+
+Consequences: the account's provisioned pool drops to 0/0, so the monthly
+85% `ReadCapacityUnit-Hrs` alert (`ADR-154`) no longer applies, and DynamoDB
+now bills every request with no Free Tier offset. The older on-demand
+tables (`dilemmas`, raw analytics, aggregates, push, waitlist, ops alerts)
+get no cap in this change, because the occasional full-table analytics
+scan can legitimately burst above one. `CLAUDE.md`'s cost section still
+says to prefer provisioned capacity inside the Free Tier for new or
+reconfigured tables; that line predates this decision and was left for
+the user to update.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

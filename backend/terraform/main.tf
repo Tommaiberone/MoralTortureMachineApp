@@ -259,18 +259,39 @@ resource "aws_dynamodb_table" "analytics_daily_aggregates" {
   }
 }
 
+# TASK-368/ADR-157 (user decision, 2026-09-30): every application table is
+# PAY_PER_REQUEST. The seven tables below were PROVISIONED inside the
+# always-free 25/25 RCU/WCU pool, which made them free but put a hard
+# throughput ceiling on each: Party Room's 5/5 tables topped out around 4-6
+# concurrent rooms, and the 1/1 user/profile/Duel tables would throttle on
+# any viral spike, both plausible at the Christmas gamebook launch
+# (ADR-153). On-demand has no Free Tier offset; at September 2026 volume
+# these seven tables consumed ~54k read and ~6k write units, about USD 0.01
+# per month at this account's billed eu-west-1 rates (0.1415 per million
+# read units, 0.705 per million write units). Guardrails: the monthly AWS
+# budget alerts at USD 10/50/200 (observability.tf), and the per-table
+# on_demand_throughput caps below, sized ~4-5x above an optimistic launch
+# peak (~800 concurrent Party Room players) so they never throttle real
+# traffic but bound what abuse can cost per hour. Kill switch: set
+# billing_mode back to PROVISIONED with explicit capacities (AWS limits how
+# often a table can switch modes per 24h).
+locals {
+  on_demand_max_read_request_units  = 1000
+  on_demand_max_write_request_units = 200
+}
+
 # DynamoDB Table for authenticated Users, keyed by immutable Cognito sub.
-# TASK-12: unlike the legacy PAY_PER_REQUEST tables (audited exception pending
-# TASK-88), this new low-traffic table uses provisioned capacity within the
-# always-free 25 RCU/25 WCU account allowance. PITR is left disabled by
-# default pending the per-domain retention decision in TASK-89, rather than
-# copying the existing tables' enabled-everywhere default.
+# TASK-12: PITR is left disabled by default pending the per-domain retention
+# decision in TASK-89, rather than copying the existing tables'
+# enabled-everywhere default.
 resource "aws_dynamodb_table" "users" {
-  name           = "${var.environment}-${var.stack_name}-users"
-  billing_mode   = "PROVISIONED"
-  read_capacity  = 1
-  write_capacity = 1
-  hash_key       = "sub"
+  name         = "${var.environment}-${var.stack_name}-users"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "sub"
+  on_demand_throughput {
+    max_read_request_units  = local.on_demand_max_read_request_units
+    max_write_request_units = local.on_demand_max_write_request_units
+  }
   # TASK-253: authoritative, irreplaceable user data - same protection
   # already applied to aws_cognito_user_pool.users.
   deletion_protection_enabled = true
@@ -285,12 +306,8 @@ resource "aws_dynamodb_table" "users" {
   # (_claimed_anonymous_ids) on every call - including GET /users/me/archetype
   # and /users/me/duel-stats, routine pages a logged-in user visits often, the
   # same architectural bug TASK-300/ADR-137 fixed for the admin dashboard.
-  # Unlike that case, this GSI is naturally sharded per account (one partition
-  # per ownerSub, a handful of claim-lock rows each) rather than a single
-  # shared hot key, so a small fixed provisioned capacity is safe here - no
-  # PAY_PER_REQUEST exception needed (verified against current AWS Free Tier
-  # terms 2026-09-10: this table's own 1/1 plus this GSI's 1/1 stays trivially
-  # within the account's shared, always-free 25 RCU/25 WCU allowance).
+  # This GSI is naturally sharded per account (one partition per ownerSub, a
+  # handful of claim-lock rows each) rather than a single shared hot key.
   attribute {
     name = "ownerSub"
     type = "S"
@@ -299,8 +316,6 @@ resource "aws_dynamodb_table" "users" {
   global_secondary_index {
     name            = "OwnerSubIndex"
     hash_key        = "ownerSub"
-    read_capacity   = 1
-    write_capacity  = 1
     projection_type = "ALL"
   }
 
@@ -317,11 +332,13 @@ resource "aws_dynamodb_table" "users" {
 # before any login. TASK-64 establishes a twelve-month inactivity limit;
 # EventBridge backfills historic rows and DynamoDB TTL removes expired rows.
 resource "aws_dynamodb_table" "moral_profiles" {
-  name           = "${var.environment}-${var.stack_name}-moral-profiles"
-  billing_mode   = "PROVISIONED"
-  read_capacity  = 1
-  write_capacity = 1
-  hash_key       = "publicId"
+  name         = "${var.environment}-${var.stack_name}-moral-profiles"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "publicId"
+  on_demand_throughput {
+    max_read_request_units  = local.on_demand_max_read_request_units
+    max_write_request_units = local.on_demand_max_write_request_units
+  }
   # TASK-253: same reasoning as aws_dynamodb_table.users above.
   deletion_protection_enabled = true
 
@@ -345,8 +362,6 @@ resource "aws_dynamodb_table" "moral_profiles" {
     hash_key        = "ownerAnonymousUserId"
     range_key       = "createdAt"
     projection_type = "ALL"
-    read_capacity   = 1
-    write_capacity  = 1
   }
 
   ttl {
@@ -366,11 +381,13 @@ resource "aws_dynamodb_table" "moral_profiles" {
 # token (never the DB key of anything guessable). TTL removes abandoned
 # challenges that nobody ever joined/completed.
 resource "aws_dynamodb_table" "challenges" {
-  name           = "${var.environment}-${var.stack_name}-challenges"
-  billing_mode   = "PROVISIONED"
-  read_capacity  = 1
-  write_capacity = 1
-  hash_key       = "challengeToken"
+  name         = "${var.environment}-${var.stack_name}-challenges"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "challengeToken"
+  on_demand_throughput {
+    max_read_request_units  = local.on_demand_max_read_request_units
+    max_write_request_units = local.on_demand_max_write_request_units
+  }
 
   attribute {
     name = "challengeToken"
@@ -395,12 +412,14 @@ resource "aws_dynamodb_table" "challenges" {
 # are never returned to the other participant before the challenge is
 # completed (enforced in application code, not by this schema).
 resource "aws_dynamodb_table" "challenge_participants" {
-  name           = "${var.environment}-${var.stack_name}-challenge-participants"
-  billing_mode   = "PROVISIONED"
-  read_capacity  = 1
-  write_capacity = 1
-  hash_key       = "challengeToken"
-  range_key      = "role"
+  name         = "${var.environment}-${var.stack_name}-challenge-participants"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "challengeToken"
+  range_key    = "role"
+  on_demand_throughput {
+    max_read_request_units  = local.on_demand_max_read_request_units
+    max_write_request_units = local.on_demand_max_write_request_units
+  }
 
   attribute {
     name = "challengeToken"
@@ -434,8 +453,6 @@ resource "aws_dynamodb_table" "challenge_participants" {
     hash_key        = "anonymousUserId"
     range_key       = "submittedAt"
     projection_type = "ALL"
-    read_capacity   = 1
-    write_capacity  = 1
   }
 
   ttl {
@@ -455,19 +472,17 @@ resource "aws_dynamodb_table" "challenge_participants" {
 # A room is a short-lived, same-session activity, so a much shorter TTL than
 # Duel challenges (backend PARTY_ROOM_TTL_SECONDS = 6h) is appropriate.
 resource "aws_dynamodb_table" "party_rooms" {
-  name         = "${var.environment}-${var.stack_name}-party-rooms"
-  billing_mode = "PROVISIONED"
-  # Bumped from 1/1 (2026-08-10): live Party Room polling (every
-  # POLL_INTERVAL_MS per participant, backend_fastapi.py) was hitting
-  # ProvisionedThroughputExceededException with only a few concurrent
-  # participants - see ops_error_alerts. TASK-49 (load test 2-20
-  # participants) was deliberately deferred, so 5/5 is a stopgap sized from
-  # observed real traffic, not from a load test; still tiny within the
-  # shared 25 RCU/25 WCU Free Tier pool. Revisit with real numbers once
-  # TASK-49 runs.
-  read_capacity  = 5
-  write_capacity = 5
-  hash_key       = "roomCode"
+  name = "${var.environment}-${var.stack_name}-party-rooms"
+  # Every participant polls this table (1.5s while voting, 3s otherwise), so
+  # its load scales with concurrent players. It throttled at 1/1 (TASK-191)
+  # and topped out around 4-6 concurrent rooms at 5/5 (TASK-368), hence
+  # on-demand - see the note above aws_dynamodb_table.users.
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "roomCode"
+  on_demand_throughput {
+    max_read_request_units  = local.on_demand_max_read_request_units
+    max_write_request_units = local.on_demand_max_write_request_units
+  }
 
   attribute {
     name = "roomCode"
@@ -490,14 +505,16 @@ resource "aws_dynamodb_table" "party_rooms" {
 # One row per participant per room, holding their per-round votes in a
 # nested map (see PARTY_ROOM_* logic in backend_fastapi.py).
 resource "aws_dynamodb_table" "party_participants" {
-  name         = "${var.environment}-${var.stack_name}-party-participants"
-  billing_mode = "PROVISIONED"
-  # Bumped from 1/1 alongside party_rooms above - same root cause (real
-  # concurrent Party Room polling exceeding provisioned capacity).
-  read_capacity  = 5
-  write_capacity = 5
-  hash_key       = "roomCode"
-  range_key      = "participantId"
+  name = "${var.environment}-${var.stack_name}-party-participants"
+  # Same polling load as party_rooms above, plus a full roster Query per poll
+  # outside the voting phase, so cost per room grows with players squared.
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "roomCode"
+  range_key    = "participantId"
+  on_demand_throughput {
+    max_read_request_units  = local.on_demand_max_read_request_units
+    max_write_request_units = local.on_demand_max_write_request_units
+  }
 
   attribute {
     name = "roomCode"
@@ -528,22 +545,19 @@ resource "aws_dynamodb_table" "party_participants" {
 # solely for export/account-deletion across a caller's claimed installations;
 # it never contains the aggregate row and its values are never public.
 #
-# TASK-365: lowered from the original 5/5 to 2/2. Provisioned capacity is
-# billed against the shared always-free 25/25 pool as capacity x hours,
-# regardless of traffic, so the account's 23/23 total sat at 92.5% of the
-# Free Tier every month and tripped AWS's 85% usage alert. Measured September
-# 2026 peaks for this table were 4 RCU/min and 8 WCU/min (0.07 r/s, 0.13 w/s,
-# transactional doubling included) with zero throttle events; 2/2 plus
-# DynamoDB's ~300s burst bank still absorbs well over a hundred simultaneous
-# votes. If Daily push reminders (TASK-275/TASK-45) ever create synchronized
-# spikes, raise it again - capacity increases apply immediately.
+# TASK-368: on-demand (was 5/5, then 2/2 in TASK-365). Every vote for the
+# day increments the same aggregate row, and Daily push reminders
+# (TASK-275/TASK-45) would make votes arrive in synchronized bursts - the
+# pattern a fixed provisioned number handles worst.
 resource "aws_dynamodb_table" "daily_moral_crime_votes" {
-  name           = "${var.environment}-${var.stack_name}-daily-moral-crime-votes"
-  billing_mode   = "PROVISIONED"
-  read_capacity  = 2
-  write_capacity = 2
-  hash_key       = "dayKey"
-  range_key      = "entryKey"
+  name         = "${var.environment}-${var.stack_name}-daily-moral-crime-votes"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "dayKey"
+  range_key    = "entryKey"
+  on_demand_throughput {
+    max_read_request_units  = local.on_demand_max_read_request_units
+    max_write_request_units = local.on_demand_max_write_request_units
+  }
 
   attribute {
     name = "dayKey"
@@ -566,8 +580,6 @@ resource "aws_dynamodb_table" "daily_moral_crime_votes" {
     range_key          = "dayKey"
     projection_type    = "INCLUDE"
     non_key_attributes = ["choice", "dilemmaBaseId", "createdAt"]
-    read_capacity      = 1
-    write_capacity     = 1
   }
 
   ttl {

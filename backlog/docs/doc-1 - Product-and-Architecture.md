@@ -29,7 +29,7 @@ take priority over a generic social graph.
 | Android | Capacitor 8 wrapper around the shared frontend | `frontend/android/` |
 | Backend | FastAPI on AWS Lambda through Mangum | `backend/src/` |
 | API | API Gateway HTTP API | `backend/terraform/` |
-| Data | DynamoDB in `eu-west-1` (legacy on-demand; new domains provisioned within the shared Free Tier) | `backend/terraform/` |
+| Data | DynamoDB in `eu-west-1`, all tables on-demand with a per-table throughput cap (`TASK-368`) | `backend/terraform/` |
 | Hosting | S3 and CloudFront | `frontend/terraform/` |
 | AI | Groq free tier, called only by the backend | backend integrations |
 | Infrastructure | Terraform | `backend/terraform/`, `frontend/terraform/` |
@@ -148,8 +148,8 @@ dev table, or `/dev` SSM hierarchy.
   (`get_optional_user`, returns `None` instead of raising so anonymous
   endpoints stay anonymous). Both call the same `verify_cognito_id_token`.
 - The `users` DynamoDB table (`backend/terraform/main.tf`) is keyed by the
-  immutable Cognito `sub`, provisioned capacity (1/1 RCU-WCU, within the
-  always-free allowance) rather than on-demand, and has PITR disabled by
+  immutable Cognito `sub`, uses on-demand billing (`TASK-368`, see the
+  DynamoDB billing note under Product constraints), and has PITR disabled by
   default pending `TASK-89`. `upsert_user_record` idempotently creates/updates
   a user record on every authenticated call (wired into `GET /auth/me`), and
   (`TASK-300.5`/`301`, ADR-142/144) increments the write-time registered-user
@@ -167,8 +167,7 @@ dev table, or `/dev` SSM hierarchy.
   pages (`GET /users/me/archetype`, `GET /users/me/duel-stats`) rather than
   an admin-only one. Unlike `analytics_daily_aggregates`, this GSI is
   naturally sharded one partition per account, not a single growing shared
-  key, so a small fixed provisioned capacity (1/1, matching the base table)
-  is safe.
+  key.
 - `GET /users/export` has schema v3 and uses the account's authoritative
   `anon#<anonymous_user_id>` claim-lock rows to include only that user's
   account, profiles, social participations (including a caller's Daily
@@ -250,8 +249,8 @@ dev table, or `/dev` SSM hierarchy.
   both try the flat Lambda layout first and fall back to the repository's
   `backend/src/` + `backend/data/` layout, so the same code runs unmodified
   locally, in tests, and deployed.
-- **Moral Duel** (`TASK-28`/`34`-`40`) adds three tables, all provisioned 1/1
-  within the shared Free Tier: `moral_profiles` (shareable profile, PK
+- **Moral Duel** (`TASK-28`/`34`-`40`) adds three tables, all on-demand
+  since `TASK-368` (provisioned 1/1 before): `moral_profiles` (shareable profile, PK
   `publicId` — a `secrets.token_urlsafe(16)` token, GSI `OwnerIndex` on
   `ownerAnonymousUserId`+`createdAt` to find the caller's latest profile, TTL
   on `expirationTime` plus API enforcement after 12 months of inactivity),
@@ -314,10 +313,19 @@ dev table, or `/dev` SSM hierarchy.
   deterministic fallback when Groq is unavailable.
 - Profiles are private/unlisted by default. Public APIs never expose emails,
   answer details, private IDs, tokens, or other private attributes.
-- Ephemeral records use TTL. Current DynamoDB tables remain on-demand only while
-  `TASK-88` evaluates a safe migration; new tables must first use DynamoDB
-  Standard provisioned capacity within the shared Free Tier when the measured
-  workload makes that configuration technically adequate.
+- Ephemeral records use TTL.
+- DynamoDB billing (`TASK-368`, ADR-157, user decision 2026-09-30): every
+  application table is `PAY_PER_REQUEST`. Provisioned capacity inside the
+  25/25 Free Tier was free but capped throughput per table (Party Room
+  topped out around 4-6 concurrent rooms at 5/5), and the gamebook launch
+  makes spikes likely. This is a recorded Free Tier exception: at September
+  2026 volume the seven formerly provisioned tables cost about USD 0.01 per
+  month. The seven carry an `on_demand_throughput` cap (1000 read / 200
+  write request units per second, `local.on_demand_max_*` in `main.tf`) as a
+  per-hour cost bound, with the monthly budget alerts (USD 10/50/200) as the
+  second guardrail. Kill switch: switch a table back to `PROVISIONED` with
+  explicit capacities. A new table should default to on-demand with the same
+  cap unless measured traffic justifies something else.
 - **Daily Moral Crime** (`TASK-42`/`43`/`44`, ADR-085) is one existing,
   versioned EN-catalog dilemma shared globally at a documented 09:00 UTC
   rollover. `GET /daily-moral-crime` returns the two choices but never the
@@ -326,11 +334,9 @@ dev table, or `/dev` SSM hierarchy.
   crossing the rollover cannot vote for the wrong dilemma. A DynamoDB
   transaction conditionally creates the private participant row and increments
   the aggregate row together; an idempotent retry returns the original choice
-  without incrementing again. `daily_moral_crime_votes` is provisioned 2/2
-  RCU/WCU with a 1/1 `AnonymousUserIndex` (lowered from 5/5 in `TASK-365`
-  against measured September 2026 peaks of 0.07 r/s and 0.13 w/s, zero
-  throttles), keeping the shared pool at 20/25 RCU/WCU under the current
-  DynamoDB Free Tier. Both rows expire after
+  without incrementing again. `daily_moral_crime_votes` and its
+  `AnonymousUserIndex` are on-demand since `TASK-368` (5/5, then 2/2 in
+  `TASK-365`, provisioned before). Both rows expire after
   90 days; only the participant rows carry an anonymous id, are queried for
   export/deletion, and are never exposed by the public API. The first release
   has no archetype impact, streak, push, friend graph, or direct Daily Duel;
@@ -342,7 +348,8 @@ dev table, or `/dev` SSM hierarchy.
   people together in person and the room expires in hours) and
   `party_participants` (PK `roomCode`, SK `participantId` = the caller's
   existing `anonymous_user_id`, with per-round votes in a nested map, both
-  provisioned 1/1 with a 6h TTL). There is no WebSocket. Every `GET`/`POST`
+  with a 6h TTL; provisioned 1/1, then 5/5 after `TASK-191`, on-demand since
+  `TASK-368`). There is no WebSocket. Every `GET`/`POST`
   first runs `_advance_party_room_if_due`, which moves `lobby -> question ->
   reveal -> question... -> completed` via a conditional DynamoDB update so
   concurrent pollers never double-advance. `participant_left` (TASK-199,
@@ -1242,14 +1249,14 @@ conflicts below.
 |---|---|---|
 | Lambda | 512 MB, 30 s; July cost USD 0 | Aligned at current traffic; perpetual Lambda allowance still needs usage monitoring |
 | API Gateway HTTP API | July cost USD 0 | Conditional: its service Free Tier is introductory, so account eligibility and expiry must be checked |
-| DynamoDB application tables | Three prod tables (`dilemmas`, `user-analytics`, `product-events`) use `PAY_PER_REQUEST` | Conflict: request usage does not use the provisioned-capacity Free Tier; measured against real 14-day CloudWatch peaks and closed as an accepted no-migration exception (TASK-88, 2026-09-02): `dilemmas` traffic is negligible (already ~USD 0 on-demand, no headroom to gain), `user-analytics`/`product-events` see ~128 RCU bursts driven by internal analytics/ops tooling scans that a small fixed provisioned allocation would throttle against |
+| DynamoDB application tables | Since `TASK-368` (2026-09-30) every app table is `PAY_PER_REQUEST`; the seven formerly provisioned ones carry an `on_demand_throughput` cap | Accepted exception by user decision (ADR-157): ~USD 0.01/month for the seven switched tables at September volume, in exchange for no throughput ceiling. Before that, `dilemmas`, `user-analytics` and `product-events` were already on-demand, whose request usage does not use the provisioned-capacity Free Tier; measured against real 14-day CloudWatch peaks and closed as an accepted no-migration exception (TASK-88, 2026-09-02): `dilemmas` traffic is negligible (already ~USD 0 on-demand, no headroom to gain), `user-analytics`/`product-events` see ~128 RCU bursts driven by internal analytics/ops tooling scans that a small fixed provisioned allocation would throttle against |
 | DynamoDB state/legacy tables | Two Terraform lock tables also use `PAY_PER_REQUEST`; the unprefixed legacy dilemma table was removed 2026-09-02 (`TASK-90`) | Aligned; lock tables are meta-infrastructure outside the app's naming convention, not a Free Tier conflict |
 | DynamoDB PITR | Enabled on dilemmas and user analytics | Accepted cost (ADR-048, `TASK-89` closed): no Free Tier allowance exists for PITR, but at current table sizes (~7MB largest) the real cost is a fraction of a cent/month, not worth the effort to change. `story-flows` (also PITR-enabled) was deleted 2026-09-02 with the dormant Story Mode feature (TASK-185); its 2 rows were exported before deletion |
 | SSM Parameter Store | Two Standard SecureString parameters | Aligned; Standard tier has no additional Parameter Store charge at standard throughput |
 | CloudWatch Logs | Two groups, seven-day retention, about 3.5 MB stored; July cost USD 0 | Aligned at current usage; keep ingestion, queries, metrics, and alarms within their allowances |
 | S3 and CloudFront | About 1.45 MB frontend assets, 86,962 July CloudFront requests, and about 0.62 GB transfer; July cost effectively USD 0 | Aligned at current usage, but recheck plan/allowance before traffic campaigns |
 | Cognito for this product | Essentials tier, live in production since `TASK-11`/`5` (Google login); native email+password added on top (`TASK-227`) | Aligned for direct/social sign-in up to the current 10,000 MAU allowance (`TASK-21` is the checkpoint to revisit before that); no SMS, M2M, Plus, or paid add-ons |
-| Party Room realtime | Live in production since `TASK-46`/`47` (ADR-051), with several since-fixed incidents (`TASK-132`, `TASK-191`, `TASK-199`) and feature work (`TASK-209`-`213`) | Uses HTTP polling over the already-provisioned API Gateway HTTP + Lambda + DynamoDB stack (2 provisioned tables, capacity bumped 1/1 -> 5/5 after `TASK-191`) instead of API Gateway WebSocket, avoiding its introductory-only Free Tier entirely (ADR-050, `TASK-91` closed) |
+| Party Room realtime | Live in production since `TASK-46`/`47` (ADR-051), with several since-fixed incidents (`TASK-132`, `TASK-191`, `TASK-199`) and feature work (`TASK-209`-`213`) | Uses HTTP polling over the already-provisioned API Gateway HTTP + Lambda + DynamoDB stack (2 tables, bumped 1/1 -> 5/5 after `TASK-191`, on-demand since `TASK-368`) instead of API Gateway WebSocket, avoiding its introductory-only Free Tier entirely (ADR-050, `TASK-91` closed) |
 
 ### AWS cost snapshot — 2026-09-30 (`TASK-365`)
 
@@ -1274,9 +1281,9 @@ DynamoDB provisioned `ReadCapacityUnit-Hrs`/`WriteCapacityUnit-Hrs` count
 provisioned capacity x hours, not traffic: 23/23 units put the account at
 92.5% of the 18,600-hour allowance every month and tripped AWS's 85% alert.
 `TASK-365` lowered `daily_moral_crime_votes` to 2/2, bringing the pool to
-20/20 (80% on a 31-day month). The alert fires again once the pool reaches
-22 units, so each new provisioned table should take capacity from a measured
-low-traffic table or use on-demand.
+20/20 (80% on a 31-day month). The same day `TASK-368` moved all seven
+provisioned tables to on-demand, so the pool is now 0/0 and that alert no
+longer applies; the trade-off is described under Product constraints.
 
 ## Repository workflow
 
