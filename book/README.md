@@ -207,3 +207,9 @@ exactly the bug this went through before landing on `extra-top`.
 - Cover file (spine width, KDP's separate cover template) is out of scope
   here — build it against KDP's own generated template once a real page
   count exists.
+
+## Choosing the dilemmas (`book/catalog/`)
+
+`plan.json` is the chapter map for the 100 dilemmas (genre chapters, `TASK-314`). `node book/catalog/build-selection.mjs`
+builds `book/out/selection-100.pdf` from it and from `backend/data/dilemmas_en.json` for editorial review, and
+`node book/catalog/pool-metrics.mjs [file]` prints the bias metrics used in `book/catalog/bias-analysis.md`.

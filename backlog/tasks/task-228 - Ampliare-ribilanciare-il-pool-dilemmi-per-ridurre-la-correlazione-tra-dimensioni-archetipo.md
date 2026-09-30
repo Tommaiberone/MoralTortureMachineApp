@@ -3,9 +3,10 @@ id: TASK-228
 title: >-
   Ampliare/ribilanciare il pool dilemmi per ridurre la correlazione tra
   dimensioni archetipo
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-09-02 08:20'
+updated_date: '2026-09-30 13:55'
 labels:
   - growth
   - product
@@ -25,8 +26,14 @@ Seguito di TASK-142 (decisione presa 2026-09-02, opzione b). I valori per catego
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Correlazione tra le 6 dimensioni ri-misurata sui 44 dilemmi attuali, con numeri concreti su quanto TASK-201 ha gia' mosso l'ago
+- [x] #1 Correlazione tra le 6 dimensioni ri-misurata sui 44 dilemmi attuali, con numeri concreti su quanto TASK-201 ha gia' mosso l'ago
 - [ ] #2 Nuovi dilemmi o riscritture riducono le correlazioni piu' alte (attualmente 0.65-0.86) sotto una soglia concordata
 - [ ] #3 Se la ricalibrazione sposta sensibilmente le distribuzioni per-dimensione, concordato un bump di archetypesVersion (ADR-025) prima del deploy
 - [ ] #4 Verificato che l'ampliamento non degrada l'effetto di regressione verso il centro dovuto alla media su MAX_DILEMMAS
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-09-30: correlazione ri-misurata sui 115 dilemmi (book/catalog/bias-analysis.md): differenze tra risposte Integrity~Justice 0.84, Integrity~Honesty 0.84, Justice~Honesty 0.67, Empathy~Altruism 0.55; la prima componente principale spiega il 55% della varianza. Le correzioni sono in corso nel task sui bias del pool.
+<!-- SECTION:NOTES:END -->

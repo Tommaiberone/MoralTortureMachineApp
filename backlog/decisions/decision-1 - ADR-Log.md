@@ -6443,6 +6443,31 @@ noise. Web gets the change on deploy; Android 1.13.0 keeps the three-way
 test until the next APK release, which needs a version bump and, since it
 publishes to Google Play production (`ADR-017`), explicit confirmation.
 
+### ADR-159 — Gamebook chapters regrouped by genre; dilemma pool corrected for position, level and framing bias (`TASK-314`, `TASK-370`, user decisions 2026-09-30)
+
+Context: while choosing the 100 dilemmas for the gamebook the user asked for chapters by area (real historical, philosophical,
+everyday) and observed that playing the hero is too easy. A measurement of the 115 English dilemmas (`book/catalog/bias-analysis.md`)
+confirmed it: the first answer had the higher total score in 93 of 115, dominated the other on all six dimensions in 32, and no
+screen shuffles the answers; always tapping the first button gave "Moral Idealist" or "Duty-Bearer" 78% of the time, and always
+tapping the second gave "Cautious Survivor" 42%. Integrity, Justice and Honesty correlate at 0.84/0.84/0.67.
+
+Decisions: (1) chapters are grouped by genre, superseding `ADR-129`'s theme grouping for chapters 3-10: two everyday (the built
+Case Files), society, technology, medicine, work, power and war, philosophy, two history; a third everyday chapter was rejected
+as too many. (2) History uses 20 real, closed events (no living protagonists), verified against sources before writing, and the
+page reveals what actually happened after the choice (book-only field, no app schema change). (3) Bias corrections apply to the
+whole in-game pool, not only the book selection. Options for position bias: shuffle in each screen (rejected: five renderers, and
+the printed book and Party Room tally must agree) or counterbalance in the data (chosen: 35 dilemmas swapped, heroic answer first
+in 58 of 115). Level bias: a sign-preserving rebalance of conflict dilemmas, neutral 0.5 on unengaged dimensions for 27 temptation
+dilemmas, and 33 conflict profiles rewritten by hand; 22 answer labels reworded to neutral parallel phrasing. The Italian file
+(17 dilemmas, unreachable since `TASK-101`) was not touched; its hash also triggers a Terraform repopulation.
+
+Consequences: the file is only read when the DynamoDB table is repopulated, so production is unchanged until `TASK-371`, which also
+has to swap stored `yesCount`/`noCount` for the 35 swapped dilemmas and decide `archetypesVersion` (`ADR-025`). The nearest-centroid
+engine still sends about half of random sessions to "Duty-Bearer" (44% before, 54% after the rebalance), so the corrected scores
+must not ship before `TASK-372` recalibrates it; a recentre-and-amplify experiment brought the top share to 16%. The correlation
+problem (`TASK-228`) is only partly addressed and needs new decorrelating dilemmas. The 17 Italian dilemmas now differ from
+English in answer order and scores; accepted, since they are unreachable in the app.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

@@ -1,0 +1,803 @@
+{
+  "version": 1,
+  "updated": "2026-09-30",
+  "chapters": [
+    {
+      "number": 1,
+      "genre": "Everyday I: money and small honesty",
+      "intro": "Nobody is watching. The temptation is small and the cost of doing right is smaller. Existing Case File 1.",
+      "dilemmas": [
+        {
+          "n": 53,
+          "idTail": "f8c043a2",
+          "title": "The Lounge Pen",
+          "flags": []
+        },
+        {
+          "n": 77,
+          "idTail": "c4e373c3",
+          "title": "The Payphone Return",
+          "flags": [
+            "dated: payphone"
+          ]
+        },
+        {
+          "n": 78,
+          "idTail": "d3da9878",
+          "title": "The Sidewalk Wallet",
+          "flags": []
+        },
+        {
+          "n": 105,
+          "idTail": "2a22b76a",
+          "title": "The Self-Checkout Glitch",
+          "flags": []
+        },
+        {
+          "n": 46,
+          "idTail": "bb788df4",
+          "title": "The Padded Invoice",
+          "flags": []
+        },
+        {
+          "n": 80,
+          "idTail": "4af65dec",
+          "title": "The Blank Receipt",
+          "flags": [
+            "dated: blank taxi receipt"
+          ]
+        },
+        {
+          "n": 98,
+          "idTail": "73af8e36",
+          "title": "The Uncollected Increase",
+          "flags": []
+        },
+        {
+          "n": 94,
+          "idTail": "ff8527c4",
+          "title": "The Missed Bag",
+          "flags": []
+        },
+        {
+          "n": 62,
+          "idTail": "409da665",
+          "title": "The Phantom Credit Slip",
+          "flags": [
+            "dated: paper credit slip"
+          ]
+        },
+        {
+          "n": 89,
+          "idTail": "e97da5bb",
+          "title": "The Long-Distance Line",
+          "flags": [
+            "dated: long-distance billing"
+          ]
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "genre": "Everyday II: friends, family and colleagues",
+      "intro": "Someone you know is about to be hurt by the truth, or by your silence. Existing Case File 2.",
+      "dilemmas": [
+        {
+          "n": 93,
+          "idTail": "93c532c1",
+          "title": "The Witness",
+          "flags": []
+        },
+        {
+          "n": 54,
+          "idTail": "2895864c",
+          "title": "The Peace Offering",
+          "flags": []
+        },
+        {
+          "n": 72,
+          "idTail": "795c40b0",
+          "title": "The Unraveling Counsel",
+          "flags": []
+        },
+        {
+          "n": 73,
+          "idTail": "c610f752",
+          "title": "The Medication Error",
+          "flags": []
+        },
+        {
+          "n": 88,
+          "idTail": "8db2cafd",
+          "title": "The Interview Leak",
+          "flags": []
+        },
+        {
+          "n": 101,
+          "idTail": "9db2d6fc",
+          "title": "The Layoff List",
+          "flags": []
+        },
+        {
+          "n": 103,
+          "idTail": "0b5cc0e8",
+          "title": "The Family Secret",
+          "flags": []
+        },
+        {
+          "n": 106,
+          "idTail": "34ee6dc1",
+          "title": "The Reference Letter",
+          "flags": []
+        },
+        {
+          "n": 113,
+          "idTail": "68e8dcb7",
+          "title": "The Second Fender-Bender",
+          "flags": []
+        },
+        {
+          "n": 87,
+          "idTail": "81df8a8d",
+          "title": "The Plagiarized Paper",
+          "flags": []
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "genre": "Society and the world",
+      "intro": "Policies, budgets and duties that reach far beyond the person deciding.",
+      "dilemmas": [
+        {
+          "n": 42,
+          "idTail": "94ed394e",
+          "title": "Milestone purchase vs lifesaving donation",
+          "flags": [
+            "known scenario: Singer's drowning child"
+          ]
+        },
+        {
+          "n": 43,
+          "idTail": "3884cd7a",
+          "title": "Health budget: home or abroad",
+          "flags": []
+        },
+        {
+          "n": 44,
+          "idTail": "233d5075",
+          "title": "Vaccine surplus export",
+          "flags": []
+        },
+        {
+          "n": 36,
+          "idTail": "3b01f9c7",
+          "title": "Coal plant extension",
+          "flags": []
+        },
+        {
+          "n": 38,
+          "idTail": "11c78ac9",
+          "title": "Last mineral reserve",
+          "flags": []
+        },
+        {
+          "n": 37,
+          "idTail": "2f2cd0d4",
+          "title": "Aerosol geoengineering",
+          "flags": []
+        },
+        {
+          "n": 39,
+          "idTail": "e7037b0f",
+          "title": "Leak illegal surveillance files",
+          "flags": []
+        },
+        {
+          "n": 40,
+          "idTail": "db191107",
+          "title": "Diplomat's oath vs atrocity",
+          "flags": []
+        },
+        {
+          "n": 6,
+          "idTail": "1978a13e",
+          "title": "Aid for the youth of your people",
+          "flags": []
+        },
+        {
+          "status": "to-write",
+          "title": "New: pandemic lockdown vs livelihoods",
+          "note": "Proposed topic; a real societal trade-off with no clean answer."
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "genre": "Technology and AI",
+      "intro": "Machines that decide, predict and copy us.",
+      "dilemmas": [
+        {
+          "n": 21,
+          "idTail": "8fe9fd36",
+          "title": "Experience machine",
+          "flags": [
+            "known scenario: Nozick's experience machine"
+          ]
+        },
+        {
+          "n": 8,
+          "idTail": "1978a140",
+          "title": "Superintelligence enforces peace",
+          "flags": []
+        },
+        {
+          "n": 30,
+          "idTail": "f7b76cce",
+          "title": "Biased crime-prediction AI",
+          "flags": []
+        },
+        {
+          "n": 13,
+          "idTail": "1978a197",
+          "title": "Pre-crime newborns",
+          "flags": [
+            "content: infant euthanasia",
+            "known scenario: Dick, Minority Report"
+          ]
+        },
+        {
+          "n": 32,
+          "idTail": "383e86c2",
+          "title": "Transplant AI kill switch",
+          "flags": []
+        },
+        {
+          "n": 31,
+          "idTail": "9e0a6d5f",
+          "title": "Deathbed brain upload",
+          "flags": [
+            "known scenario: Parfit's teletransporter"
+          ]
+        },
+        {
+          "n": 14,
+          "idTail": "1978a198",
+          "title": "Sterile humanity: no emotions or upload",
+          "flags": []
+        },
+        {
+          "status": "to-write",
+          "title": "New: self-driving car crash choice",
+          "note": "Proposed topic."
+        },
+        {
+          "status": "to-write",
+          "title": "New: deepfake of a friend",
+          "note": "Proposed topic."
+        },
+        {
+          "status": "to-write",
+          "title": "New: facial recognition to find a missing child",
+          "note": "Proposed topic: safety vs mass surveillance."
+        }
+      ]
+    },
+    {
+      "number": 5,
+      "genre": "Medicine and bioethics",
+      "intro": "Bodies, consent and who gets the scarce thing.",
+      "dilemmas": [
+        {
+          "n": 51,
+          "idTail": "877dd39d",
+          "title": "Terminal diagnosis: hide it?",
+          "flags": []
+        },
+        {
+          "n": 33,
+          "idTail": "e2764623",
+          "title": "Assisted dying: you administer",
+          "flags": [
+            "content: assisted dying"
+          ]
+        },
+        {
+          "n": 18,
+          "idTail": "8b805be0",
+          "title": "Steal the drug for your spouse",
+          "flags": [
+            "known scenario: Kohlberg's Heinz"
+          ]
+        },
+        {
+          "n": 34,
+          "idTail": "bf250a2d",
+          "title": "Germline editing your child",
+          "flags": []
+        },
+        {
+          "n": 35,
+          "idTail": "ae448e6c",
+          "title": "Genetic score for kidney allocation",
+          "flags": []
+        },
+        {
+          "n": 20,
+          "idTail": "a6b25745",
+          "title": "Kidney-connected violinist",
+          "flags": [
+            "known scenario: Thomson's violinist"
+          ]
+        },
+        {
+          "n": 11,
+          "idTail": "1978a195",
+          "title": "Partner's brain damage, erased personality",
+          "flags": []
+        },
+        {
+          "n": 4,
+          "idTail": "1978a13c",
+          "title": "Last dose: virologist or child",
+          "flags": []
+        },
+        {
+          "n": 2,
+          "idTail": "1978a13a",
+          "title": "Immune to the plague",
+          "flags": []
+        },
+        {
+          "status": "to-write",
+          "title": "New: one ventilator, two patients",
+          "note": "Proposed topic: triage allocation."
+        }
+      ]
+    },
+    {
+      "number": 6,
+      "genre": "Work and career",
+      "intro": "Bosses, credit, pay and the things you notice at the office.",
+      "dilemmas": [
+        {
+          "n": 115,
+          "idTail": "5b1f90c3",
+          "title": "Resume gap: mental-health leave",
+          "flags": []
+        },
+        {
+          "n": 91,
+          "idTail": "c1ac36f1",
+          "title": "Coworker takes the credit",
+          "flags": []
+        },
+        {
+          "n": 96,
+          "idTail": "b853f89f",
+          "title": "Coworker's rounded timesheet",
+          "flags": []
+        },
+        {
+          "n": 102,
+          "idTail": "0b43b5f1",
+          "title": "Teammate who did less",
+          "flags": []
+        },
+        {
+          "n": 112,
+          "idTail": "c5fb2dac",
+          "title": "Misdirected pay-gap email",
+          "flags": []
+        },
+        {
+          "n": 90,
+          "idTail": "d336825f",
+          "title": "The endorsement deal",
+          "flags": []
+        },
+        {
+          "n": 83,
+          "idTail": "545a42b2",
+          "title": "The dropped lamb chop",
+          "flags": []
+        },
+        {
+          "n": 107,
+          "idTail": "7879c0f9",
+          "title": "Flaw found before launch",
+          "flags": []
+        },
+        {
+          "n": 75,
+          "idTail": "e47f188b",
+          "title": "Break a contract for a better job",
+          "flags": []
+        },
+        {
+          "n": 52,
+          "idTail": "7ae09434",
+          "title": "Job at the weapons manufacturer",
+          "flags": []
+        }
+      ]
+    },
+    {
+      "number": 7,
+      "genre": "Power, war and duty",
+      "intro": "Occupation, regimes and oaths, in fictional settings.",
+      "dilemmas": [
+        {
+          "n": 41,
+          "idTail": "4e24fa7c",
+          "title": "Chaplain's confessional seal",
+          "flags": [
+            "known scenario: seal of confession"
+          ]
+        },
+        {
+          "n": 22,
+          "idTail": "8453fd03",
+          "title": "Mother or resistance",
+          "flags": [
+            "known scenario: Sartre's student"
+          ]
+        },
+        {
+          "n": 23,
+          "idTail": "ada72e24",
+          "title": "Burying the brother",
+          "flags": [
+            "known scenario: Sophocles, Antigone"
+          ]
+        },
+        {
+          "n": 27,
+          "idTail": "81a025a1",
+          "title": "Sailor who killed a superior",
+          "flags": [
+            "known scenario: Melville, Billy Budd"
+          ]
+        },
+        {
+          "n": 29,
+          "idTail": "a387a69a",
+          "title": "Inspector and the reformed fugitive",
+          "flags": [
+            "known scenario: Hugo, Valjean and Javert"
+          ]
+        },
+        {
+          "n": 19,
+          "idTail": "ac2604af",
+          "title": "Shoot one to save nineteen",
+          "flags": [
+            "content: execution",
+            "known scenario: B. Williams, Jim and the Indians"
+          ]
+        },
+        {
+          "n": 26,
+          "idTail": "beb9362f",
+          "title": "Choosing one child",
+          "flags": [
+            "content: Holocaust setting",
+            "known scenario: Styron, Sophie's Choice"
+          ]
+        },
+        {
+          "n": 5,
+          "idTail": "1978a13d",
+          "title": "Prison guard frames a thief",
+          "flags": [
+            "content: execution"
+          ]
+        },
+        {
+          "n": 12,
+          "idTail": "1978a196",
+          "title": "Resistance leader offered a deal",
+          "flags": []
+        },
+        {
+          "n": 16,
+          "idTail": "1978a200",
+          "title": "Beloved leader's secret crimes",
+          "flags": []
+        }
+      ]
+    },
+    {
+      "number": 8,
+      "genre": "Philosophy: thought experiments",
+      "intro": "The classic puzzles, retold in our own words.",
+      "dilemmas": [
+        {
+          "n": 24,
+          "idTail": "9af7a22c",
+          "title": "Lying to the killer at the door",
+          "flags": [
+            "known scenario: Kant, murderer at the door"
+          ]
+        },
+        {
+          "n": 28,
+          "idTail": "8a49a013",
+          "title": "Untraceable device",
+          "flags": [
+            "known scenario: Plato, ring of Gyges"
+          ]
+        },
+        {
+          "n": 1,
+          "idTail": "1978a139",
+          "title": "Friend's theft vs ten children",
+          "flags": []
+        },
+        {
+          "n": 3,
+          "idTail": "1978a13b",
+          "title": "Runaway train, your brother",
+          "flags": [
+            "known scenario: Foot/Thomson trolley"
+          ]
+        },
+        {
+          "n": 25,
+          "idTail": "93054395",
+          "title": "Lifeboat, dying passenger",
+          "flags": [
+            "content: cannibalism",
+            "known scenario: R v Dudley and Stephens"
+          ]
+        },
+        {
+          "n": 15,
+          "idTail": "1978a199",
+          "title": "Time travel to stop a genocide",
+          "flags": []
+        },
+        {
+          "n": 7,
+          "idTail": "1978a13f",
+          "title": "Device: end poverty, lose someone you love",
+          "flags": []
+        },
+        {
+          "n": 17,
+          "idTail": "1978a201",
+          "title": "Aliens offer a cure for a yearly lottery",
+          "flags": []
+        },
+        {
+          "n": 9,
+          "idTail": "1978a141",
+          "title": "Generation ship lands on a living world",
+          "flags": []
+        },
+        {
+          "n": 10,
+          "idTail": "1978a194",
+          "title": "The child in the cellar",
+          "flags": [
+            "known scenario: Le Guin, Omelas"
+          ]
+        }
+      ]
+    },
+    {
+      "number": 9,
+      "genre": "History I: war, atrocity and the brink",
+      "intro": "Real, closed events. After each choice the book reveals what actually happened.",
+      "dilemmas": [
+        {
+          "status": "history",
+          "id": "H01",
+          "title": "Stanislav Petrov",
+          "when": "1983",
+          "choice": "The early-warning system shows US missiles: report an attack or trust your doubt"
+        },
+        {
+          "status": "history",
+          "id": "H02",
+          "title": "Vasili Arkhipov",
+          "when": "1962",
+          "choice": "Submarine B-59: consent to a nuclear torpedo launch or veto it"
+        },
+        {
+          "status": "history",
+          "id": "H03",
+          "title": "The Cuban Missile Crisis",
+          "when": "1962",
+          "choice": "Air strike or naval blockade"
+        },
+        {
+          "status": "history",
+          "id": "H04",
+          "title": "Truman and the bomb",
+          "when": "1945",
+          "choice": "Atomic bomb or invasion of Japan"
+        },
+        {
+          "status": "history",
+          "id": "H05",
+          "title": "Chiune Sugihara",
+          "when": "1940",
+          "choice": "Issue transit visas against your government's orders"
+        },
+        {
+          "status": "history",
+          "id": "H15",
+          "title": "John Rabe in Nanking",
+          "when": "1937",
+          "choice": "Stay and run the safety zone or leave with your company"
+        },
+        {
+          "status": "history",
+          "id": "H16",
+          "title": "Irena Sendler",
+          "when": "1942",
+          "choice": "Ask parents to hand over their children with no guarantee"
+        },
+        {
+          "status": "history",
+          "id": "H06",
+          "title": "Janusz Korczak",
+          "when": "1942",
+          "choice": "Accept an offer of freedom or go with the orphans to the train"
+        },
+        {
+          "status": "history",
+          "id": "H07",
+          "title": "Maximilian Kolbe",
+          "when": "1941",
+          "choice": "Volunteer to die in a stranger's place"
+        },
+        {
+          "status": "history",
+          "id": "H08",
+          "title": "The Norsk Hydro ferry",
+          "when": "1944",
+          "choice": "Sink the ferry carrying heavy water and civilians"
+        }
+      ]
+    },
+    {
+      "number": 10,
+      "genre": "History II: conscience, science and the state",
+      "intro": "Real, closed events. After each choice the book reveals what actually happened.",
+      "dilemmas": [
+        {
+          "status": "history",
+          "id": "H21",
+          "title": "Jonas Salk",
+          "when": "1955",
+          "choice": "Patent the polio vaccine or give it away"
+        },
+        {
+          "status": "history",
+          "id": "H10",
+          "title": "Frances Kelsey and thalidomide",
+          "when": "1960",
+          "choice": "Refuse to approve a drug despite pressure and delay"
+        },
+        {
+          "status": "history",
+          "id": "H09",
+          "title": "Roger Boisjoly and Challenger",
+          "when": "1986",
+          "choice": "Hold to a no-launch recommendation under pressure"
+        },
+        {
+          "status": "history",
+          "id": "H12",
+          "title": "Daniel Ellsberg",
+          "when": "1971",
+          "choice": "Copy and leak the Pentagon Papers"
+        },
+        {
+          "status": "history",
+          "id": "H14",
+          "title": "The Christmas Truce",
+          "when": "1914",
+          "choice": "Fraternize with the enemy or obey orders"
+        },
+        {
+          "status": "history",
+          "id": "H13",
+          "title": "Captain Oates",
+          "when": "1912",
+          "choice": "Walk out into the blizzard to give the team a chance"
+        },
+        {
+          "status": "history",
+          "id": "H25",
+          "title": "Lifeboat 14, Titanic",
+          "when": "1912",
+          "choice": "Go back for swimmers and risk swamping the boat"
+        },
+        {
+          "status": "history",
+          "id": "H17",
+          "title": "Socrates",
+          "when": "399 BC",
+          "choice": "Escape from prison or accept the sentence"
+        },
+        {
+          "status": "history",
+          "id": "H18",
+          "title": "Thomas More",
+          "when": "1535",
+          "choice": "Take the oath or die"
+        },
+        {
+          "status": "history",
+          "id": "H20",
+          "title": "Ashoka at Kalinga",
+          "when": "261 BC",
+          "choice": "Keep conquering or renounce war"
+        }
+      ]
+    }
+  ],
+  "reserves": [
+    {
+      "id": "H19",
+      "title": "Galileo",
+      "when": "1633",
+      "choice": "Recant or face the consequences"
+    },
+    {
+      "id": "H22",
+      "title": "Double Cross and the V-1s",
+      "when": "1944",
+      "choice": "Deceive German intelligence so the bombs fall on other districts (contested, verify)"
+    },
+    {
+      "id": "H23",
+      "title": "Eisenhower and D-Day",
+      "when": "1944",
+      "choice": "Launch in poor weather or delay"
+    },
+    {
+      "id": "H24",
+      "title": "Sophie Scholl",
+      "when": "1943",
+      "choice": "Distribute the leaflets knowing the risk"
+    },
+    {
+      "id": "H26",
+      "title": "Giorgio Perlasca",
+      "when": "1944",
+      "choice": "Pose as a consul to protect Jews in Budapest or go home"
+    },
+    {
+      "id": "H27",
+      "title": "The Szilard petition",
+      "when": "1945",
+      "choice": "Petition against using the bomb or stay loyal to the project"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "H11",
+      "title": "Peter Buxtun and Tuskegee",
+      "why": "may still be alive; not a closed event"
+    },
+    {
+      "id": "H28",
+      "title": "Andes, flight 571",
+      "why": "survivors are alive"
+    },
+    {
+      "id": "H29",
+      "title": "Mignonette, 1884",
+      "why": "already covered by the lifeboat dilemma in chapter 8"
+    },
+    {
+      "id": "H30",
+      "title": "Milgram, 1961",
+      "why": "a study, not an event"
+    }
+  ]
+}

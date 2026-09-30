@@ -544,6 +544,21 @@ dev table, or `/dev` SSM hierarchy.
   `breakable: false` so a dilemma's question and answers can't split
   across a page break. See `book/README.md` for the build commands.
 
+  `book/catalog/` (`TASK-314`/`TASK-370`, 2026-09-30) holds the editorial
+  selection of the book's 100 dilemmas: `plan.json` (the chapter map, single
+  source of truth), `build-selection.mjs` + `selection.typ` (review PDF at
+  `book/out/selection-100.pdf`, gitignored), `pool-metrics.mjs` (read-only
+  bias metrics for any dilemma file), `selection.md` (audit of the 115
+  existing dilemmas) and `bias-analysis.md`. Chapters are now grouped by
+  **genre**, not by theme (`ADR-159`): two everyday, society, technology,
+  medicine, work, power and war, philosophy, and two history chapters of
+  real closed events. This supersedes "ten dilemmas sharing one theme"
+  above for chapters 3-10; chapters 1-2 keep their built content. The
+  dilemma pool's answer order is counterbalanced (the socially desirable
+  answer is first in about half of the dilemmas) and scores are rebalanced
+  so neither answer is globally "better"; do not reintroduce a systematic
+  first-answer-is-the-good-one pattern in new dilemmas.
+
   Interior is confirmed black & white for KDP - which still halftones
   grays/solid fills correctly, not just pure 1-bit - so `typst/template.typ`
   leans on reversed (white-on-black) panels for its visual system:
