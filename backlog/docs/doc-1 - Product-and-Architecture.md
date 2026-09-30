@@ -326,9 +326,11 @@ dev table, or `/dev` SSM hierarchy.
   crossing the rollover cannot vote for the wrong dilemma. A DynamoDB
   transaction conditionally creates the private participant row and increments
   the aggregate row together; an idempotent retry returns the original choice
-  without incrementing again. `daily_moral_crime_votes` is provisioned 5/5
-  RCU/WCU with a 1/1 `AnonymousUserIndex`, keeping the measured shared pool at
-  21/25 RCU/WCU under the current DynamoDB Free Tier. Both rows expire after
+  without incrementing again. `daily_moral_crime_votes` is provisioned 2/2
+  RCU/WCU with a 1/1 `AnonymousUserIndex` (lowered from 5/5 in `TASK-365`
+  against measured September 2026 peaks of 0.07 r/s and 0.13 w/s, zero
+  throttles), keeping the shared pool at 20/25 RCU/WCU under the current
+  DynamoDB Free Tier. Both rows expire after
   90 days; only the participant rows carry an anonymous id, are queried for
   export/deletion, and are never exposed by the public API. The first release
   has no archetype impact, streak, push, friend graph, or direct Daily Duel;
@@ -1225,6 +1227,33 @@ conflicts below.
 | S3 and CloudFront | About 1.45 MB frontend assets, 86,962 July CloudFront requests, and about 0.62 GB transfer; July cost effectively USD 0 | Aligned at current usage, but recheck plan/allowance before traffic campaigns |
 | Cognito for this product | Essentials tier, live in production since `TASK-11`/`5` (Google login); native email+password added on top (`TASK-227`) | Aligned for direct/social sign-in up to the current 10,000 MAU allowance (`TASK-21` is the checkpoint to revisit before that); no SMS, M2M, Plus, or paid add-ons |
 | Party Room realtime | Live in production since `TASK-46`/`47` (ADR-051), with several since-fixed incidents (`TASK-132`, `TASK-191`, `TASK-199`) and feature work (`TASK-209`-`213`) | Uses HTTP polling over the already-provisioned API Gateway HTTP + Lambda + DynamoDB stack (2 provisioned tables, capacity bumped 1/1 -> 5/5 after `TASK-191`) instead of API Gateway WebSocket, avoiding its introductory-only Free Tier entirely (ADR-050, `TASK-91` closed) |
+
+### AWS cost snapshot — 2026-09-30 (`TASK-365`)
+
+Measured with Cost Explorer (`RECORD_TYPE=Usage`), the Free Tier API and
+CloudWatch. The net bill is USD 0 only because account credits offset every
+usage line; gross usage was USD 0.06 (Jun), 0.17 (Jul), 0.29 (Aug) and 0.49
+(Sep forecast). The account's 12-month Free Tier has expired: only
+always-free offers remain, so API Gateway HTTP is billed from the first
+request. The account also hosts the unrelated `ai-autofiller` stack, which
+had near-zero traffic in September.
+
+| Line (Sep 2026) | Usage | Gross USD |
+|---|---|---|
+| API Gateway HTTP (`moral-torture-machine-api`) | 150k requests; the 10-29k/day spikes coincide with Party Room polling days | 0.17 |
+| DynamoDB on-demand writes | 238k WRU, of which ~147k from `analytics-daily-aggregates` in its first 20 days (wide per-day item billed on post-write size) | 0.17 |
+| DynamoDB on-demand reads + PITR | 222k RRU (mostly admin/ops reads before `TASK-300`/`302` landed on 09-10/11, near zero since) | 0.03 |
+| S3 | 0.58 GB stored, 4k PUT, 79k GET | 0.07 |
+| Cost Explorer API | USD 0.01 per call; prefer the free `freetier get-free-tier-usage` for routine checks | 0.04 |
+| Lambda, CloudWatch, SNS, KMS, CloudFront, DynamoDB provisioned/storage | Within always-free allowances (Lambda 15% of requests, 1.3% of GB-s) | 0 |
+
+DynamoDB provisioned `ReadCapacityUnit-Hrs`/`WriteCapacityUnit-Hrs` count
+provisioned capacity x hours, not traffic: 23/23 units put the account at
+92.5% of the 18,600-hour allowance every month and tripped AWS's 85% alert.
+`TASK-365` lowered `daily_moral_crime_votes` to 2/2, bringing the pool to
+20/20 (80% on a 31-day month). The alert fires again once the pool reaches
+22 units, so each new provisioned table should take capacity from a measured
+low-traffic table or use on-demand.
 
 ## Repository workflow
 

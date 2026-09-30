@@ -536,16 +536,20 @@ resource "aws_dynamodb_table" "party_participants" {
 # solely for export/account-deletion across a caller's claimed installations;
 # it never contains the aggregate row and its values are never public.
 #
-# Current provisioned capacity is 15 RCU / 15 WCU across the existing
-# Free-Tier tables. This table plus its GSI adds 6 / 6, leaving the shared
-# always-free 25 / 25 pool below its limit. At the present measured traffic
-# (~500-800 monthly sessions), 5 / 5 gives a small burst cushion for the
-# two-item transactional write. Reassess before material acquisition growth.
+# TASK-365: lowered from the original 5/5 to 2/2. Provisioned capacity is
+# billed against the shared always-free 25/25 pool as capacity x hours,
+# regardless of traffic, so the account's 23/23 total sat at 92.5% of the
+# Free Tier every month and tripped AWS's 85% usage alert. Measured September
+# 2026 peaks for this table were 4 RCU/min and 8 WCU/min (0.07 r/s, 0.13 w/s,
+# transactional doubling included) with zero throttle events; 2/2 plus
+# DynamoDB's ~300s burst bank still absorbs well over a hundred simultaneous
+# votes. If Daily push reminders (TASK-275/TASK-45) ever create synchronized
+# spikes, raise it again - capacity increases apply immediately.
 resource "aws_dynamodb_table" "daily_moral_crime_votes" {
   name           = "${var.environment}-${var.stack_name}-daily-moral-crime-votes"
   billing_mode   = "PROVISIONED"
-  read_capacity  = 5
-  write_capacity = 5
+  read_capacity  = 2
+  write_capacity = 2
   hash_key       = "dayKey"
   range_key      = "entryKey"
 

@@ -6250,6 +6250,41 @@ AI-content disclosure (`TASK-350`).
   produced with a consumer tool at the team's own cost, not app
   infrastructure.
 
+### ADR-154 — DynamoDB provisioned pool lowered from 23/23 to 20/20 to clear the recurring 85% Free Tier alert; Party Room left untouched (`TASK-365`, 2026-09-30)
+
+Context: AWS emailed that `EU-ReadCapacityUnit-Hrs` and
+`EU-WriteCapacityUnit-Hrs` reached 15,986 of 18,600 (86%). These meters are
+provisioned capacity x hours, independent of traffic. A live check (root
+profile, read-only, authorized by the user for this pass) found 23 RCU/23 WCU
+provisioned and no other provisioned table in the account: 92.5% of the
+allowance every month, never above 100%, so no charge, but the alert would
+fire near day 28 of every month and only 2/2 units of headroom were left.
+September CloudWatch peaks (1-minute sums, 16-30 Sep) against provisioned
+capacity: `daily_moral_crime_votes` 4 RCU/min and 8 WCU/min against 5/5;
+`party_rooms` 40 RCU/min and 13 WCU/min against 5/5; `party_participants`
+79 RCU/min and 8 WCU/min against 5/5; the 1/1 tables 12 RCU/min and 11
+WCU/min at most. There were zero throttle events on any table. The earlier
+Daily vote 503s (`TASK-213`) were a serialization bug, not capacity.
+
+Options: (1) do nothing, since cost is zero, and accept a monthly false
+alarm; (2) switch low-traffic tables to on-demand (request charges from the
+first request, no Free Tier offset); (3) lower the one table whose measured
+peak is a small fraction of its capacity; (4) also lower Party Room write
+capacity.
+
+Decision: option 3. `daily_moral_crime_votes` goes from 5/5 to 2/2 (GSI
+unchanged at 1/1), bringing the pool to 20/20 (80% on a 31-day month).
+Party Room tables stay at 5/5: `TASK-191` throttled at 1/1 on both polling
+reads and vote writes, and the Christmas gamebook (`ADR-153`) runs through
+Party Room, so their spare capacity is deliberate.
+
+Consequences: no money saved (provisioned capacity was already free), but
+the monthly alert stops and 5/5 units of headroom return. Rollback is a
+capacity increase, which DynamoDB applies immediately. Revisit if Daily push
+reminders (`TASK-275`/`TASK-45`) create synchronized vote spikes. The actual
+gross bill (USD ~0.49/month, fully offset by credits) and its drivers are in
+doc-1's 2026-09-30 cost snapshot.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
