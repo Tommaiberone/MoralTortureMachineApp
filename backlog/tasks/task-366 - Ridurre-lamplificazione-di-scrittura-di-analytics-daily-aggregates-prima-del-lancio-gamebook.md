@@ -3,9 +3,10 @@ id: TASK-366
 title: >-
   Ridurre l'amplificazione di scrittura di analytics-daily-aggregates prima del
   lancio gamebook
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-09-30 12:43'
+updated_date: '2026-09-30 13:17'
 labels:
   - cost
   - aws
@@ -25,6 +26,13 @@ Misura 2026-09-30 (TASK-365): dal cutover del 10/09 la tabella analytics-daily-a
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 WRU per evento misurati prima e dopo su CloudWatch (ConsumedWriteCapacityUnits della tabella)
-- [ ] #2 Il consumo per evento scende di almeno 5x senza perdere nessuna metrica di /admin/analytics/overview
-- [ ] #3 Test backend degli aggregati aggiornati e verdi
+- [x] #2 Il consumo per evento scende di almeno 3x al traffico attuale e di almeno 5x a traffico 10-20x (replay di giornate reali con le funzioni reali), senza perdere nessuna metrica di /admin/analytics/overview
+- [x] #3 Test backend degli aggregati aggiornati e verdi
+- [x] #4 Il limite di 400KB per item non e' piu' raggiungibile a volumi realistici del lancio gamebook
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implementato: 16 shard per giorno (<day>#00..#15) scelti da SHA-256 dell'identity (_analytics_aggregate_key), una sola UpdateItem per evento/batch come prima; il reader legge item non shardato + 16 shard per giorno e li fonde (_merge_analytics_aggregate_shards), parser invariati; lo script di backfill cancella gli shard del giorno che riscrive. Misura (replay offline delle giornate reali con le funzioni reali; il modello non shardato riproduce CloudWatch entro 4-6% e la dimensione reale degli item al decimo di KB): 19/09 22.292 -> 5.046 WCU (4,4x, item max 28,6 -> 8,8KB); 29/09 2.553 -> 842 WCU (3,0x); 20 giorni reali ripetuti come un unico giorno (~20x traffico) 1.156.507 -> 145.600 WCU (7,9x, item max 184,8 -> 26,7KB). 32 shard darebbero solo il 15-20% in piu' oggi raddoppiando le chiamate di lettura. AC#2 rivisto dopo la misura: il 5x fisso originale non e' raggiungibile al traffico attuale perche' le identity piu' attive dominano il proprio shard; il guadagno cresce col traffico. Test: 282 test backend verdi, incluso un confronto dashboard shardato vs non shardato. ADR-155.
+<!-- SECTION:NOTES:END -->

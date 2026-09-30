@@ -75,12 +75,13 @@ The Moral Torture Machine application now tracks comprehensive user behavior ana
 
 ### Global Secondary Index
 
-**ActionTypeIndex**
-- **Hash Key**: `actionType`
+**DayIndex**
+- **Hash Key**: `dayKey` (UTC date, `YYYY-MM-DD`; only on rows written since 2026-09-10)
 - **Range Key**: `timestamp`
 - **Projection**: ALL
 
-This index allows efficient queries by action type across all sessions.
+This index allows bounded queries over one UTC day. The former
+`ActionTypeIndex` was removed in TASK-367 because nothing read it.
 
 ## Tracked Events
 
@@ -126,14 +127,15 @@ aws dynamodb scan \
   --region eu-west-1
 ```
 
-#### 3. Get all vote events (using GSI)
+#### 3. Get all vote events of one UTC day (using GSI)
 
 ```bash
 aws dynamodb query \
   --table-name prod-moral-torture-machine-user-analytics \
-  --index-name ActionTypeIndex \
-  --key-condition-expression "actionType = :type" \
-  --expression-attribute-values '{":type":{"S":"vote_cast"}}' \
+  --index-name DayIndex \
+  --key-condition-expression "dayKey = :day" \
+  --filter-expression "actionType = :type" \
+  --expression-attribute-values '{":day":{"S":"2026-09-30"},":type":{"S":"vote_cast"}}' \
   --region eu-west-1
 ```
 

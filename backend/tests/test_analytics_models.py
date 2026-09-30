@@ -4,6 +4,7 @@ import time
 import unittest
 import uuid
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from unittest.mock import MagicMock, Mock, patch
 
 from botocore.exceptions import ClientError
@@ -18,6 +19,8 @@ os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
 os.environ.setdefault("AWS_DEFAULT_REGION", "eu-west-1")
 
 from backend.src.backend_fastapi import (  # noqa: E402
+    ANALYTICS_AGGREGATE_SHARD_COUNT,
+    ANALYTICS_DAILY_AGGREGATES_TABLE,
     AnalyticsBatchRequest,
     AnalyticsEvent,
     COPY_EXPERIMENTS,
@@ -28,6 +31,8 @@ from backend.src.backend_fastapi import (  # noqa: E402
     PARTY_ROOM_HOST_ACTION_EVENTS,
     RECENT_ACTIVITY_WINDOW_HOURS,
     REGISTERED_USER_COUNT_SENTINEL_SUB,
+    _analytics_aggregate_key,
+    _analytics_aggregate_shard_keys,
     _analytics_day_key,
     _apply_daily_aggregate_increments,
     _consume_burst_window,
@@ -36,11 +41,13 @@ from backend.src.backend_fastapi import (  # noqa: E402
     _identity_funnel_from_stage_identities,
     _increment_registered_user_count,
     _masked_identity,
+    _merge_analytics_aggregate_shards,
     _network_fingerprint,
     _query_recent_rows,
     _rate_limit_participant_source,
     _rate_limit_rules_for_request,
     _rate_limit_source,
+    _read_analytics_daily_aggregates,
     _read_recent_activity_rows,
     _read_registered_user_count,
     _recent_activity_day_keys,
@@ -456,9 +463,10 @@ class AnalyticsDailyAggregateTests(unittest.TestCase):
     def test_ingest_analytics_events_updates_one_daily_aggregate_per_batch_day(self):
         product_events_table = MagicMock()
         aggregates_table = Mock()
+        # A real client batch carries one identity (TASK-366 shards by it).
         batch = AnalyticsBatchRequest(events=[
-            valid_event(eventName="test_started", occurredAt=1785369600000, platform="web"),
-            valid_event(eventName="test_started", occurredAt=1785369601000, platform="web"),
+            valid_event(eventName="test_started", occurredAt=1785369600000, platform="web", anonymousUserId="user-1"),
+            valid_event(eventName="test_started", occurredAt=1785369601000, platform="web", anonymousUserId="user-1"),
         ])
         request = Request({
             "type": "http",
@@ -633,6 +641,27 @@ class AnalyticsDailyAggregateTests(unittest.TestCase):
             with self.subTest(field=field):
                 self.assertEqual(aggregate_backed[field], scan_only[field])
 
+        # TASK-366: the live write path now spreads each day across identity
+        # shards; merging them back must reproduce the unsharded dashboard.
+        sharded_items: dict[str, dict] = {}
+        for source, rows in (("legacy", legacy_rows), ("product", product_rows)):
+            for row in rows:
+                normalized = normalize_analytics_event(row, source)
+                key = _analytics_aggregate_key(
+                    _analytics_day_key(normalized["occurredAt"]), normalized["identity"]
+                )
+                item = sharded_items.setdefault(key, {"dayKey": key})
+                for attribute_name, delta in _scalar_aggregate_increments(normalized).items():
+                    item[attribute_name] = item.get(attribute_name, 0) + delta
+                for attribute_name, identities in _set_aggregate_increments(normalized).items():
+                    item[attribute_name] = item.get(attribute_name, set()) | identities
+        self.assertGreater(len(sharded_items), len(aggregate_items))
+        shard_backed = build_analytics_overview(
+            legacy_rows=legacy_rows, product_rows=product_rows, days=10, now_ms=now_ms, platform="all",
+            aggregate_items=_merge_analytics_aggregate_shards(list(sharded_items.values())),
+        )
+        self.assertEqual(_order_insensitive(shard_backed), _order_insensitive(aggregate_backed))
+
         # Sanity: the dataset actually exercises non-trivial funnels/joins,
         # so this test would fail loudly (not vacuously pass) if the
         # aggregate path silently produced all-zero output instead.
@@ -644,6 +673,118 @@ class AnalyticsDailyAggregateTests(unittest.TestCase):
         self.assertTrue(any(row["completedReferrals"] > 0 for row in scan_only["viralCoefficient"]))
         self.assertTrue(any(row["completedReferrals"] > 0 for row in scan_only["creativeVariants"]))
         self.assertTrue(any(row["exposed"] > 0 for row in scan_only["copyExperiments"]["homeModeCopy"]))
+
+
+def _identities_in_distinct_shards(day_key: str) -> tuple[str, str]:
+    first = "user-0"
+    for index in range(1, 100):
+        candidate = f"user-{index}"
+        if _analytics_aggregate_key(day_key, candidate) != _analytics_aggregate_key(day_key, first):
+            return first, candidate
+    raise AssertionError("no two identities landed in different shards")
+
+
+class AnalyticsAggregateShardingTests(unittest.TestCase):
+    """TASK-366: each day's write-time aggregate is spread across identity
+    shards so a write is billed on a small item, and read back merged."""
+
+    def test_aggregate_key_is_a_stable_per_identity_shard_of_the_day(self):
+        key = _analytics_aggregate_key("2026-10-01", "user-1")
+        self.assertEqual(key, _analytics_aggregate_key("2026-10-01", "user-1"))
+        self.assertIn(key, _analytics_aggregate_shard_keys("2026-10-01"))
+        self.assertEqual(len(_analytics_aggregate_shard_keys("2026-10-01")), ANALYTICS_AGGREGATE_SHARD_COUNT)
+        used_shards = {_analytics_aggregate_key("2026-10-01", f"user-{index}") for index in range(400)}
+        self.assertEqual(used_shards, set(_analytics_aggregate_shard_keys("2026-10-01")))
+
+    def test_track_analytics_event_writes_to_the_identity_shard(self):
+        aggregates_table = Mock()
+        with (
+            patch.object(backend_module, "analytics_table", Mock()),
+            patch.object(backend_module, "analytics_daily_aggregates_table", aggregates_table),
+            patch.object(backend_module, "_network_fingerprint", return_value=None),
+        ):
+            track_analytics_event(
+                session_id="session-1", action_type="vote_cast", platform="web", anonymous_user_id="user-1",
+            )
+
+        written_key = aggregates_table.update_item.call_args.kwargs["Key"]["dayKey"]
+        day_key = written_key.split("#")[0]
+        self.assertEqual(written_key, _analytics_aggregate_key(day_key, "user-1"))
+
+    def test_ingest_writes_each_identity_of_a_batch_to_its_own_shard(self):
+        occurred_at = 1785369600000
+        day_key = _analytics_day_key(occurred_at)
+        first, second = _identities_in_distinct_shards(day_key)
+        aggregates_table = Mock()
+        batch = AnalyticsBatchRequest(events=[
+            valid_event(anonymousUserId=first, occurredAt=occurred_at),
+            valid_event(anonymousUserId=second, occurredAt=occurred_at + 1000),
+        ])
+        request = Request({
+            "type": "http", "method": "POST", "path": "/analytics/events",
+            "headers": [], "client": ("127.0.0.1", 1234),
+        })
+        with (
+            patch.object(backend_module, "product_events_table", MagicMock()),
+            patch.object(backend_module, "analytics_daily_aggregates_table", aggregates_table),
+            patch.object(backend_module, "_network_fingerprint", return_value=None),
+        ):
+            # No X-Anonymous-User-Id header, so a batch may mix identities.
+            asyncio.run(ingest_analytics_events(batch, request))
+
+        written_keys = {call.kwargs["Key"]["dayKey"] for call in aggregates_table.update_item.call_args_list}
+        self.assertEqual(written_keys, {
+            _analytics_aggregate_key(day_key, first), _analytics_aggregate_key(day_key, second),
+        })
+
+    def test_merge_sums_counters_unions_sets_and_keeps_latest_expiration(self):
+        merged = _merge_analytics_aggregate_shards([
+            {"dayKey": "2026-10-01", "event__web__x": Decimal(2), "activeIdentity__web": {"a"},
+             "expirationTime": Decimal(100)},
+            {"dayKey": "2026-10-01#03", "event__web__x": Decimal(3), "activeIdentity__web": {"b"},
+             "expirationTime": Decimal(300)},
+            {"dayKey": "2026-10-01#11", "platform__web": Decimal(1), "activeIdentity__web": {"a", "c"},
+             "expirationTime": Decimal(200)},
+            {"dayKey": "2026-10-02#00", "event__web__x": Decimal(1)},
+        ])
+        by_day = {item["dayKey"]: item for item in merged}
+        self.assertEqual(set(by_day), {"2026-10-01", "2026-10-02"})
+        self.assertEqual(by_day["2026-10-01"]["event__web__x"], 5)
+        self.assertEqual(by_day["2026-10-01"]["platform__web"], 1)
+        self.assertEqual(by_day["2026-10-01"]["activeIdentity__web"], {"a", "b", "c"})
+        self.assertEqual(by_day["2026-10-01"]["expirationTime"], 300)
+        self.assertEqual(by_day["2026-10-02"], {"dayKey": "2026-10-02", "event__web__x": 1})
+
+    def test_read_requests_every_shard_of_every_day_and_returns_one_item_per_day(self):
+        day_keys = [f"2026-09-{day:02d}" for day in range(1, 11)]
+        stored = {
+            "2026-09-01": {"dayKey": "2026-09-01", "event__web__x": Decimal(4)},
+            "2026-09-01#05": {"dayKey": "2026-09-01#05", "event__web__x": Decimal(1)},
+            "2026-09-10#15": {"dayKey": "2026-09-10#15", "activeIdentity__web": {"a"}},
+        }
+        requested: list[str] = []
+
+        def batch_get_item(RequestItems):
+            keys = [key["dayKey"] for key in RequestItems[ANALYTICS_DAILY_AGGREGATES_TABLE]["Keys"]]
+            self.assertLessEqual(len(keys), 100)
+            requested.extend(keys)
+            return {"Responses": {ANALYTICS_DAILY_AGGREGATES_TABLE: [
+                stored[key] for key in keys if key in stored
+            ]}}
+
+        client = Mock()
+        client.batch_get_item.side_effect = batch_get_item
+        with patch.object(backend_module, "dynamodb", client):
+            items = _read_analytics_daily_aggregates(day_keys)
+
+        expected_keys = {
+            key for day_key in day_keys for key in (day_key, *_analytics_aggregate_shard_keys(day_key))
+        }
+        self.assertEqual(set(requested), expected_keys)
+        self.assertEqual(client.batch_get_item.call_count, 2)
+        by_day = {item["dayKey"]: item for item in items}
+        self.assertEqual(by_day["2026-09-01"]["event__web__x"], 5)
+        self.assertEqual(by_day["2026-09-10"]["activeIdentity__web"], {"a"})
 
 
 class AnalyticsRecentActivityWindowTests(unittest.TestCase):

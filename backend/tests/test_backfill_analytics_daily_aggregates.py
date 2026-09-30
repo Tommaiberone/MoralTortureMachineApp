@@ -1,7 +1,7 @@
 import os
 import unittest
 import uuid
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")
@@ -15,6 +15,7 @@ from backend.scripts.backfill_analytics_daily_aggregates import (  # noqa: E402
     run,
 )
 from backend.src.backend_fastapi import (  # noqa: E402
+    _analytics_aggregate_shard_keys,
     _analytics_day_key,
     build_analytics_overview,
 )
@@ -95,7 +96,7 @@ class BackfillComputationTests(unittest.TestCase):
             {"sessionId": "s-today", "timestamp": now_ms, "actionType": "vote_cast",
              "anonymousUserId": "user-today", "platform": "web", "expirationTime": 9999999999},
         ]
-        aggregates_table = Mock()
+        aggregates_table = MagicMock()
         with (
             patch.object(backfill_module, "_scan_all_rows", side_effect=[legacy_rows, product_rows]),
             patch.object(backfill_module, "analytics_daily_aggregates_table", aggregates_table),
@@ -115,6 +116,14 @@ class BackfillComputationTests(unittest.TestCase):
         today_key = _analytics_day_key(now_ms)
         self.assertNotIn(today_key, written_day_keys)
         self.assertEqual(written_day_keys, {_analytics_day_key(day0), _analytics_day_key(day1)})
+        # TASK-366: the recomputed full-day total replaces that day's shard
+        # items too, or events written after sharding would count twice.
+        writer = aggregates_table.batch_writer.return_value.__enter__.return_value
+        deleted_keys = {call.kwargs["Key"]["dayKey"] for call in writer.delete_item.call_args_list}
+        self.assertEqual(deleted_keys, {
+            *_analytics_aggregate_shard_keys(_analytics_day_key(day0)),
+            *_analytics_aggregate_shard_keys(_analytics_day_key(day1)),
+        })
 
     def test_backfilled_aggregates_match_scan_derived_dashboard_output(self):
         """AC#1: the backfill must reproduce what build_analytics_overview's

@@ -87,10 +87,10 @@ resource "aws_dynamodb_table" "user_analytics" {
     type = "N"
   }
 
-  attribute {
-    name = "actionType"
-    type = "S"
-  }
+  # TASK-367: ActionTypeIndex (hash actionType, range timestamp, projection
+  # ALL) was removed - zero reads in September 2026 and no caller in code,
+  # yet it replicated every write (~11k WRU/month). DayIndex below covers
+  # the only bounded-recent reads the dashboard needs.
 
   # TASK-300.3/ADR-137: written by track_analytics_event alongside the raw
   # row (backend_fastapi.py's _analytics_day_key), so abuseMonitoring/
@@ -100,14 +100,6 @@ resource "aws_dynamodb_table" "user_analytics" {
   attribute {
     name = "dayKey"
     type = "S"
-  }
-
-  # Global Secondary Index to query by action type across all sessions
-  global_secondary_index {
-    name            = "ActionTypeIndex"
-    hash_key        = "actionType"
-    range_key       = "timestamp"
-    projection_type = "ALL"
   }
 
   global_secondary_index {
@@ -155,11 +147,6 @@ resource "aws_dynamodb_table" "product_events" {
   }
 
   attribute {
-    name = "actionType"
-    type = "S"
-  }
-
-  attribute {
     name = "occurredAt"
     type = "N"
   }
@@ -178,12 +165,9 @@ resource "aws_dynamodb_table" "product_events" {
     projection_type = "ALL"
   }
 
-  global_secondary_index {
-    name            = "ActionTypeIndex"
-    hash_key        = "actionType"
-    range_key       = "occurredAt"
-    projection_type = "KEYS_ONLY"
-  }
+  # TASK-367: ActionTypeIndex (hash actionType, range occurredAt, KEYS_ONLY)
+  # was removed for the same reason as on user_analytics - zero reads,
+  # no caller, ~14k WRU/month of replicated writes.
 
   global_secondary_index {
     name            = "DayIndex"
@@ -244,6 +228,14 @@ resource "aws_dynamodb_table" "product_events" {
 # make the cost material, by either provisioning capacity sized to the
 # then-actual item size or splitting the wide per-day item into several
 # smaller ones.
+#
+# TASK-366 did the split: each day is now 16 identity-hashed shard items
+# (`<day>#00`..`<day>#15`) plus the legacy unsharded `<day>` item, merged
+# back on read (backend_fastapi.py's _analytics_aggregate_key/
+# _read_analytics_daily_aggregates). A replay of real September traffic
+# measured 3-4.4x fewer WCU per event at current volume and 7.9x at ~20x
+# volume, and it keeps each item far below the 400KB item-size cap the
+# single wide item would have reached at roughly 900 daily identities.
 resource "aws_dynamodb_table" "analytics_daily_aggregates" {
   name         = "${var.environment}-${var.stack_name}-analytics-daily-aggregates"
   billing_mode = "PAY_PER_REQUEST"

@@ -914,7 +914,8 @@ dev table, or `/dev` SSM hierarchy.
   once against production with the user's explicit confirmation
   (`2026-06-12` through `2026-09-09`, 90 days). It is not part of any
   scheduled job; safe to re-run manually if ever needed, but not expected
-  to be.
+  to be. Since `TASK-366` a re-run also deletes the replaced day's shard
+  items (see below).
 
   `TASK-300.5` (ADR-142) is the final cutover: `/admin/analytics/overview`
   no longer Scans `user_analytics`/`product_events`/`users` at all, for any
@@ -944,6 +945,28 @@ dev table, or `/dev` SSM hierarchy.
   accumulation used to count the `"unknown"` sessionId placeholder as a
   real session, unlike `summary.uniqueSessions`' own definition a few
   lines below it - both now agree.
+
+  `TASK-366` (ADR-155, 2026-09-30) shards each day's aggregate: the live
+  write path sends each event (or client batch) to one of 16 items
+  `<day>#00`..`<day>#15`, chosen by a stable SHA-256 hash of the event's
+  `identity` (`_analytics_aggregate_key`), so an identity's Set memberships
+  always sit in one shard. `_read_analytics_daily_aggregates` requests the
+  unsharded `<day>` item plus all 16 shards for every day in the window
+  (~1,500 keys, ~16 `BatchGetItem` calls for 90 days) and
+  `_merge_analytics_aggregate_shards` folds them back into one item per day
+  (counters summed, Sets unioned, latest `expirationTime`), so the parsers
+  and `build_analytics_overview` are unchanged. The unsharded item still
+  holds pre-sharding history and anything the backfill script rewrites;
+  that script now also deletes the day's shard items when it replaces the
+  unsharded one, or post-sharding events would count twice. Replaying real
+  September traffic through the real functions measured 3-4.4x fewer WCU
+  per event at current volume and 7.9x at ~20x volume, and the largest item
+  on the busiest day drops from 28.6KB to 8.8KB. Before this, the single
+  item would have reached DynamoDB's 400KB item cap at roughly 900 daily
+  identities, after which every aggregate write for that day would have
+  failed silently. `TASK-367` (same date) removed the unused `ActionTypeIndex`
+  GSI from both `user_analytics` and `product_events`; the raw tables now
+  carry only `DayIndex` (plus `AnonymousUserIndex` on `product_events`).
 
   `TASK-305` (ADR-143, 2026-09-10) added a "Growth gates" panel at the top
   of `AnalyticsAdminScreen.jsx`'s `growth` tab (now the default landing tab
@@ -1241,7 +1264,7 @@ had near-zero traffic in September.
 | Line (Sep 2026) | Usage | Gross USD |
 |---|---|---|
 | API Gateway HTTP (`moral-torture-machine-api`) | 150k requests; the 10-29k/day spikes coincide with Party Room polling days | 0.17 |
-| DynamoDB on-demand writes | 238k WRU, of which ~147k from `analytics-daily-aggregates` in its first 20 days (wide per-day item billed on post-write size) | 0.17 |
+| DynamoDB on-demand writes | 238k WRU, of which ~147k from `analytics-daily-aggregates` in its first 20 days (wide per-day item billed on post-write size; sharded in `TASK-366`) and ~25k from the unused `ActionTypeIndex` GSIs (removed in `TASK-367`) | 0.17 |
 | DynamoDB on-demand reads + PITR | 222k RRU (mostly admin/ops reads before `TASK-300`/`302` landed on 09-10/11, near zero since) | 0.03 |
 | S3 | 0.58 GB stored, 4k PUT, 79k GET | 0.07 |
 | Cost Explorer API | USD 0.01 per call; prefer the free `freetier get-free-tier-usage` for routine checks | 0.04 |

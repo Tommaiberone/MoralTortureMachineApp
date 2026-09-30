@@ -6285,6 +6285,45 @@ reminders (`TASK-275`/`TASK-45`) create synchronized vote spikes. The actual
 gross bill (USD ~0.49/month, fully offset by credits) and its drivers are in
 doc-1's 2026-09-30 cost snapshot.
 
+### ADR-155 — Daily analytics aggregates sharded into 16 identity-hashed items per day; unused `ActionTypeIndex` GSIs removed (`TASK-366`/`TASK-367`, 2026-09-30)
+
+Context: `analytics_daily_aggregates` (ADR-137/139) kept one wide item per
+UTC day. DynamoDB bills `UpdateItem` on the item's size after the write, so
+each event cost as many WCU as the day's item was KB: 13-29KB in September,
+~14 WCU per event on the busiest day, 61% of all on-demand writes. Both
+the write count and the item size grow with daily traffic, so cost grows
+roughly with its square, and the identity Sets would push the item into
+DynamoDB's 400KB item cap at roughly 900 daily identities. From then on
+every aggregate write for that day would fail, and the failure would only
+be logged. Separately, `ActionTypeIndex` on `user_analytics` and
+`product_events` had zero reads and no caller but replicated every write.
+
+Options: (1) provisioned capacity sized to the item (rejected in ADR-139:
+unpredictable size on a single hot key); (2) split counters and Sets into
+separate items per namespace (several `UpdateItem` calls per event, more
+latency on gameplay-adjacent endpoints); (3) shard the whole day item by a
+hash of the event identity (still one call per event or batch); (4) buffer
+increments in Lambda memory (lost on recycle, and Lambda is not a stable
+aggregator).
+
+Decision: option 3 with 16 shards (`<day>#00`..`<day>#15`). Hashing by
+identity keeps each identity's Set memberships in one shard, so members are
+never stored twice. Reads fetch the unsharded item plus the 16 shards and
+merge them into one item per day before parsing, so no parser changed. The
+backfill script deletes the day's shards when it rewrites the unsharded
+item. A replay of real September days through the real functions (the
+unsharded model matched CloudWatch within 4-6%) measured 3x fewer WCU per
+event on a quiet day, 4.4x on the busiest, and 7.9x at ~20x traffic. 32
+shards would have saved another 15-20% at current volume while doubling
+the read calls. Both `ActionTypeIndex` GSIs are removed; `ANALYTICS_GUIDE.md`'s
+example now queries `DayIndex`.
+
+Consequences: the dashboard makes ~17x more (cheap, mostly empty) keyed
+reads, about 16 `BatchGetItem` calls for a 90-day window instead of one.
+Heavy identities still dominate their own shard, so the gain at today's
+volume is 3-4x rather than 16x; it grows with traffic, which is where it
+matters. The 400KB ceiling moves out by roughly 16x.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

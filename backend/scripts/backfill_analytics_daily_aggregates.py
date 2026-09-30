@@ -25,6 +25,12 @@ task deployed first, and replacing it here could race with a concurrent
 live ADD and undercount it; only fully-elapsed past days are ever safe to
 recompute this way.
 
+TASK-366: the live path now writes each day into shard items
+(`<day>#00`..`<day>#15`) that the dashboard reader merges with the
+unsharded `<day>` item. Because the recomputed full total goes into the
+unsharded item, the script also deletes that day's shard items - otherwise
+every event written after the sharding change would be counted twice.
+
 Usage (from the repository root, so `backend.src.backend_fastapi` resolves
 as a package import exactly like the test suite already relies on):
 
@@ -47,6 +53,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from backend.src.backend_fastapi import (  # noqa: E402
     ANALYTICS_RAW_RETENTION_SECONDS,
+    _analytics_aggregate_shard_keys,
     _analytics_day_key,
     _scalar_aggregate_increments,
     _scan_all_rows,
@@ -120,6 +127,9 @@ def run(execute: bool) -> None:
             print(f"[dry-run] {day_key}: {attribute_count} attributes")
             continue
         analytics_daily_aggregates_table.put_item(Item=item)
+        with analytics_daily_aggregates_table.batch_writer() as writer:
+            for shard_key in _analytics_aggregate_shard_keys(day_key):
+                writer.delete_item(Key={"dayKey": shard_key})
         print(f"[written] {day_key}: {attribute_count} attributes")
 
     print("Done." if execute else "Dry run complete - re-run with --execute to apply.")

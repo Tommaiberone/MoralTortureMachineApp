@@ -1070,7 +1070,9 @@ def track_analytics_event(
         # (build_analytics_overview) already relies on.
         normalized_event = normalize_analytics_event(event_data, "legacy")
         _apply_daily_aggregate_increments(
-            _analytics_day_key(normalized_event["occurredAt"]),
+            _analytics_aggregate_key(
+                _analytics_day_key(normalized_event["occurredAt"]), normalized_event["identity"]
+            ),
             _scalar_aggregate_increments(normalized_event),
             _set_aggregate_increments(normalized_event),
             expiration_time,
@@ -4425,7 +4427,9 @@ async def ingest_analytics_events(batch: AnalyticsBatchRequest, request: Request
         # TASK-300.1/300.2/ADR-137: increments (both scalar counters and
         # identity Sets) are grouped by day and applied after the raw writes
         # succeed, one UpdateItem per distinct day the batch touches (almost
-        # always exactly one) rather than one per event.
+        # always exactly one) rather than one per event. TASK-366: the key is
+        # the day's shard for the event's identity, which is still one key
+        # per batch-day because a client batch carries a single identity.
         day_increments: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
         day_set_increments: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
         with product_events_table.batch_writer(overwrite_by_pkeys=["eventId"]) as writer:
@@ -4462,7 +4466,9 @@ async def ingest_analytics_events(batch: AnalyticsBatchRequest, request: Request
                 writer.put_item(Item=item)
 
                 normalized_event = normalize_analytics_event(item, "product")
-                day_key = _analytics_day_key(normalized_event["occurredAt"])
+                day_key = _analytics_aggregate_key(
+                    _analytics_day_key(normalized_event["occurredAt"]), normalized_event["identity"]
+                )
                 for attribute_name, delta in _scalar_aggregate_increments(normalized_event).items():
                     day_increments[day_key][attribute_name] += delta
                 for attribute_name, identities in _set_aggregate_increments(normalized_event).items():
@@ -4653,6 +4659,34 @@ def _analytics_day_key(occurred_at_ms: int) -> str:
     return datetime.fromtimestamp(occurred_at_ms / 1000, tz=timezone.utc).date().isoformat()
 
 
+# TASK-366: every write for a UTC day used to land on one wide item, and
+# DynamoDB bills an UpdateItem by the item's full size after the write (in
+# 1KB WCU steps), not by the delta - so each event cost as many WCU as the
+# day's aggregate was KB (13-29KB measured in September 2026), and the item
+# would reach DynamoDB's 400KB item cap at roughly 900 daily identities,
+# after which every aggregate write for that day fails. Each event now goes
+# to one of ANALYTICS_AGGREGATE_SHARD_COUNT shard items for its day, chosen
+# by a stable hash of the event's identity: still one UpdateItem per event
+# (or per batch), on an item roughly 1/N the size. Hashing by identity
+# rather than at random keeps each identity's Set memberships in a single
+# shard, so shards never store the same member twice. The unsharded
+# `dayKey` item is still read - it holds history written before this change
+# and the backfill script's full-day recomputes - and
+# _read_analytics_daily_aggregates merges it with the shards, so every
+# parser downstream still sees exactly one item per day.
+ANALYTICS_AGGREGATE_SHARD_COUNT = 16
+
+
+def _analytics_aggregate_key(day_key: str, identity: str) -> str:
+    digest = hashlib.sha256(identity.encode("utf-8")).digest()
+    shard = int.from_bytes(digest[:4], "big") % ANALYTICS_AGGREGATE_SHARD_COUNT
+    return f"{day_key}#{shard:02d}"
+
+
+def _analytics_aggregate_shard_keys(day_key: str) -> list[str]:
+    return [f"{day_key}#{shard:02d}" for shard in range(ANALYTICS_AGGREGATE_SHARD_COUNT)]
+
+
 def _scalar_aggregate_increments(event: dict[str, Any]) -> dict[str, int]:
     """Attribute-name -> +1 deltas for one already-normalized event (i.e. the
     output of normalize_analytics_event) - operating on that shared shape,
@@ -4792,12 +4826,15 @@ def _set_aggregate_increments(event: dict[str, Any]) -> dict[str, set[str]]:
 
 
 def _apply_daily_aggregate_increments(
-    day_key: str,
+    aggregate_key: str,
     numeric_increments: dict[str, int],
     set_increments: dict[str, set[str]],
     expiration_time: int,
 ) -> None:
-    """Best-effort: mirrors the existing 'never fail the request if analytics
+    """`aggregate_key` is the item's `dayKey` value - normally a shard key
+    from _analytics_aggregate_key (TASK-366), never a bare day.
+
+    Best-effort: mirrors the existing 'never fail the request if analytics
     tracking fails' posture (track_analytics_event's own try/except, and the
     reason this function - not its caller - swallows the error) so a
     dashboard-only write can never turn a successful event/ingest write into
@@ -4834,13 +4871,13 @@ def _apply_daily_aggregate_increments(
         if len(update_parts) == 1:
             return
         analytics_daily_aggregates_table.update_item(
-            Key={"dayKey": day_key},
+            Key={"dayKey": aggregate_key},
             UpdateExpression=update_parts[0] + " ADD " + ", ".join(update_parts[1:]),
             ExpressionAttributeNames=expression_attribute_names,
             ExpressionAttributeValues=expression_attribute_values,
         )
     except Exception as error:
-        logger.error(f"Failed to update analytics daily aggregate for {day_key}: {error!s}")
+        logger.error(f"Failed to update analytics daily aggregate for {aggregate_key}: {error!s}")
 
 def _scan_all_rows(dynamodb_table) -> list[dict[str, Any]]:
     rows = []
@@ -4933,14 +4970,43 @@ def _read_recent_activity_rows(now_ms: int) -> tuple[list[dict[str, Any]], list[
 # A day with no aggregate item yet (no traffic that day, or history from
 # before this table existed and not yet backfilled by TASK-300.4) is simply
 # absent from the result; callers treat that the same as all-zero.
-_ANALYTICS_AGGREGATE_BATCH_GET_MAX_ROUNDS = 5
+# TASK-366: each day is now its unsharded item plus
+# ANALYTICS_AGGREGATE_SHARD_COUNT shard items, so a 90-day window is ~1,500
+# keys (~16 BatchGetItem calls); these extra rounds only bound the retries
+# for UnprocessedKeys on top of that.
+_ANALYTICS_AGGREGATE_BATCH_GET_RETRY_ROUNDS = 5
+
+
+def _merge_analytics_aggregate_shards(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Fold each day's unsharded item and shard items (TASK-366) back into
+    one item per day, keyed by the bare day: counters are summed, identity
+    Sets unioned, and expirationTime kept at its latest value."""
+    merged: dict[str, dict[str, Any]] = {}
+    for item in items:
+        day_key = str(item.get("dayKey", "")).split("#", 1)[0]
+        target = merged.setdefault(day_key, {"dayKey": day_key})
+        for attribute_name, value in item.items():
+            if attribute_name == "dayKey":
+                continue
+            if attribute_name == "expirationTime":
+                target[attribute_name] = max(target.get(attribute_name, 0), value)
+            elif isinstance(value, set):
+                target[attribute_name] = target.get(attribute_name, set()) | value
+            elif isinstance(value, (int, Decimal)):
+                target[attribute_name] = target.get(attribute_name, 0) + value
+    return list(merged.values())
 
 
 def _read_analytics_daily_aggregates(day_keys: list[str]) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
-    pending = list(day_keys)
+    pending = [
+        key
+        for day_key in day_keys
+        for key in (day_key, *_analytics_aggregate_shard_keys(day_key))
+    ]
+    max_rounds = ceil(len(pending) / 100) + _ANALYTICS_AGGREGATE_BATCH_GET_RETRY_ROUNDS
     rounds = 0
-    while pending and rounds < _ANALYTICS_AGGREGATE_BATCH_GET_MAX_ROUNDS:
+    while pending and rounds < max_rounds:
         rounds += 1
         chunk, pending = pending[:100], pending[100:]
         response = dynamodb.batch_get_item(
@@ -4952,7 +5018,7 @@ def _read_analytics_daily_aggregates(day_keys: list[str]) -> list[dict[str, Any]
         unprocessed = response.get("UnprocessedKeys", {}).get(ANALYTICS_DAILY_AGGREGATES_TABLE)
         if unprocessed and unprocessed.get("Keys"):
             pending = [key["dayKey"] for key in unprocessed["Keys"]] + pending
-    return items
+    return _merge_analytics_aggregate_shards(items)
 
 
 def parse_scalar_aggregate_items(
