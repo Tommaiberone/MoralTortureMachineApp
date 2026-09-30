@@ -3,10 +3,10 @@ id: TASK-368
 title: >-
   Decidere la capacity DynamoDB di Party Room prima del lancio gamebook (tetto
   attuale ~4-6 stanze contemporanee)
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-09-30 13:34'
-updated_date: '2026-09-30 13:52'
+updated_date: '2026-09-30 14:01'
 labels:
   - party-room
   - cost
@@ -28,11 +28,13 @@ Stima 2026-09-30 su dati reali. party_rooms e party_participants sono PROVISIONE
 <!-- AC:BEGIN -->
 - [x] #1 L'utente sceglie un'opzione (o una combinazione) con costo atteso esplicito
 - [x] #2 Se viene scelto on-demand: eccezione Free Tier registrata in ADR e doc-1 con budget guardrail e kill switch, come richiede CLAUDE.md
-- [ ] #3 La scelta e' applicata e verificata prima della milestone M4 del gamebook (16 novembre)
+- [x] #3 La scelta e' applicata e verificata prima della milestone M4 del gamebook (16 novembre)
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 Decisione utente 2026-09-30: on-demand per tutto cio' che ne beneficia. Applicato a tutte e sette le tabelle provisioned (users, moral_profiles, challenges, challenge_participants, party_rooms, party_participants, daily_moral_crime_votes) e ai loro GSI, con cap on_demand_throughput 1000 RRU/s e 200 WRU/s per tabella. Costo a volume di settembre ~USD 0,01/mese (tariffe reali fatturate in eu-west-1: 0,1415 USD per milione di read unit, 0,705 per milione di write unit). Guardrail: il cap (circa USD 1 per ora e per tabella al massimo) e i budget alert a 10/50/200 USD. Kill switch: tornare a PROVISIONED. ADR-157, doc-1 aggiornato.
+
+Verificato live dopo il deploy 36724812342 (success): le sette tabelle sono PAY_PER_REQUEST con OnDemandThroughput 1000/200, tutte ACTIVE, GSI ACTIVE.
 <!-- SECTION:NOTES:END -->
