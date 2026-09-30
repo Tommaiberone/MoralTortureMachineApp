@@ -6416,6 +6416,33 @@ says to prefer provisioned capacity inside the Free Tier for new or
 reconfigured tables; that line predates this decision and was left for
 the user to update.
 
+### ADR-158 — `challengeButtonCopy` concluded: "See who's worse than you" (`direct`) replaces the original button copy (`TASK-221`, user decision, 2026-09-30)
+
+Context: `ADR-156` measured, over 30 days, `direct` at 29/136 = 21.3% of
+result viewers creating a challenge, the original `baseline` copy
+("Challenge a friend") at 13/138 = 9.4%, and `rival` at 24/146 = 16.4%.
+Against the most-exposed variant (`rival`), the skill's reference rule,
+neither challenger was significant (direct z = 1.05, baseline z = -1.76).
+`direct` against the literal `baseline` was z = 2.73 (p ~ 0.006), which
+survives a Bonferroni correction for the three pairwise comparisons
+(threshold z ~ 2.39). The user chose to conclude on that comparison.
+
+Decision: `ResultsScreen.jsx` drops the `challenge_button_copy` bucketing
+and always shows `direct`; `en.json` keeps a single `results.challenge_button`
+key with that copy (the name `it.json` already used), and the
+`baseline`/`rival` keys are removed; `it.json` untouched per the drift
+exception. `result_viewed` keeps sending `variant: "direct"`, and the
+backend's `COPY_EXPERIMENTS` entry stays, so the dashboard keeps showing the
+concluded test's history and the winning copy's ongoing conversion.
+`getExperimentVariant` stays for the three remaining tests.
+
+Consequences: the decision rests on a comparison the skill's default rule
+does not sanction, made explicitly by the user; if `direct`'s rate falls
+back toward ~10% on the dashboard in the coming weeks, the effect was
+noise. Web gets the change on deploy; Android 1.13.0 keeps the three-way
+test until the next APK release, which needs a version bump and, since it
+publishes to Google Play production (`ADR-017`), explicit confirmation.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

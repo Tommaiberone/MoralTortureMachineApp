@@ -1,6 +1,7 @@
 // Shared deterministic A/B bucketing for same-identity exposure->conversion
-// experiments (login prompt copy, home CTA copy, challenge button copy,
-// party create copy). One hash function instead of one per experiment
+// experiments (login prompt copy, home CTA copy, party create copy; the
+// challenge button copy test concluded in TASK-221/ADR-158). One hash
+// function instead of one per experiment
 // (CLAUDE.md: reuse over duplicating) - namespaced by experiment name so two
 // different experiments never correlate for the same person (one always
 // landing in variant index 0 across every test would silently bias results).

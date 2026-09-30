@@ -14,8 +14,12 @@ import { AUTH_PROMPT_COPY_VARIANTS, getExperimentVariant } from '../utils/experi
 import useAuth from '../auth/useAuth';
 import './ResultsScreen.css';
 
-// TASK-221: which invite CTA copy actually gets a challenge created.
-const CHALLENGE_BUTTON_COPY_VARIANTS = ['baseline', 'rival', 'direct'];
+// TASK-221 (concluded 2026-09-30, ADR-158): 'direct' ("See who's worse than
+// you") won the invite CTA copy test - 21.3% of result viewers created a
+// challenge against 9.4% for the original "Challenge a friend" (z = 2.73).
+// result_viewed still reports it as `variant`, so the dashboard's
+// challengeButtonCopy row keeps tracking the winning copy after the test.
+const CHALLENGE_BUTTON_COPY_VARIANT = 'direct';
 
 const ResultsScreen = () => {
   const location = useLocation();
@@ -56,9 +60,6 @@ const ResultsScreen = () => {
   // TASK-219: same login-prompt copy experiment as ChallengeLandingScreen/
   // ChallengeCompareScreen, applied here to the results_challenge surface.
   const authPromptVariant = getExperimentVariant('auth_prompt_copy', AUTH_PROMPT_COPY_VARIANTS, getAnonymousUserId());
-  // TASK-221: only the "Challenge a friend" button label is tested, not the
-  // intro text above it, so the experiment isolates one variable.
-  const challengeButtonVariant = getExperimentVariant('challenge_button_copy', CHALLENGE_BUTTON_COPY_VARIANTS, getAnonymousUserId());
 
   const labels = Object.keys(aggregated);
   const data = labels.map(label => ({
@@ -78,14 +79,14 @@ const ResultsScreen = () => {
       mode: chapterKey ? 'book_chapter' : 'evaluation',
       completed_dilemmas: answers.length,
       ...(chapterKey ? { chapter_key: chapterKey } : {}),
-      // TASK-221: exposure signal for the challenge-button copy experiment -
-      // this fires slightly before the archetype (and therefore the button
-      // itself) has loaded, so it is a small conservative overcount of
-      // "exposed", not an undercount.
-      variant: challengeButtonVariant,
+      // TASK-221: exposure signal for the challenge-button copy - this fires
+      // slightly before the archetype (and therefore the button itself) has
+      // loaded, so it is a small conservative overcount of "exposed", not an
+      // undercount.
+      variant: CHALLENGE_BUTTON_COPY_VARIANT,
     });
     trackGoogleAnalyticsEvent('result_viewed');
-  }, [answers, hasResults, challengeButtonVariant, chapterKey]);
+  }, [answers, hasResults, chapterKey]);
 
   useEffect(() => {
     // Block browser back button
@@ -328,7 +329,7 @@ const ResultsScreen = () => {
                 onClick={handleChallengeAFriend}
                 disabled={creatingChallenge}
               >
-                {creatingChallenge ? t('results.challenge_creating') : t(`results.challenge_button_${challengeButtonVariant}`)}
+                {creatingChallenge ? t('results.challenge_creating') : t('results.challenge_button')}
               </button>
             ) : (
               <div className="results-challenge-link">
