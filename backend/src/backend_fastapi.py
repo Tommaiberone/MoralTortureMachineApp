@@ -337,14 +337,15 @@ PARTY_ROOM_READ_CACHE_TTL_SECONDS = 0.6
 # publishes TPD). The two prompt-guard classifier models (not general chat
 # models) were dropped at the user's explicit request (TASK-163) - they were
 # unlikely to ever produce a usable completion for this app's prompts.
+# Refreshed again 2026-10-06 against GET /openai/v1/models with the prod key:
+# llama-3.3-70b-versatile, llama-3.1-8b-instant, qwen/qwen3.6-27b and both
+# groq/compound variants now return 404, so every call was paying for failed
+# hops before reaching gpt-oss-120b. qwen/qwen3.6-27b is replaced by
+# qwen/qwen3.8-27b, which returns plain content with no <think> block.
 MODEL_FALLBACK_CHAIN = [
-    "llama-3.3-70b-versatile",             # 300K TPM, 1K RPM - High capability
-    "openai/gpt-oss-120b",                 # 250K TPM, 1K RPM - High capability
-    "qwen/qwen3.6-27b",                    # 250K TPM, 1K RPM - High capability
-    "llama-3.1-8b-instant",                # 250K TPM, 1K RPM - Medium capability
-    "openai/gpt-oss-20b",                  # 250K TPM, 1K RPM - Medium capability
-    "groq/compound",                       # 200K TPM, 200 RPM - agentic system, last resort
-    "groq/compound-mini",                  # 200K TPM, 200 RPM - agentic system, last resort
+    "openai/gpt-oss-120b",                 # High capability
+    "qwen/qwen3.8-27b",                    # High capability
+    "openai/gpt-oss-20b",                  # Medium capability
 ]
 
 # Initialize AWS clients
