@@ -498,6 +498,7 @@ class SubmitChallengeTests(unittest.TestCase):
             patch.object(backend_module, "challenges_table", challenges_table),
             patch.object(backend_module, "challenge_participants_table", participants_table),
             patch.object(backend_module, "moral_profiles_table", profiles_table),
+            patch.object(backend_module, "_notify_duel_creator_completed"),
         ):
             result = asyncio.run(submit_challenge(
                 "tok", SubmitChallengeRequest(answers=answers_payload(0.3)),
@@ -508,6 +509,47 @@ class SubmitChallengeTests(unittest.TestCase):
         profiles_table.put_item.assert_called_once()
         status_update = challenges_table.update_item.call_args.kwargs
         self.assertEqual(status_update["ExpressionAttributeValues"][":completed"], "completed")
+
+    def test_submit_notifies_the_creator_but_a_push_failure_never_fails_the_submit(self):
+        challenges_table = Mock()
+        challenges_table.get_item.return_value = {"Item": {
+            "challengeToken": "tok", "status": "joined", "language": "en", "dilemmaBaseIds": ["d1"],
+        }}
+        participants_table = Mock()
+        participants_table.get_item.side_effect = lambda Key: {"Item": {
+            "anonymousUserId": "anon-creator" if Key["role"] == "creator" else "anon-2", "role": Key["role"],
+        }}
+
+        with (
+            patch.object(backend_module, "challenges_table", challenges_table),
+            patch.object(backend_module, "challenge_participants_table", participants_table),
+            patch.object(backend_module, "moral_profiles_table", Mock()),
+            patch.object(backend_module, "send_push_notification", side_effect=RuntimeError("push down")) as push,
+        ):
+            result = asyncio.run(submit_challenge(
+                "tok", SubmitChallengeRequest(answers=answers_payload(0.3)),
+                request_with_headers({"X-Anonymous-User-Id": "anon-2"}),
+            ))
+
+        self.assertEqual(result["status"], "completed")
+        push.assert_called_once()
+        self.assertEqual(push.call_args.args[1], "anon-creator")
+        self.assertEqual(push.call_args.kwargs["trigger"], "duel_completed")
+        self.assertIn("/challenge/tok/compare", push.call_args.args[4]["url"])
+        self.assertIn("utm_source=push", push.call_args.args[4]["url"])
+
+    def test_creator_notification_uses_the_challenge_language_and_skips_self(self):
+        participants_table = Mock()
+        participants_table.get_item.return_value = {"Item": {"anonymousUserId": "anon-creator", "role": "creator"}}
+        with (
+            patch.object(backend_module, "challenge_participants_table", participants_table),
+            patch.object(backend_module, "send_push_notification") as push,
+        ):
+            backend_module._notify_duel_creator_completed(request_with_headers({}), "tok", "it", "anon-2")
+            self.assertEqual(push.call_args.args[2], "Il tuo Moral Duel è pronto")
+            push.reset_mock()
+            backend_module._notify_duel_creator_completed(request_with_headers({}), "tok", "xx", "anon-creator")
+            push.assert_not_called()
 
     def test_rejects_submit_from_someone_who_never_joined(self):
         challenges_table = Mock()

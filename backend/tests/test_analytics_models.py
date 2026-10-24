@@ -542,6 +542,20 @@ class AnalyticsDailyAggregateTests(unittest.TestCase):
              "actionType": "party_room_create_clicked", "platform": "web", "language": "en"},
             {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-6", "occurredAt": day2 + 900,
              "actionType": "party_home_viewed", "platform": "web", "language": "en"},
+            # Web Push (TASK-275): prompt -> subscribed -> delivered -> opened for
+            # one identity, plus a dismissal and a failed delivery for others.
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-5", "occurredAt": day2 + 1700,
+             "actionType": "push_prompt_shown", "platform": "web", "language": "en"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-5", "occurredAt": day2 + 1800,
+             "actionType": "push_subscribed", "platform": "web", "language": "en"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-5", "occurredAt": day2 + 1900,
+             "actionType": "push_delivery_succeeded", "platform": "web", "language": "en"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-5", "occurredAt": day2 + 1950,
+             "actionType": "push_notification_opened", "platform": "web", "language": "en"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-6", "occurredAt": day2 + 1950,
+             "actionType": "push_prompt_dismissed", "platform": "web", "language": "en"},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-6", "occurredAt": day2 + 1960,
+             "actionType": "push_delivery_failed", "platform": "web", "language": "en"},
             # Moral Duel: challengeCreated doubles as creativeVariants' own
             # "attempts" dimension and as challengeButtonCopy's exposure.
             {"eventId": str(uuid.uuid4()), "anonymousUserId": "user-7", "occurredAt": day2 + 2000,
@@ -617,7 +631,7 @@ class AnalyticsDailyAggregateTests(unittest.TestCase):
             "eventCounts", "sourceCounts", "platformCounts", "platformBreakdown",
             "languageCounts", "timeZoneCounts", "appVersionCounts", "topDilemmas",
             "interactionBreakdowns", "funnel", "dailyMoralCrime", "partyRoom", "moralDuel",
-            "retentionCohorts", "viralCoefficient", "creativeVariants", "copyExperiments",
+            "pushNotifications", "retentionCohorts", "viralCoefficient", "creativeVariants", "copyExperiments",
         ):
             with self.subTest(field=field):
                 self.assertEqual(_order_insensitive(aggregate_backed[field]), _order_insensitive(scan_only[field]))
@@ -668,6 +682,8 @@ class AnalyticsDailyAggregateTests(unittest.TestCase):
         self.assertGreater(sum(stage["users"] for stage in scan_only["funnel"]), 0)
         self.assertTrue(any(row["identities"] > 0 for row in scan_only["partyRoom"]["eventFunnel"]))
         self.assertTrue(any(row["identities"] > 0 for row in scan_only["moralDuel"]["eventFunnel"]))
+        self.assertTrue(any(row["identities"] > 0 for row in scan_only["pushNotifications"]["eventFunnel"]))
+        self.assertEqual(scan_only["pushNotifications"]["actions"]["dismissed"], 1)
         self.assertEqual(scan_only["moralDuel"]["inviteesCreatingAnotherChallenge"]["becameCreator"], 1)
         self.assertTrue(any(row["identities"] > 0 for row in scan_only["dailyMoralCrime"]["eventFunnel"]))
         self.assertTrue(any(row["completedReferrals"] > 0 for row in scan_only["viralCoefficient"]))
@@ -1207,6 +1223,33 @@ class AnalyticsOverviewTests(unittest.TestCase):
         ])
         self.assertEqual(party_room["hostActions"], {
             "createClicked": 1, "started": 1, "advanced": 1, "rematchCreated": 0,
+        })
+
+    def test_push_panel_follows_one_identity_from_prompt_to_open(self):
+        now_ms = 1785369600000
+        rows = [
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": uid, "occurredAt": now_ms - offset,
+             "actionType": name, "platform": "web", "properties": "{}"}
+            for uid, offset, name in (
+                ("a", 9000, "push_prompt_shown"), ("b", 8900, "push_prompt_shown"), ("c", 8800, "push_prompt_shown"),
+                ("a", 8000, "push_subscribed"), ("b", 7900, "push_subscribed"),
+                ("c", 7800, "push_prompt_dismissed"), ("c", 7700, "push_permission_denied"),
+                ("a", 7000, "push_delivery_succeeded"), ("a", 6000, "push_notification_opened"),
+                ("b", 5000, "push_delivery_failed"), ("b", 4000, "push_unsubscribed"),
+            )
+        ]
+        push = build_analytics_overview(
+            legacy_rows=[], product_rows=rows, days=7, now_ms=now_ms, platform="web",
+        )["pushNotifications"]
+
+        self.assertEqual(push["eventFunnel"], [
+            {"stage": "promptShown", "identities": 3, "fromPreviousPct": None},
+            {"stage": "subscribed", "identities": 2, "fromPreviousPct": 66.7},
+            {"stage": "delivered", "identities": 1, "fromPreviousPct": 50.0},
+            {"stage": "opened", "identities": 1, "fromPreviousPct": 100.0},
+        ])
+        self.assertEqual(push["actions"], {
+            "dismissed": 1, "permissionDenied": 1, "unsubscribed": 1, "deliveryFailed": 1,
         })
 
     def test_moral_duel_panel_counts_distinct_identities_across_both_sides(self):

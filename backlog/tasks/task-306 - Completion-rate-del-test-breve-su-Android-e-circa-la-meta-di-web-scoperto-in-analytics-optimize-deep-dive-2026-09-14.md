@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-09-14 08:12'
-updated_date: '2026-09-30 13:34'
+updated_date: '2026-10-24 14:01'
 labels:
   - growth
   - analytics
@@ -42,4 +42,6 @@ Non e' un problema di strumentazione (TASK-7, gia' Done, ha verificato copertura
 
 <!-- SECTION:NOTES:BEGIN -->
 Rimisura 2026-09-30 (analytics-optimize, 30 giorni, mtm-analytics-readonly): completamento del test breve su Android salito a 53/87 = 60,9% (sulla 1.13.0 46/75 = 61%), contro il 44,9% del 14/09; web 415/484 = 85,7%. Il divario resta significativo (z = -5,5), e test_started -> answered su Android e' 81/87 = 93% contro 96% su web: la perdita si e' spostata piu' avanti nel flusso. Task ancora valido.
+
+Rimisura 2026-10-24 (analytics-optimize, ADR-160): 30gg Android 39/67 = 58,2% (web 351/416 = 84,4%, z = -5,0). 90gg Android 138/256 = 53,9% contro web 86,0% (z = -12,2): il gap e' confermato su finestra larga, quindi AC#2 e' soddisfatta. Android 1.13.0 e' il 99,9% degli eventi Android, non e' piu' una questione di versioni vecchie. AC#1/#3/#4 restano aperti.
 <!-- SECTION:NOTES:END -->

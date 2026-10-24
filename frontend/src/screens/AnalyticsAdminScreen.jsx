@@ -171,6 +171,12 @@ const AnalyticsAdminScreen = () => {
   const partyFunnelMaximum = Math.max(...partyFunnel.map((stage) => stage.identities), 1);
   const partyHostActions = Object.entries(partyRoom.hostActions || {});
 
+  // TASK-275: Web Push funnel (prompt shown -> subscribed -> delivered -> opened).
+  const pushNotifications = data.pushNotifications || {};
+  const pushFunnel = Array.isArray(pushNotifications.eventFunnel) ? pushNotifications.eventFunnel : [];
+  const pushFunnelMaximum = Math.max(...pushFunnel.map((stage) => stage.identities), 1);
+  const pushActions = Object.entries(pushNotifications.actions || {});
+
   const moralDuel = data.moralDuel || {};
   const duelFunnel = Array.isArray(moralDuel.eventFunnel) ? moralDuel.eventFunnel : [];
   const duelFunnelMaximum = Math.max(...duelFunnel.map((stage) => stage.identities), 1);
@@ -258,6 +264,29 @@ const AnalyticsAdminScreen = () => {
   const viralCoefficient = Array.isArray(data.viralCoefficient) ? data.viralCoefficient : [];
   const creativeVariants = Array.isArray(data.creativeVariants) ? data.creativeVariants : [];
   const copyExperiments = data.copyExperiments || {};
+
+  // One identity-funnel renderer for the panels that share this exact markup
+  // (Party Room, Moral Duel, Push) instead of a third copy-pasted block.
+  const renderIdentityFunnel = (stages, maximum, stagePrefix) => (
+    <div className="analytics-daily-funnel">
+      {stages.map((stage, index) => (
+        <div className="analytics-funnel-row" key={stage.stage}>
+          <div>
+            <span>{index + 1}. {t(`${stagePrefix}${stage.stage}`)}</span>
+            <strong>{formatNumber(stage.identities)}</strong>
+          </div>
+          <div className="analytics-funnel-track">
+            <i style={{ width: `${Math.max((stage.identities / maximum) * 100, stage.identities ? 3 : 0)}%` }} />
+          </div>
+          <small>
+            {stage.fromPreviousPct === null
+              ? t('analyticsAdmin.baseline')
+              : `${stage.fromPreviousPct}% ${t('analyticsAdmin.fromPrevious')}`}
+          </small>
+        </div>
+      ))}
+    </div>
+  );
   const copyExperimentRows = Object.entries(copyExperiments).flatMap(([experiment, rows]) => (
     Array.isArray(rows) ? rows.map((row) => ({ experiment, ...row })) : []
   ));
@@ -726,26 +755,9 @@ const AnalyticsAdminScreen = () => {
             </div>
           </div>
           <p className="analytics-card-copy analytics-daily-scope">{t('analyticsAdmin.partyEventScope')}</p>
-          {partyFunnel.length ? (
-            <div className="analytics-daily-funnel">
-              {partyFunnel.map((stage, index) => (
-                <div className="analytics-funnel-row" key={stage.stage}>
-                  <div>
-                    <span>{index + 1}. {t(`analyticsAdmin.partyStage_${stage.stage}`)}</span>
-                    <strong>{formatNumber(stage.identities)}</strong>
-                  </div>
-                  <div className="analytics-funnel-track">
-                    <i style={{ width: `${Math.max((stage.identities / partyFunnelMaximum) * 100, stage.identities ? 3 : 0)}%` }} />
-                  </div>
-                  <small>
-                    {stage.fromPreviousPct === null
-                      ? t('analyticsAdmin.baseline')
-                      : `${stage.fromPreviousPct}% ${t('analyticsAdmin.fromPrevious')}`}
-                  </small>
-                </div>
-              ))}
-            </div>
-          ) : <p className="analytics-chart-empty">{t('analyticsAdmin.noData')}</p>}
+          {partyFunnel.length
+            ? renderIdentityFunnel(partyFunnel, partyFunnelMaximum, 'analyticsAdmin.partyStage_')
+            : <p className="analytics-chart-empty">{t('analyticsAdmin.noData')}</p>}
         </article>
 
         <article className="analytics-card">
@@ -768,34 +780,41 @@ const AnalyticsAdminScreen = () => {
       )}
 
       {activeSection === 'duel' && (
-      <section className="analytics-card" id="panel-duel" role="tabpanel" aria-labelledby="tab-duel">
-        <div className="analytics-section-heading">
-          <div>
-            <h2>{t('analyticsAdmin.duelTitle')}</h2>
-            <p>{t('analyticsAdmin.duelDescription')}</p>
+      <section className="analytics-grid analytics-grid--daily" id="panel-duel" role="tabpanel" aria-labelledby="tab-duel">
+        <article className="analytics-card">
+          <div className="analytics-section-heading">
+            <div>
+              <h2>{t('analyticsAdmin.duelTitle')}</h2>
+              <p>{t('analyticsAdmin.duelDescription')}</p>
+            </div>
           </div>
-        </div>
-        <p className="analytics-card-copy analytics-daily-scope">{t('analyticsAdmin.duelEventScope')}</p>
-        {duelFunnel.length ? (
-          <div className="analytics-daily-funnel">
-            {duelFunnel.map((stage, index) => (
-              <div className="analytics-funnel-row" key={stage.stage}>
-                <div>
-                  <span>{index + 1}. {t(`analyticsAdmin.duelStage_${stage.stage}`)}</span>
-                  <strong>{formatNumber(stage.identities)}</strong>
-                </div>
-                <div className="analytics-funnel-track">
-                  <i style={{ width: `${Math.max((stage.identities / duelFunnelMaximum) * 100, stage.identities ? 3 : 0)}%` }} />
-                </div>
-                <small>
-                  {stage.fromPreviousPct === null
-                    ? t('analyticsAdmin.baseline')
-                    : `${stage.fromPreviousPct}% ${t('analyticsAdmin.fromPrevious')}`}
-                </small>
+          <p className="analytics-card-copy analytics-daily-scope">{t('analyticsAdmin.duelEventScope')}</p>
+          {duelFunnel.length
+            ? renderIdentityFunnel(duelFunnel, duelFunnelMaximum, 'analyticsAdmin.duelStage_')
+            : <p className="analytics-chart-empty">{t('analyticsAdmin.noData')}</p>}
+        </article>
+
+        <article className="analytics-card">
+          <div className="analytics-section-heading">
+            <div>
+              <h2>{t('analyticsAdmin.pushTitle')}</h2>
+              <p>{t('analyticsAdmin.pushDescription')}</p>
+            </div>
+          </div>
+          <p className="analytics-card-copy analytics-daily-scope">{t('analyticsAdmin.pushEventScope')}</p>
+          {pushFunnel.length
+            ? renderIdentityFunnel(pushFunnel, pushFunnelMaximum, 'analyticsAdmin.pushStage_')
+            : <p className="analytics-chart-empty">{t('analyticsAdmin.noData')}</p>}
+          <h3>{t('analyticsAdmin.pushActionsTitle')}</h3>
+          <div className="analytics-ranked-list analytics-ranked-list--compact">
+            {pushActions.map(([key, count]) => (
+              <div key={key}>
+                <code>{t(`analyticsAdmin.pushAction_${key}`)}</code>
+                <strong>{formatNumber(count)}</strong>
               </div>
             ))}
           </div>
-        ) : <p className="analytics-chart-empty">{t('analyticsAdmin.noData')}</p>}
+        </article>
       </section>
       )}
 

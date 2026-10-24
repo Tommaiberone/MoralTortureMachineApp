@@ -28,6 +28,7 @@ const ChallengeCompareScreen = () => {
   const [creatingRematch, setCreatingRematch] = useState(false);
   const [rematchLoginRequired, setRematchLoginRequired] = useState(false);
   const viewTracked = useRef(false);
+  const pushOpenTracked = useRef(false);
   const loginPromptTracked = useRef(false);
 
   const API_URL = import.meta.env.VITE_API_URL;
@@ -55,6 +56,13 @@ const ChallengeCompareScreen = () => {
         if (!viewTracked.current) {
           viewTracked.current = true;
           trackEvent('challenge_compare_viewed', { overall_agreement_pct: data.compatibility.overallAgreementPct, challenge_token: token });
+        }
+        // TASK-275: a Duel-completed push opens this page tagged utm_source=push
+        // (set by the backend when it sends), the only click signal a service
+        // worker can hand to the page. Counted once per mount, whatever re-fetches.
+        if (!pushOpenTracked.current && new URLSearchParams(window.location.search).get('utm_source') === 'push') {
+          pushOpenTracked.current = true;
+          trackEvent('push_notification_opened', { trigger: 'duel_completed' });
         }
         // TASK-14: the login prompt only fires once we know the pair insight
         // is actually still locked, not on every mount/re-fetch.

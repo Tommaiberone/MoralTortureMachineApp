@@ -179,18 +179,28 @@ class SendPushNotificationTests(unittest.TestCase):
             patch.object(backend_module, "push_subscriptions_table", table),
             patch.object(backend_module, "_send_web_push") as mock_web_push,
             patch.object(backend_module, "_send_fcm") as mock_fcm,
-            patch.object(backend_module, "_track_duel_event", side_effect=lambda req, name, data: tracked.append((name, data))),
+            patch.object(
+                backend_module, "_track_duel_event",
+                side_effect=lambda req, name, data=None, **who: tracked.append((name, data, who)),
+            ),
         ):
             summary = send_push_notification(
-                request_with_headers({}), "anon-1", "Someone answered", "Go look"
+                request_with_headers({}), "anon-1", "Someone answered", "Go look", trigger="duel_completed"
             )
 
         self.assertEqual(summary, {"delivered": 2, "failed": 0, "pruned": 0})
         mock_web_push.assert_called_once()
         mock_fcm.assert_called_once()
         self.assertEqual(
-            sorted(name for name, _ in tracked),
+            sorted(name for name, _, _ in tracked),
             ["push_delivery_succeeded", "push_delivery_succeeded"],
+        )
+        # Attributed to the recipient (not the caller's request), with the
+        # platform implied by the channel, so the dashboard can follow them.
+        self.assertEqual(
+            sorted((data["channel"], data["trigger"], who["recipient_anonymous_user_id"], who["recipient_platform"])
+                   for _, data, who in tracked),
+            [("fcm", "duel_completed", "anon-1", "android"), ("web_push", "duel_completed", "anon-1", "web")],
         )
 
     def test_stale_subscription_is_pruned_after_a_failed_send(self):

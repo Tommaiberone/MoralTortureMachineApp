@@ -265,6 +265,24 @@ MORAL_DUEL_ANALYTICS_STAGES = (
     ("compared", "challenge_compare_viewed"),
 )
 
+# TASK-275: Web Push funnel, followed per identity from prompt to open. The
+# stages are all events about the *same* person - the Duel creator - because
+# send_push_notification attributes delivery to the recipient (see
+# _track_duel_event). Subscriptions made from the account page skip the
+# prompt, so "subscribed" can exceed "promptShown"; that is expected.
+PUSH_ANALYTICS_STAGES = (
+    ("promptShown", "push_prompt_shown"),
+    ("subscribed", "push_subscribed"),
+    ("delivered", "push_delivery_succeeded"),
+    ("opened", "push_notification_opened"),
+)
+PUSH_ACTION_EVENTS = (
+    ("dismissed", "push_prompt_dismissed"),
+    ("permissionDenied", "push_permission_denied"),
+    ("unsubscribed", "push_unsubscribed"),
+    ("deliveryFailed", "push_delivery_failed"),
+)
+
 # The generic solo-test funnel (test_started -> ... -> shared): each stage
 # accepts either of two event names because the legacy and product event
 # generations named the same milestone differently. Module-level (TASK-300.2/
@@ -2461,15 +2479,34 @@ async def delete_user_account(request: Request):
     counts = _delete_account_by_sub(claims["sub"], claims.get("cognito:username"))
     return {"deleted": True, "deletedData": counts}
 
-def _track_duel_event(request: Request, action_type: str, action_data: dict[str, Any] | None = None) -> None:
-    session_id = extract_session_id(request)
+def _track_duel_event(
+    request: Request,
+    action_type: str,
+    action_data: dict[str, Any] | None = None,
+    recipient_anonymous_user_id: str | None = None,
+    recipient_platform: str | None = None,
+) -> None:
+    """`recipient_*` is for an event that belongs to someone other than the
+    caller (TASK-275: a push delivered to the Duel creator while the invitee's
+    request is the one running). The caller's install/version/timezone are
+    dropped then, so they are not attributed to the recipient."""
+    context = extract_client_analytics_context(request)
+    if recipient_anonymous_user_id:
+        context = {
+            "anonymous_user_id": recipient_anonymous_user_id,
+            "install_id": None,
+            "platform": recipient_platform,
+            "app_version": None,
+            "client_language": None,
+            "time_zone": None,
+        }
     track_analytics_event(
-        session_id=session_id,
+        session_id=extract_session_id(request),
         action_type=action_type,
         action_data=action_data or {},
         user_agent=request.headers.get("User-Agent"),
         ip_address=request.client.host if request.client else None,
-        **extract_client_analytics_context(request),
+        **context,
     )
 
 @app.post("/profiles")
@@ -2977,6 +3014,38 @@ async def join_challenge(token: str, request: Request):
         "language": challenge["language"],
     }
 
+DUEL_COMPLETED_PUSH_COPY = {
+    "en": ("Your Moral Duel is ready", "Someone just finished your challenge. See how you compare."),
+    "it": ("Il tuo Moral Duel è pronto", "Qualcuno ha appena completato la tua sfida. Scopri come vi confrontate."),
+}
+
+
+def _notify_duel_creator_completed(
+    request: Request, token: str, language: str, invitee_anonymous_user_id: str,
+) -> None:
+    """TASK-275's one push trigger: tell the Duel creator their invitee just
+    finished, since the creator always answers first and is long gone by then.
+    Best-effort by design - the invitee's submit has already succeeded and
+    must never fail, or wait on a retry, because of a notification. Does
+    nothing for a creator who never opted in (one cheap Query)."""
+    try:
+        creator = get_participant(token, "creator")
+        creator_id = creator.get("anonymousUserId") if creator else None
+        if not creator_id or creator_id == invitee_anonymous_user_id:
+            return
+        title, body = DUEL_COMPLETED_PUSH_COPY.get(language, DUEL_COMPLETED_PUSH_COPY["en"])
+        send_push_notification(
+            request, creator_id, title, body,
+            {
+                "url": f"/challenge/{token}/compare?utm_source=push&utm_medium=notification&utm_campaign=duel_completed",
+                "tag": f"duel-{token[:12]}",
+            },
+            trigger="duel_completed",
+        )
+    except Exception:
+        logger.exception("Could not send the Duel-completed push")
+
+
 @app.post("/challenges/{token}/submit")
 async def submit_challenge(token: str, submit_request: SubmitChallengeRequest, request: Request):
     """Invitee submits their answers (TASK-35/36): completes the challenge and
@@ -3013,6 +3082,7 @@ async def submit_challenge(token: str, submit_request: SubmitChallengeRequest, r
         ExpressionAttributeValues={":completed": "completed"},
     )
     _track_duel_event(request, "challenge_completed", {"archetype_id": profile_result["archetypeId"]})
+    _notify_duel_creator_completed(request, token, challenge["language"], anonymous_user_id)
     return {"challengeToken": token, "status": "completed", "profilePublicId": profile_result["publicId"]}
 
 def _fallback_duel_pair_insight(creator_name: str, invitee_name: str, overall_pct: int, language: str) -> str:
@@ -4188,12 +4258,19 @@ def _send_fcm(subscription: dict[str, Any], title: str, body: str, data: dict[st
         raise PushDeliveryError(f"FCM returned {response.status_code}: {response.text[:200]}")
 
 
+def _push_channel_platform(channel: str | None) -> str:
+    """Exact platform for a push delivery event: Web Push only ever reaches a
+    browser, FCM only the native Android app."""
+    return "android" if channel == "fcm" else "web"
+
+
 def send_push_notification(
     request: Request,
     anonymous_user_id: str,
     title: str,
     body: str,
     data: dict[str, Any] | None = None,
+    trigger: str | None = None,
 ) -> dict[str, int]:
     """Send one transactional push to every device an identity has
     registered (TASK-274 AC#3). Meant to be called directly from the
@@ -4202,6 +4279,11 @@ def send_push_notification(
     scheduler/broadcast path here. No-ops (delivered=0, no exception) for an
     identity with no subscriptions, since "nobody opted in" is the normal
     case, not an error.
+
+    `trigger` names what caused the push (TASK-275), purely for analytics.
+    Delivery events are attributed to the recipient, not to whoever's request
+    happens to be running, so the dashboard can follow one identity from
+    prompt to delivery to open.
     """
     data = data or {}
     response = push_subscriptions_table.query(
@@ -4224,10 +4306,17 @@ def send_push_notification(
             else:
                 continue
             delivered += 1
-            _track_duel_event(request, "push_delivery_succeeded", {"channel": channel})
+            _track_duel_event(
+                request, "push_delivery_succeeded", {"channel": channel, "trigger": trigger or "unknown"},
+                recipient_anonymous_user_id=anonymous_user_id, recipient_platform=_push_channel_platform(channel),
+            )
         except PushDeliveryError as error:
             failed += 1
-            _track_duel_event(request, "push_delivery_failed", {"channel": channel, "stale": error.stale})
+            _track_duel_event(
+                request, "push_delivery_failed",
+                {"channel": channel, "stale": error.stale, "trigger": trigger or "unknown"},
+                recipient_anonymous_user_id=anonymous_user_id, recipient_platform=_push_channel_platform(channel),
+            )
             if error.stale:
                 pruned += 1
                 push_subscriptions_table.delete_item(
@@ -4758,7 +4847,8 @@ def _set_aggregate_increments(event: dict[str, Any]) -> dict[str, set[str]]:
     never disagree, and reuses the exact same stage/event-name registries
     (GENERIC_FUNNEL_STAGES, DAILY_MORAL_CRIME_ANALYTICS_STAGES,
     PARTY_ROOM_ANALYTICS_STAGES, PARTY_ROOM_HOST_ACTION_EVENTS,
-    MORAL_DUEL_ANALYTICS_STAGES, COPY_EXPERIMENTS) the Scan-derived builders
+    MORAL_DUEL_ANALYTICS_STAGES, PUSH_ANALYTICS_STAGES, PUSH_ACTION_EVENTS,
+    COPY_EXPERIMENTS) the Scan-derived builders
     use, so the two can never drift apart on which events count toward which
     stage."""
     platform = event["platform"]
@@ -4807,6 +4897,14 @@ def _set_aggregate_increments(event: dict[str, Any]) -> dict[str, set[str]]:
     for stage_key, mapped_event_name in MORAL_DUEL_ANALYTICS_STAGES:
         if event_name == mapped_event_name:
             add_to_set("duelStage", stage_key)
+
+    for stage_key, mapped_event_name in PUSH_ANALYTICS_STAGES:
+        if event_name == mapped_event_name:
+            add_to_set("pushStage", stage_key)
+
+    for action_key, mapped_event_name in PUSH_ACTION_EVENTS:
+        if event_name == mapped_event_name:
+            add_to_set("pushAction", action_key)
 
     if event_name == "challenge_completed_client":
         # build_viral_coefficient / build_creative_variant_breakdown: the
@@ -5169,6 +5267,8 @@ def parse_set_aggregate_items(
     party_stage_identities: dict[str, set[str]] = defaultdict(set)
     party_host_action_identities: dict[str, set[str]] = defaultdict(set)
     duel_stage_identities: dict[str, set[str]] = defaultdict(set)
+    push_stage_identities: dict[str, set[str]] = defaultdict(set)
+    push_action_identities: dict[str, set[str]] = defaultdict(set)
     active_identities_by_day: dict[str, set[str]] = defaultdict(set)
     active_sessions_by_day: dict[str, set[str]] = defaultdict(set)
     viral_completions_by_channel: dict[str, set[str]] = defaultdict(set)
@@ -5206,6 +5306,10 @@ def parse_set_aggregate_items(
                 party_host_action_identities[value_parts[0]] |= identities
             elif namespace == "duelStage" and len(value_parts) == 1:
                 duel_stage_identities[value_parts[0]] |= identities
+            elif namespace == "pushStage" and len(value_parts) == 1:
+                push_stage_identities[value_parts[0]] |= identities
+            elif namespace == "pushAction" and len(value_parts) == 1:
+                push_action_identities[value_parts[0]] |= identities
             elif namespace == "viralCompletion" and len(value_parts) == 1:
                 viral_completions_by_channel[value_parts[0]] |= identities
             elif namespace == "variantCompletion" and len(value_parts) == 1:
@@ -5221,6 +5325,8 @@ def parse_set_aggregate_items(
         "partyStageIdentities": dict(party_stage_identities),
         "partyHostActionIdentities": dict(party_host_action_identities),
         "duelStageIdentities": dict(duel_stage_identities),
+        "pushStageIdentities": dict(push_stage_identities),
+        "pushActionIdentities": dict(push_action_identities),
         "activeIdentitiesByDay": dict(active_identities_by_day),
         "activeSessionsByDay": dict(active_sessions_by_day),
         "viralCompletionsByChannel": dict(viral_completions_by_channel),
@@ -5566,6 +5672,27 @@ def build_party_room_analytics(events: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "eventFunnel": _build_identity_funnel(events, PARTY_ROOM_ANALYTICS_STAGES),
         "hostActions": _party_room_host_action_counts_from_identities(host_action_identities),
+    }
+
+
+def _push_action_counts_from_identities(
+    action_identities: dict[str, set[str]],
+) -> dict[str, int]:
+    return {key: len(action_identities.get(key, set())) for key, _ in PUSH_ACTION_EVENTS}
+
+
+def build_push_analytics(events: list[dict[str, Any]]) -> dict[str, Any]:
+    """Web Push dashboard panel (TASK-275): prompt shown -> subscribed ->
+    delivered -> opened per identity, plus the opt-out/failure counts that
+    would otherwise vanish into the flat eventCounts list."""
+    action_identities: dict[str, set[str]] = {key: set() for key, _ in PUSH_ACTION_EVENTS}
+    for event in events:
+        for key, event_name in PUSH_ACTION_EVENTS:
+            if event["eventName"] == event_name:
+                action_identities[key].add(event["identity"])
+    return {
+        "eventFunnel": _build_identity_funnel(events, PUSH_ANALYTICS_STAGES),
+        "actions": _push_action_counts_from_identities(action_identities),
     }
 
 
@@ -6134,6 +6261,12 @@ def build_analytics_overview(
                 set_aggregates["partyHostActionIdentities"]
             ),
         }
+        push_notifications = {
+            "eventFunnel": _identity_funnel_from_stage_identities(
+                set_aggregates["pushStageIdentities"], PUSH_ANALYTICS_STAGES
+            ),
+            "actions": _push_action_counts_from_identities(set_aggregates["pushActionIdentities"]),
+        }
         moral_duel = {
             "eventFunnel": _identity_funnel_from_stage_identities(
                 set_aggregates["duelStageIdentities"], MORAL_DUEL_ANALYTICS_STAGES
@@ -6174,6 +6307,7 @@ def build_analytics_overview(
         )
         party_room = build_party_room_analytics(events)
         moral_duel = build_moral_duel_analytics(events)
+        push_notifications = build_push_analytics(events)
         retention_cohorts = build_retention_cohorts(events, now_ms)
         viral_coefficient = build_viral_coefficient(events)
         creative_variants = build_creative_variant_breakdown(events)
@@ -6217,6 +6351,7 @@ def build_analytics_overview(
         "dailyMoralCrime": daily_moral_crime,
         "partyRoom": party_room,
         "moralDuel": moral_duel,
+        "pushNotifications": push_notifications,
         "interactionBreakdowns": interaction_breakdowns,
         "retentionCohorts": retention_cohorts,
         "viralCoefficient": viral_coefficient,

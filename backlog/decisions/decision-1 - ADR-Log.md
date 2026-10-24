@@ -6468,6 +6468,68 @@ must not ship before `TASK-372` recalibrates it; a recentre-and-amplify experime
 problem (`TASK-228`) is only partly addressed and needs new decorrelating dilemmas. The 17 Italian dilemmas now differ from
 English in answer order and scores; accepted, since they are unreachable in the app.
 
+### ADR-160 — `analytics-optimize` run of 2026-10-24: completion passes, share, Duel and D7 fail, no A/B winner, new users flat at ~150/week (`TASK-223`)
+
+Context: the user asked for an analytics analysis. Same method as `ADR-156`: full scan through `mtm-analytics-readonly`
+(35,517 product and 33,247 legacy rows), `build_analytics_overview` unmodified, 30-day window 2026-09-25 to 2026-10-24 (plus 90 days
+for platform splits). No code, task or version changed by this run.
+
+Gates (30 days, identities, all platforms):
+
+- Short-test completion 390/483 = 80.7% by funnel stage (gate >=60%): passes. Web 351/416 = 84.4%; Android 39/67 = 58.2%, below
+  the gate on its own (z = -5.0 vs web; 90 days 138/256 = 53.9% vs 86.0%, z = -12.2). Was 60.9% on 09-30 (`ADR-156`); the gap is
+  persistent over 90 days, so `TASK-306` AC#2 is answered (confirmed, not seasonal).
+- Result-to-share 34/388 = 8.8% (gate >=15%): fails, worse than 9.9% on 09-30. Web 9.2%, Android 5.1%.
+- Duel open-to-complete 12/49 = 24.5% (gate >=25%): fails by half a point, down from 34.5% on 09-30; sample 49 is above the floor of
+  30 but the interval is wide (~14-38%), so this is "at the gate, drifting down", not a clear regression. The leak is landing to
+  join (17/49 = 34.7%); join to complete is 70.6%.
+- Invitees creating another challenge: 0/17, insufficient sample (0/23 on 09-30).
+- D7 retention 6/580 = 1.0% (gate 12-15%): fails; D1 5.2%. 90 days: web D7 0.4% (9/2203), Android 1.8% (5/283).
+
+A/B tests (two-proportion z against the most-exposed variant): `homeModeCopy` direct 78.3% vs hook 79.2% z = -0.28;
+`partyCreateCopy` baseline 25.8% vs dramatic 28.6% z = -0.25; `authPromptCopy` still under sample (all variants < 30 exposed);
+creative variants provocative 6/25 vs archetype 2/15 z = -0.82 vs radar 3/13 z = -0.06 (90 days: provocative 14/50 = 28.0%,
+radar 27.3%, archetype 19.4%, provocative vs archetype z ~ 0.9). No winner. `challengeButtonCopy` is already concluded
+(`ADR-158`); its residual `rival` 8/30 vs `direct` 41/310 reading (z = 2.0) comes from Android 1.13.0 only, which still buckets,
+so it is confounded by platform and was not acted on. The 90-day `unknown` rows in `creativeVariants` and `homeModeCopy` are
+untagged traffic, not variants, and were excluded.
+
+Other findings: new identities per week 239/237/273/208 (late Aug to mid Sep) then 159/165/190/136/156 (late Sep to now), flat at
+~150, ~90% web; the 30-day total is 684 (611 web, 73 Android). Daily Moral Crime: 92 of 210 viewers shared (43.8%, again the
+best share surface) but only 30 of 337 all-time voters voted on more than one day (8.9%). Gamebook teaser: 491 viewers, 337
+dismissed, 25 waitlist identities (5.1%) against 50 signup events, so the double count of `TASK-369` is still live. Android
+1.13.0 is 99.9% of Android events. Abuse monitor: 27 suspicious identities, mostly known-automation signatures with 2 events.
+
+Decision: no code changed, nothing escalated beyond what exists (`TASK-306` High, `TASK-275`/`45` for D7, `TASK-58`/`83` in Open
+Points). Note appended to `TASK-306`.
+
+Consequences: the gate most worth watching before the Christmas gamebook push is acquisition, not conversion: weekly new users have
+not recovered since the September drop, while Daily Moral Crime is the one surface that already shares at the 40%+ level.
+### ADR-161 — Web Push shipped with one trigger (invitee finished), a post-challenge prompt and per-person funnel metrics (`TASK-275`, user decision 2026-10-24)
+
+Context: `ADR-160` found D7 retention at 1.0% (gate 12-15%) and the user asked to build Web Push and monitor it.
+`TASK-274` already ran the subscription store and `send_push_notification` in production (VAPID key confirmed live through
+`GET /push/vapid-public-key`), with no caller.
+
+Options for the trigger: (1) notify the creator when the invitee finishes; (2) also notify on join; (3) a daily digest.
+For where to ask: right after the challenge is created, at the first-play screen, or only on the account page.
+
+Choice: (1) only, as `TASK-275` AC#4 says: the creator always answers first, so the one useful piece of news is the invitee
+completing. The prompt sits under the share link of a freshly created challenge, the moment the user has shown they care about
+the answer; the account page carries the permanent on/off row. The payload is generic ("Someone just finished your challenge")
+and carries no archetype or name. The click is measured through a `utm_source=push` query on the target URL rather than a
+service-worker-to-page message, because the page already attaches UTM to every event and a worker cannot reach the analytics
+queue. Delivery events are attributed to the recipient instead of the request that triggered the send, otherwise the dashboard
+would credit the invitee with a notification the creator received.
+
+Consequences: no Android rebuild and no `versionCode` change. The new UI renders nothing inside the Capacitor app, and the
+backend changes are backward compatible, so the distributed APK is unaffected (native push stays `TASK-45`). Cost: Web Push is
+free at the browser vendors; the one extra DynamoDB Query per completed Duel is on-demand and negligible. Limits to keep in
+mind when reading the numbers: iOS Safari outside the Home Screen cannot subscribe (about 38% of web identities per
+`TASK-275`'s estimate), a creator who moves to another browser has no subscription there, and `Subscribed` can exceed
+`Prompt shown` because the account page subscribes without the prompt. Not verified in a real browser (repo rule: no
+browser automation): lint, `pnpm build:prod` and 285 backend tests pass, and the first real send is the check.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
 
 import SEO from '../components/SEO';
+import PushOptIn from '../components/PushOptIn';
 import { getAnonymousUserId, getApiHeaders, getAuthenticatedApiHeaders } from '../utils/session';
 import { trackEvent } from '../utils/analytics';
 import { getShareCreativeVariant, withShareAttribution } from '../utils/attribution';
@@ -364,6 +365,7 @@ const ChallengeLandingScreen = () => {
                 {t('challenge.copy_link')}
               </button>
             </div>
+            <PushOptIn surface="challenge_created" />
           </div>
         ) : (
           <button type="button" className="btn-primary challenge-accept-button" onClick={handleAccept}>

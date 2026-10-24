@@ -7,6 +7,7 @@ import { signOut } from '../auth/authClient';
 import { clearLocalAccountData, getAuthenticatedApiHeaders } from '../utils/session';
 import { clearAnalyticsQueue, trackEvent } from '../utils/analytics';
 import { PrivacyFooter } from '../components/AnalyticsConsent';
+import PushOptIn from '../components/PushOptIn';
 import './AccountDeleteScreen.css';
 
 const API_URL = import.meta.env.VITE_API_URL;
@@ -141,6 +142,7 @@ const AccountDeleteScreen = () => {
               {t('auth.login')}
             </button>
           </div>
+          <PushOptIn surface="account" variant="setting" />
           <PrivacyFooter />
           <p><a className="account-back-link" href="/">&larr; {t('common.backToHome')}</a></p>
         </div>
@@ -247,6 +249,8 @@ const AccountDeleteScreen = () => {
           <p className="account-eyebrow">{t('account.settingsEyebrow')}</p>
 
           {error && <p className="account-error" role="alert">{error}</p>}
+
+          <PushOptIn surface="account" variant="setting" />
 
           <div className="account-settings-links">
             {!confirming && (

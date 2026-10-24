@@ -458,6 +458,31 @@ dev table, or `/dev` SSM hierarchy.
   server-initiated event already uses); `open`/`click` are inherently
   client-only (a service worker's own `notificationclick`) and are `TASK-275`
   /`TASK-45`'s to add, not this table's concern.
+- **Web Push (browser)** (`TASK-275`) is the first real caller of
+  `send_push_notification`. `frontend/public/sw.js` (served at `/sw.js`, no
+  fetch handler or cache by design) shows the notification and, on click,
+  focuses or opens a same-origin URL from the payload. `utils/webPush.js`
+  subscribes/unsubscribes against the TASK-274 endpoints and reports
+  "unsupported" inside the Capacitor app and on iOS Safari outside the Home
+  Screen, so those users never see a prompt that cannot work (native Android
+  push stays `TASK-45`). `components/PushOptIn.jsx` has two variants: the
+  one-time `prompt` under the share link right after a creator makes a
+  challenge (a declined prompt stays quiet for 7 days via `localStorage`),
+  and the `setting` row on `/account`, which is the persistent opt-out. The
+  single trigger is `_notify_duel_creator_completed`, called at the end of
+  `submit_challenge`: the creator answers first, so the news is the
+  *invitee* finishing. It is best-effort (any failure is logged, never fails
+  the submit) and a creator who never opted in costs one Query. The payload
+  link is `/challenge/{token}/compare?utm_source=push&...`, which is also how
+  the click is measured: `ChallengeCompareScreen` sends
+  `push_notification_opened` when it sees `utm_source=push`. Delivery events
+  are attributed to the *recipient* (`_track_duel_event` takes
+  `recipient_anonymous_user_id`/`recipient_platform`; platform is `web` for
+  `web_push`, `android` for `fcm`), so `PUSH_ANALYTICS_STAGES` (prompt shown
+  -> subscribed -> delivered -> opened) is a real per-person funnel, written
+  to the same write-time aggregates as Party/Duel (`pushStage`/`pushAction`
+  Sets) and shown as the "Duel notifications" card on the Moral Duel tab of
+  `/admin/analytics`.
 - **Gamebook waitlist** (`TASK-281`) is a physical-gamebook demand-validation
   smoke test: a "Classified Dossier: The Gamebook" box on `ResultsScreen`,
   rendered under the archetype section once `archetype` is set, with an email
