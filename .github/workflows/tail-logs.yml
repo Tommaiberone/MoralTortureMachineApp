@@ -15,6 +15,7 @@ on:
         options:
           - /aws/lambda/moral-torture-machine-api
           - /aws/lambda/moral-torture-machine-retention-sweep
+          - /aws/lambda/moral-torture-machine-push-digest
           - /aws/apigateway/moral-torture-machine-api
       cleanup_test_daily_votes:
         description: 'Remove known synthetic/test participant rows from todays daily_moral_crime_votes and rewind the aggregate accordingly (TASK-213 investigation cleanup, safe to run once)'
