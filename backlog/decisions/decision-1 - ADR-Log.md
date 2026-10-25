@@ -6530,6 +6530,49 @@ mind when reading the numbers: iOS Safari outside the Home Screen cannot subscri
 `Prompt shown` because the account page subscribes without the prompt. Not verified in a real browser (repo rule: no
 browser automation): lint, `pnpm build:prod` and 285 backend tests pass, and the first real send is the check.
 
+### ADR-162 — Three more notifications (Daily verdict, Daily case, rematch) with per-topic consent, auto-silence and an hourly scheduled job (`TASK-375`, `TASK-376`, `TASK-377`, user decision 2026-10-25)
+
+Context: after `ADR-161` the user asked for the other notifications imagined in the same session: the Daily verdict,
+the Daily "case is up" and the rematch request, kept non-intrusive. They needed three things the first release did not
+have: more than one consent per device, a way to stop pestering someone who ignores them, and a sender that is not
+triggered by a request.
+
+Decisions:
+
+- **Topics, not one switch.** Two consents (`duel`, `daily`) cover three kinds of message. Verdict and "case is up" share
+  `daily` because they arrive at the same moment (the day closes when the next case opens), so they became one message:
+  the real verdict when there is one to give, otherwise only the new case. A separate switch per kind would have meant
+  two pushes at 09:00 UTC or a rule to merge them.
+- **Guard rails kept honest.** One Daily push per device per window, only in daytime locally, never when the person has
+  already played today, never a percentage from fewer than 5 votes, and a topic is switched off after 3 unopened sends in
+  a row (an open, or voting, resets it). The "3 a week" cap floated in the proposal was dropped: it contradicts a daily
+  case, and auto-silence is the real limiter. Event-driven pushes (a Duel finished, a rematch) ignore quiet hours on
+  purpose: they answer something a person asked for, and there is no queue to defer them to.
+- **Local time from an offset, not a time-zone name.** The device reports its UTC offset at subscribe time and on every
+  status check. `zoneinfo` needs a tz database that is not guaranteed in the Lambda package (it is absent on this
+  Windows setup), an offset is enough for a 9-21 window, and it drifts only by an hour twice a year.
+- **Scheduler, claim before send.** An hourly EventBridge Scheduler schedule invokes a dedicated Lambda. The window's
+  day key is written to the row before sending (conditional update), so a retried or overlapping run sends nothing
+  twice, at the price of not retrying one failed delivery that day. A Scan of `push_subscriptions` filtered on `topics`
+  is fine at this size (dozens of rows); a GSI is the move if it ever reaches thousands.
+- **Free Tier, verified 2026-10-25 on the official pages.** EventBridge Scheduler: 14,000,000 invocations per month
+  free (about 720 used). Lambda: 1,000,000 requests and 400,000 GB-seconds per month (about 720 runs of a few seconds at
+  256 MB). The page for classic EventBridge *rules* said nothing about scheduled rules, so the existing
+  `retention-sweep` pattern was not copied and Scheduler was used instead. The CI user is the admin user noted in
+  `TASK-262`, so creating the schedule and its roles needs nothing new. No always-on or provisioned resource was added.
+
+Bug found and fixed in the same change: `ADR-161` attributed delivery events to the recipient so the funnel could
+follow one person, but every event counted as that person being active, so each push would have raised D1/D7 retention by
+itself. Delivery, failure and auto-silence events are now flagged `serverInitiated` and excluded from active identities,
+sessions, daily users and retention, on both the Scan and the write-time aggregate paths (a test pins this).
+
+Consequences: no Android rebuild and no `versionCode` change (the new UI renders nothing inside the Capacitor app and
+every API change is backward compatible: an old client that sends no topic still gets `duel`). Not verified in a real
+browser (repo rule); the first real send of each kind is the check. Known limits: iOS Safari outside the Home Screen
+cannot subscribe; the funnel's prompt/subscribed stages blend both topics (only delivered/opened are split by kind);
+the new Lambda has no CloudWatch alarm yet, same gap as `TASK-252` for `retention-sweep`; a person with two devices
+gets one push per device.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

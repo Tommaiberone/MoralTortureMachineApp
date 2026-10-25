@@ -281,7 +281,18 @@ PUSH_ACTION_EVENTS = (
     ("permissionDenied", "push_permission_denied"),
     ("unsubscribed", "push_unsubscribed"),
     ("deliveryFailed", "push_delivery_failed"),
+    ("autoSilenced", "push_topic_auto_silenced"),
 )
+# Events the server writes on someone's behalf (a push it sent them). They
+# carry the recipient's identity so the push funnel can follow one person, but
+# they are not the person doing anything, so they must never count as that
+# person being active - otherwise every push would make D1/D7 retention look
+# better by itself.
+PUSH_SERVER_EVENTS = frozenset({
+    "push_delivery_succeeded",
+    "push_delivery_failed",
+    "push_topic_auto_silenced",
+})
 
 # The generic solo-test funnel (test_started -> ... -> shared): each stage
 # accepts either of two event names because the legacy and product event
@@ -1229,12 +1240,32 @@ class PushSubscribeRequest(BaseModel):
     p256dh: str | None = Field(default=None, min_length=1, max_length=200)
     auth: str | None = Field(default=None, min_length=1, max_length=200)
     fcmToken: str | None = Field(default=None, min_length=1, max_length=500)
+    # TASK-375: what this device wants to hear about. Subscribing again with
+    # another topic adds to the set, it never replaces it.
+    topic: str = Field(default="duel", pattern=r'^(duel|daily)$')
+    # Minutes ahead of UTC on the device right now (Rome in summer is 120).
+    # Used only to keep the Daily push inside waking hours; a tz database is
+    # not reliably present on Lambda, and an offset is all that is needed.
+    utcOffsetMinutes: int | None = Field(default=None, ge=-840, le=840)
 
 
 class PushUnsubscribeRequest(BaseModel):
     channel: str = Field(..., pattern=r'^(web_push|fcm)$')
     endpoint: str | None = Field(default=None, min_length=1, max_length=2000)
     fcmToken: str | None = Field(default=None, min_length=1, max_length=500)
+    # Without a topic the whole registration goes (the original behaviour).
+    topic: str | None = Field(default=None, pattern=r'^(duel|daily)$')
+
+
+class PushStatusRequest(BaseModel):
+    channel: str = Field(..., pattern=r'^(web_push|fcm)$')
+    endpoint: str | None = Field(default=None, min_length=1, max_length=2000)
+    fcmToken: str | None = Field(default=None, min_length=1, max_length=500)
+    utcOffsetMinutes: int | None = Field(default=None, ge=-840, le=840)
+
+
+class PushOpenedRequest(BaseModel):
+    campaign: str = Field(..., pattern=r'^[a-z][a-z0-9_]{1,39}$')
 
 # TASK-65: value-level PII guard for analytics properties, independent of
 # the property key name (see validate_properties below).
@@ -2480,7 +2511,7 @@ async def delete_user_account(request: Request):
     return {"deleted": True, "deletedData": counts}
 
 def _track_duel_event(
-    request: Request,
+    request: Request | None,
     action_type: str,
     action_data: dict[str, Any] | None = None,
     recipient_anonymous_user_id: str | None = None,
@@ -2490,7 +2521,10 @@ def _track_duel_event(
     caller (TASK-275: a push delivered to the Duel creator while the invitee's
     request is the one running). The caller's install/version/timezone are
     dropped then, so they are not attributed to the recipient."""
-    context = extract_client_analytics_context(request)
+    context = extract_client_analytics_context(request) if request is not None else {
+        "anonymous_user_id": None, "install_id": None, "platform": None,
+        "app_version": None, "client_language": None, "time_zone": None,
+    }
     if recipient_anonymous_user_id:
         context = {
             "anonymous_user_id": recipient_anonymous_user_id,
@@ -2500,12 +2534,14 @@ def _track_duel_event(
             "client_language": None,
             "time_zone": None,
         }
+    # No request means a scheduled job (the Daily push): "unknown" is the
+    # session id the activity measures already ignore.
     track_analytics_event(
-        session_id=extract_session_id(request),
+        session_id=extract_session_id(request) if request is not None else "unknown",
         action_type=action_type,
         action_data=action_data or {},
-        user_agent=request.headers.get("User-Agent"),
-        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("User-Agent") if request is not None else None,
+        ip_address=(request.client.host if request.client else None) if request is not None else None,
         **context,
     )
 
@@ -2872,6 +2908,13 @@ async def vote_daily_moral_crime(vote_request: DailyMoralCrimeVoteRequest, reque
         )
         raise HTTPException(status_code=503, detail="Daily vote recording is temporarily unavailable")
 
+    # TASK-375: someone who votes is engaged with the Daily whether or not
+    # they tapped a notification, so do not let auto-silence count them out.
+    try:
+        _reset_push_unopened(anonymous_user_id, "daily")
+    except Exception:
+        logger.exception("Could not reset the Daily push counter")
+
     return _daily_moral_crime_response(window, anonymous_user_id)
 
 @app.post("/challenges")
@@ -3233,6 +3276,41 @@ async def revoke_challenge(token: str, request: Request):
     _track_duel_event(request, "challenge_revoked")
     return {"challengeToken": token, "status": "revoked"}
 
+DUEL_REMATCH_PUSH_COPY = {
+    "en": ("Rematch?", "Your Duel opponent wants another round."),
+    "it": ("Rivincita?", "Il tuo avversario del Duel vuole un altro round."),
+}
+
+
+def _notify_duel_rematch(
+    request: Request, previous_token: str, new_token: str, language: str, caller_anonymous_user_id: str,
+) -> None:
+    """TASK-377: tell the *other* participant of the finished Duel that the
+    caller asked for a rematch. Best-effort for the same reason as
+    _notify_duel_creator_completed: the rematch already exists and must not
+    fail over a notification. The text names nobody."""
+    try:
+        recipients = {
+            participant["anonymousUserId"]
+            for role in ("creator", "invitee")
+            for participant in [get_participant(previous_token, role)]
+            if participant and participant.get("anonymousUserId")
+        } - {caller_anonymous_user_id}
+        title, body = DUEL_REMATCH_PUSH_COPY.get(language, DUEL_REMATCH_PUSH_COPY["en"])
+        for recipient in recipients:
+            send_push_notification(
+                request, recipient, title, body,
+                {
+                    "url": f"/challenge/{new_token}?utm_source=push&utm_medium=notification&utm_campaign=duel_rematch",
+                    "tag": f"rematch-{new_token[:12]}",
+                },
+                trigger="duel_rematch",
+                topic="duel",
+            )
+    except Exception:
+        logger.exception("Could not send the Duel rematch push")
+
+
 @app.post("/challenges/{token}/rematch")
 async def rematch_challenge(token: str, request: Request):
     """Create a new challenge attributed to a completed one (TASK-39 AC2).
@@ -3280,6 +3358,7 @@ async def rematch_challenge(token: str, request: Request):
         "expirationTime": expires_at,
     })
     _track_duel_event(request, "challenge_rematch_created", {"rematch_of_token": token})
+    _notify_duel_rematch(request, token, new_token, challenge["language"], anonymous_user_id)
     return {"challengeToken": new_token, "status": "open"}
 
 
@@ -4059,6 +4138,103 @@ async def get_party_room(room_code: str, request: Request, language: str = "en")
 
 PUSH_SUBSCRIPTION_TTL_SECONDS = 180 * 24 * 3600  # re-subscribing (or any successful send) refreshes it
 
+# TASK-375: what a device can be subscribed to. A row saved before topics
+# existed (TASK-275's first release) only ever asked for Duel news.
+PUSH_TOPICS = ("duel", "daily")
+PUSH_LEGACY_TOPICS = frozenset({"duel"})
+# utm_campaign carried by each notification's link -> the topic it belongs to,
+# so opening one can reset that topic's "ignored" counter.
+PUSH_TRIGGER_TOPICS = {
+    "duel_completed": "duel",
+    "duel_rematch": "duel",
+    "daily_digest": "daily",
+}
+# A device that ignores this many notifications in a row on a topic is
+# switched off for that topic, so a bored user is not nagged forever.
+PUSH_AUTO_SILENCE_AFTER = 3
+# The Daily push only goes out while it is daytime on the device.
+DAILY_PUSH_EARLIEST_LOCAL_HOUR = 9
+DAILY_PUSH_LATEST_LOCAL_HOUR = 21
+# Below this many votes a "you sided with the X%" line would be noise.
+DAILY_PUSH_MIN_VERDICT_VOTES = 5
+
+
+def _push_topics_of(subscription: dict[str, Any]) -> set[str]:
+    topics = subscription.get("topics")
+    return {str(topic) for topic in topics} if topics else set(PUSH_LEGACY_TOPICS)
+
+
+def _unopened_attribute(topic: str) -> str:
+    return f"unopened_{topic}"
+
+
+def _push_key(subscription: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "anonymousUserId": subscription["anonymousUserId"],
+        "subscriptionId": subscription["subscriptionId"],
+    }
+
+
+def _update_existing_push_subscription(subscription: dict[str, Any], **update: Any) -> None:
+    """update_item that never resurrects a row deleted in the meantime
+    (e.g. pruned as stale or unsubscribed between our read and this write)."""
+    try:
+        push_subscriptions_table.update_item(
+            Key=_push_key(subscription),
+            ConditionExpression="attribute_exists(anonymousUserId)",
+            **update,
+        )
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+            raise
+
+
+def _remove_push_topic(subscription: dict[str, Any], topic: str) -> set[str]:
+    """Drop one topic from a registration, deleting the row once none is left.
+    Returns the topics that remain."""
+    remaining = _push_topics_of(subscription) - {topic}
+    if not remaining:
+        push_subscriptions_table.delete_item(Key=_push_key(subscription))
+    else:
+        _update_existing_push_subscription(
+            subscription,
+            UpdateExpression="SET topics = :topics",
+            ExpressionAttributeValues={":topics": remaining},
+        )
+    return remaining
+
+
+def _bump_push_unopened(subscription: dict[str, Any], topic: str) -> None:
+    try:
+        _update_existing_push_subscription(
+            subscription,
+            UpdateExpression="ADD #unopened :one",
+            ExpressionAttributeNames={"#unopened": _unopened_attribute(topic)},
+            ExpressionAttributeValues={":one": 1},
+        )
+    except ClientError:
+        logger.exception("Could not count an unopened push")
+
+
+def _reset_push_unopened(anonymous_user_id: str, topic: str) -> int:
+    """The person engaged with this topic, so forget the ignored notifications.
+    Returns how many devices needed resetting."""
+    attribute = _unopened_attribute(topic)
+    reset = 0
+    for subscription in push_subscriptions_table.query(
+        KeyConditionExpression="anonymousUserId = :uid",
+        ExpressionAttributeValues={":uid": anonymous_user_id},
+    ).get("Items", []):
+        if int(subscription.get(attribute, 0) or 0) > 0:
+            _update_existing_push_subscription(
+                subscription,
+                UpdateExpression="SET #unopened = :zero",
+                ExpressionAttributeNames={"#unopened": attribute},
+                ExpressionAttributeValues={":zero": 0},
+            )
+            reset += 1
+    return reset
+
 
 def _push_subscription_id(identifier: str) -> str:
     """Deterministic id for one device's registration (sha256 of its
@@ -4264,21 +4440,82 @@ def _push_channel_platform(channel: str | None) -> str:
     return "android" if channel == "fcm" else "web"
 
 
+def _deliver_push_to_subscription(
+    request: Request | None,
+    subscription: dict[str, Any],
+    title: str,
+    body: str,
+    data: dict[str, Any],
+    trigger: str | None,
+    topic: str,
+) -> str:
+    """Send to one device. Returns "delivered", "failed", "pruned" (dead
+    subscription, removed) or "skipped" (not subscribed to this topic, or
+    switched off for ignoring too many)."""
+    channel = subscription.get("channel")
+    owner = subscription["anonymousUserId"]
+    platform = _push_channel_platform(channel)
+
+    if topic not in _push_topics_of(subscription):
+        return "skipped"
+
+    if int(subscription.get(_unopened_attribute(topic), 0) or 0) >= PUSH_AUTO_SILENCE_AFTER:
+        _remove_push_topic(subscription, topic)
+        _track_duel_event(
+            request, "push_topic_auto_silenced", {"channel": channel, "topic": topic},
+            recipient_anonymous_user_id=owner, recipient_platform=platform,
+        )
+        return "skipped"
+
+    try:
+        if channel == "web_push":
+            _send_web_push(subscription, title, body, data)
+        elif channel == "fcm":
+            _send_fcm(subscription, title, body, data)
+        else:
+            return "skipped"
+    except PushDeliveryError as error:
+        _track_duel_event(
+            request, "push_delivery_failed",
+            {"channel": channel, "stale": error.stale, "trigger": trigger or "unknown"},
+            recipient_anonymous_user_id=owner, recipient_platform=platform,
+        )
+        if error.stale:
+            push_subscriptions_table.delete_item(Key=_push_key(subscription))
+            return "pruned"
+        return "failed"
+    except HTTPException:
+        # Channel not configured (e.g. FCM before TASK-45 provisions real
+        # credentials) - don't fail the caller's own request over a
+        # notification that couldn't be attempted.
+        logger.warning(f"Push channel '{channel}' is not configured; skipped one delivery")
+        return "failed"
+
+    _track_duel_event(
+        request, "push_delivery_succeeded", {"channel": channel, "trigger": trigger or "unknown"},
+        recipient_anonymous_user_id=owner, recipient_platform=platform,
+    )
+    _bump_push_unopened(subscription, topic)
+    return "delivered"
+
+
 def send_push_notification(
-    request: Request,
+    request: Request | None,
     anonymous_user_id: str,
     title: str,
     body: str,
     data: dict[str, Any] | None = None,
     trigger: str | None = None,
+    topic: str = "duel",
 ) -> dict[str, int]:
     """Send one transactional push to every device an identity has
-    registered (TASK-274 AC#3). Meant to be called directly from the
-    endpoint that just produced the news worth notifying about (e.g. a Duel
-    opponent answering, TASK-275/TASK-45) - there is deliberately no
-    scheduler/broadcast path here. No-ops (delivered=0, no exception) for an
-    identity with no subscriptions, since "nobody opted in" is the normal
-    case, not an error.
+    registered for `topic` (TASK-274 AC#3, TASK-375). Meant to be called
+    directly from the endpoint that just produced the news worth notifying
+    about (e.g. a Duel opponent answering, TASK-275/TASK-45) - there is
+    deliberately no broadcast path here; the scheduled Daily push walks its own
+    subscribers one by one. No-ops (delivered=0, no exception) for an identity
+    with no matching subscriptions, since "nobody opted in" is the normal case,
+    not an error.
 
     `trigger` names what caused the push (TASK-275), purely for analytics.
     Delivery events are attributed to the recipient, not to whoever's request
@@ -4290,111 +4527,309 @@ def send_push_notification(
         KeyConditionExpression="anonymousUserId = :uid",
         ExpressionAttributeValues={":uid": anonymous_user_id},
     )
-    subscriptions = response.get("Items", [])
 
     delivered = 0
     failed = 0
     pruned = 0
-
-    for subscription in subscriptions:
-        channel = subscription.get("channel")
-        try:
-            if channel == "web_push":
-                _send_web_push(subscription, title, body, data)
-            elif channel == "fcm":
-                _send_fcm(subscription, title, body, data)
-            else:
-                continue
+    for subscription in response.get("Items", []):
+        outcome = _deliver_push_to_subscription(request, subscription, title, body, data, trigger, topic)
+        if outcome == "delivered":
             delivered += 1
-            _track_duel_event(
-                request, "push_delivery_succeeded", {"channel": channel, "trigger": trigger or "unknown"},
-                recipient_anonymous_user_id=anonymous_user_id, recipient_platform=_push_channel_platform(channel),
-            )
-        except PushDeliveryError as error:
+        elif outcome == "failed":
             failed += 1
-            _track_duel_event(
-                request, "push_delivery_failed",
-                {"channel": channel, "stale": error.stale, "trigger": trigger or "unknown"},
-                recipient_anonymous_user_id=anonymous_user_id, recipient_platform=_push_channel_platform(channel),
-            )
-            if error.stale:
-                pruned += 1
-                push_subscriptions_table.delete_item(
-                    Key={
-                        "anonymousUserId": subscription["anonymousUserId"],
-                        "subscriptionId": subscription["subscriptionId"],
-                    }
-                )
-        except HTTPException:
-            # Channel not configured (e.g. FCM before TASK-45 provisions
-            # real credentials) - don't fail the caller's own request over a
-            # notification that couldn't be attempted.
+        elif outcome == "pruned":
             failed += 1
-            logger.warning(f"Push channel '{channel}' is not configured; skipped one delivery")
+            pruned += 1
 
     return {"delivered": delivered, "failed": failed, "pruned": pruned}
 
 
+DAILY_PUSH_COPY = {
+    "en": {
+        "verdict_title": "Yesterday's verdict is in",
+        "majority": "You sided with the {pct}%. Today's case is waiting.",
+        "minority": "You stood with the {pct}% minority. Today's case is waiting.",
+        "split": "The room split 50/50 yesterday. Today's case is waiting.",
+        "case_title": "Today's case is up",
+        "case_body": "One dilemma, one choice. It's waiting.",
+    },
+    "it": {
+        "verdict_title": "Il verdetto di ieri è arrivato",
+        "majority": "Eri con il {pct}%. Il caso di oggi ti aspetta.",
+        "minority": "Eri nella minoranza del {pct}%. Il caso di oggi ti aspetta.",
+        "split": "Ieri la sala si è divisa 50/50. Il caso di oggi ti aspetta.",
+        "case_title": "Il caso di oggi è online",
+        "case_body": "Un dilemma, una scelta. Ti aspetta.",
+    },
+}
+
+
+def _daily_push_message(language: str, verdict_pct: int | None) -> tuple[str, str]:
+    """`verdict_pct` is the share of yesterday's voters who chose what this
+    person chose, or None when there is nothing honest to say about it (they
+    did not vote, or too few people did)."""
+    copy = DAILY_PUSH_COPY.get(language, DAILY_PUSH_COPY["en"])
+    if verdict_pct is None:
+        return copy["case_title"], copy["case_body"]
+    if verdict_pct == 50:
+        return copy["verdict_title"], copy["split"]
+    key = "majority" if verdict_pct > 50 else "minority"
+    return copy["verdict_title"], copy[key].format(pct=verdict_pct)
+
+
+def _push_local_hour(subscription: dict[str, Any], now_utc: datetime) -> int:
+    """Hour of day on the subscriber's device, from the UTC offset it reported
+    (UTC when it never did)."""
+    offset = int(subscription.get("utcOffsetMinutes") or 0)
+    return ((now_utc.hour * 60 + now_utc.minute + offset) // 60) % 24
+
+
+def _run_daily_push_digest(now: datetime) -> dict[str, int]:
+    """TASK-376: one push per Daily subscriber per Daily window.
+
+    Runs hourly. A device is notified at the first run after the window opens
+    (09:00 UTC) in which it is daytime locally, so a Rome user hears at about
+    10:00 and a New York user at 09:00 their time, never at night. The window's
+    day key is claimed on the row *before* sending, which makes a repeated or
+    overlapping run harmless: at most one push per device per window, even if
+    that means one transient failure is not retried.
+
+    If the person voted in the previous window and enough others did too, the
+    push carries the real verdict; otherwise it only says the new case is up.
+    Someone who already voted in the current window is left alone.
+    """
+    window = _daily_moral_crime_window(now)
+    day_key = window["dayKey"]
+    previous_day_key = (window["releaseAt"] - timedelta(days=1)).date().isoformat()
+    previous_results = _daily_moral_crime_results(previous_day_key)
+    verdict_possible = previous_results["totalVotes"] >= DAILY_PUSH_MIN_VERDICT_VOTES
+    votes_by_owner: dict[tuple[str, str], dict[str, Any] | None] = {}
+    summary: Counter = Counter()
+
+    scan_kwargs: dict[str, Any] = {
+        "FilterExpression": "contains(topics, :daily)",
+        "ExpressionAttributeValues": {":daily": "daily"},
+    }
+    while True:
+        page = push_subscriptions_table.scan(**scan_kwargs)
+        for subscription in page.get("Items", []):
+            summary["subscriptions"] += 1
+            if int(subscription.get("expirationTime") or 0) and int(subscription["expirationTime"]) < int(now.timestamp()):
+                summary["expired"] += 1
+                continue
+            if subscription.get("lastDailyDayKey") == day_key:
+                summary["alreadySent"] += 1
+                continue
+            if not DAILY_PUSH_EARLIEST_LOCAL_HOUR <= _push_local_hour(subscription, now) <= DAILY_PUSH_LATEST_LOCAL_HOUR:
+                summary["outsideHours"] += 1
+                continue
+
+            try:
+                push_subscriptions_table.update_item(
+                    Key=_push_key(subscription),
+                    UpdateExpression="SET lastDailyDayKey = :day",
+                    ConditionExpression=(
+                        "attribute_exists(anonymousUserId) AND "
+                        "(attribute_not_exists(lastDailyDayKey) OR lastDailyDayKey <> :day)"
+                    ),
+                    ExpressionAttributeValues={":day": day_key},
+                )
+            except ClientError as error:
+                if error.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+                    raise
+                summary["alreadySent"] += 1
+                continue
+
+            owner = subscription["anonymousUserId"]
+
+            def vote_on(vote_day_key: str) -> dict[str, Any] | None:
+                if (vote_day_key, owner) not in votes_by_owner:
+                    votes_by_owner[(vote_day_key, owner)] = _daily_moral_crime_vote(vote_day_key, owner)
+                return votes_by_owner[(vote_day_key, owner)]
+
+            # Already playing today's case: telling them it is up would be noise.
+            if vote_on(day_key):
+                summary["alreadyPlayed"] += 1
+                continue
+
+            verdict_pct = None
+            if verdict_possible:
+                vote = vote_on(previous_day_key)
+                if vote:
+                    verdict_pct = int(
+                        previous_results["firstPct"] if vote["choice"] == "first" else previous_results["secondPct"]
+                    )
+
+            title, body = _daily_push_message(str(subscription.get("language") or "en"), verdict_pct)
+            outcome = _deliver_push_to_subscription(
+                None, subscription, title, body,
+                {
+                    "url": "/daily?utm_source=push&utm_medium=notification&utm_campaign=daily_digest",
+                    "tag": "daily",
+                },
+                "daily_digest",
+                "daily",
+            )
+            summary[outcome] += 1
+        last_key = page.get("LastEvaluatedKey")
+        if not last_key:
+            break
+        scan_kwargs["ExclusiveStartKey"] = last_key
+
+    return dict(summary)
+
+
+def push_digest_handler(_event, _context):
+    """Hourly entry point for the Daily push (TASK-376). EventBridge Scheduler
+    invokes this directly - it is not served through API Gateway."""
+    result = _run_daily_push_digest(datetime.now(timezone.utc))
+    logger.info("Daily push digest finished: %s", result)
+    return result
+
+
+def _push_identifier(channel: str, endpoint: str | None, fcm_token: str | None) -> str | None:
+    return endpoint if channel == "web_push" else fcm_token
+
+
+def _client_language(request: Request) -> str:
+    language = (request.headers.get("X-Client-Language") or "").strip().lower()
+    return language if language.isalpha() and len(language) <= 10 else "en"
+
+
 @app.post("/push/subscribe")
 async def subscribe_to_push(subscribe_request: PushSubscribeRequest, request: Request):
-    """Register (or refresh) one device's push registration (TASK-274).
-    Anonymous-first like every other endpoint; TASK-275 (web) and TASK-45
-    (native Android) are the actual callers - this only stores where a
-    future transactional notification should be sent."""
+    """Register (or refresh) one device's push registration for a topic
+    (TASK-274, TASK-375). Anonymous-first like every other endpoint; TASK-275
+    (web) and TASK-45 (native Android) are the actual callers - this only
+    stores where a future notification should be sent. Subscribing again,
+    with the same or another topic, adds to what the device already follows."""
     anonymous_user_id = require_anonymous_user_id(request)
 
     if subscribe_request.channel == "web_push":
         if not subscribe_request.endpoint or not subscribe_request.p256dh or not subscribe_request.auth:
             raise HTTPException(status_code=400, detail="web_push requires endpoint, p256dh and auth")
-        identifier = subscribe_request.endpoint
-    else:
-        if not subscribe_request.fcmToken:
-            raise HTTPException(status_code=400, detail="fcm requires fcmToken")
-        identifier = subscribe_request.fcmToken
+    elif not subscribe_request.fcmToken:
+        raise HTTPException(status_code=400, detail="fcm requires fcmToken")
+    identifier = _push_identifier(
+        subscribe_request.channel, subscribe_request.endpoint, subscribe_request.fcmToken
+    )
+
+    key = {"anonymousUserId": anonymous_user_id, "subscriptionId": _push_subscription_id(identifier)}
+    topic = subscribe_request.topic
+    existing = push_subscriptions_table.get_item(Key=key).get("Item")
+    topics_to_add = {topic}
+    if existing is not None and not existing.get("topics"):
+        # A row from before topics existed already meant "Duel"; adding a
+        # topic must not silently drop that.
+        topics_to_add |= PUSH_LEGACY_TOPICS
 
     now_ms = int(time.time() * 1000)
-    item: dict[str, Any] = {
-        "anonymousUserId": anonymous_user_id,
-        "subscriptionId": _push_subscription_id(identifier),
+    attributes: dict[str, Any] = {
         "channel": subscribe_request.channel,
-        "createdAt": now_ms,
         "lastSeenAt": now_ms,
         "expirationTime": int(time.time()) + PUSH_SUBSCRIPTION_TTL_SECONDS,
+        "language": _client_language(request),
+        # A fresh opt-in starts with a clean slate after an auto-silence.
+        _unopened_attribute(topic): 0,
     }
+    if subscribe_request.utcOffsetMinutes is not None:
+        attributes["utcOffsetMinutes"] = subscribe_request.utcOffsetMinutes
     if subscribe_request.channel == "web_push":
-        item["endpoint"] = subscribe_request.endpoint
-        item["p256dh"] = subscribe_request.p256dh
-        item["authSecret"] = subscribe_request.auth
+        attributes["endpoint"] = subscribe_request.endpoint
+        attributes["p256dh"] = subscribe_request.p256dh
+        attributes["authSecret"] = subscribe_request.auth
     else:
-        item["fcmToken"] = subscribe_request.fcmToken
+        attributes["fcmToken"] = subscribe_request.fcmToken
 
-    push_subscriptions_table.put_item(Item=item)
-    _track_duel_event(request, "push_subscribed", {"channel": subscribe_request.channel})
-    return {"subscribed": True, "channel": subscribe_request.channel}
+    names = {f"#a{index}": name for index, name in enumerate(attributes)}
+    values = {f":a{index}": value for index, value in enumerate(attributes.values())}
+    assignments = [f"#a{index} = :a{index}" for index in range(len(attributes))]
+    push_subscriptions_table.update_item(
+        Key=key,
+        UpdateExpression=(
+            "SET " + ", ".join(assignments) + ", #createdAt = if_not_exists(#createdAt, :createdAt) "
+            "ADD #topics :topics"
+        ),
+        ExpressionAttributeNames={**names, "#createdAt": "createdAt", "#topics": "topics"},
+        ExpressionAttributeValues={**values, ":createdAt": now_ms, ":topics": topics_to_add},
+    )
+    _track_duel_event(request, "push_subscribed", {"channel": subscribe_request.channel, "topic": topic})
+    return {
+        "subscribed": True,
+        "channel": subscribe_request.channel,
+        "topics": sorted(topics_to_add | (_push_topics_of(existing) if existing is not None else set())),
+    }
 
 
 @app.post("/push/unsubscribe")
 async def unsubscribe_from_push(unsubscribe_request: PushUnsubscribeRequest, request: Request):
-    """Remove one device's push registration (TASK-274). Idempotent:
-    deleting an already-absent subscription is not an error."""
+    """Remove a topic from one device's registration, or the whole
+    registration when no topic is given (TASK-274, TASK-375). Idempotent:
+    removing something already absent is not an error. The row is deleted once
+    its last topic goes, and `topics` tells the browser whether anything is
+    left (it only drops its own push subscription when nothing is)."""
     anonymous_user_id = require_anonymous_user_id(request)
 
-    identifier = (
-        unsubscribe_request.endpoint
-        if unsubscribe_request.channel == "web_push"
-        else unsubscribe_request.fcmToken
+    identifier = _push_identifier(
+        unsubscribe_request.channel, unsubscribe_request.endpoint, unsubscribe_request.fcmToken
     )
     if not identifier:
         raise HTTPException(status_code=400, detail="endpoint (web_push) or fcmToken (fcm) is required")
 
-    push_subscriptions_table.delete_item(
-        Key={
-            "anonymousUserId": anonymous_user_id,
-            "subscriptionId": _push_subscription_id(identifier),
-        }
-    )
-    _track_duel_event(request, "push_unsubscribed", {"channel": unsubscribe_request.channel})
-    return {"subscribed": False}
+    key = {"anonymousUserId": anonymous_user_id, "subscriptionId": _push_subscription_id(identifier)}
+    remaining: set[str] = set()
+    if unsubscribe_request.topic is None:
+        push_subscriptions_table.delete_item(Key=key)
+    else:
+        existing = push_subscriptions_table.get_item(Key=key).get("Item")
+        if existing is not None:
+            remaining = _remove_push_topic(existing, unsubscribe_request.topic)
+
+    _track_duel_event(request, "push_unsubscribed", {
+        "channel": unsubscribe_request.channel, "topic": unsubscribe_request.topic or "all",
+    })
+    return {"subscribed": bool(remaining), "topics": sorted(remaining)}
+
+
+@app.post("/push/status")
+async def get_push_status(status_request: PushStatusRequest, request: Request):
+    """Which topics this browser/device follows (TASK-375), so the settings
+    row and the prompts can show the truth instead of guessing from the
+    browser's own subscription. Also refreshes the device's UTC offset, which
+    drifts by an hour twice a year."""
+    anonymous_user_id = require_anonymous_user_id(request)
+    identifier = _push_identifier(status_request.channel, status_request.endpoint, status_request.fcmToken)
+    if not identifier:
+        raise HTTPException(status_code=400, detail="endpoint (web_push) or fcmToken (fcm) is required")
+
+    item = push_subscriptions_table.get_item(Key={
+        "anonymousUserId": anonymous_user_id,
+        "subscriptionId": _push_subscription_id(identifier),
+    }).get("Item")
+    if item is None:
+        return {"topics": []}
+
+    offset = status_request.utcOffsetMinutes
+    if offset is not None and item.get("utcOffsetMinutes") != offset:
+        _update_existing_push_subscription(
+            item,
+            UpdateExpression="SET utcOffsetMinutes = :offset",
+            ExpressionAttributeValues={":offset": offset},
+        )
+    return {"topics": sorted(_push_topics_of(item))}
+
+
+@app.post("/push/opened")
+async def push_notification_opened(opened_request: PushOpenedRequest, request: Request):
+    """The person followed a notification (or otherwise engaged with its
+    topic): forget the ones they ignored, so auto-silence only counts a streak
+    of real indifference (TASK-375). The campaign is the utm_campaign the
+    notification's link carried; an unknown one is simply ignored."""
+    anonymous_user_id = require_anonymous_user_id(request)
+    topic = PUSH_TRIGGER_TOPICS.get(opened_request.campaign)
+    if topic is None:
+        return {"reset": 0}
+    return {"reset": _reset_push_unopened(anonymous_user_id, topic)}
 
 
 @app.post("/gamebook-waitlist")
@@ -4693,6 +5128,7 @@ def normalize_analytics_event(item: dict[str, Any], source: str) -> dict[str, An
 
     return {
         "source": source,
+        "serverInitiated": str(item.get("actionType", "unknown")) in PUSH_SERVER_EVENTS,
         "eventName": str(item.get("actionType", "unknown")),
         "occurredAt": occurred_at,
         "anonymousUserId": anonymous_user_id,
@@ -4866,8 +5302,10 @@ def _set_aggregate_increments(event: dict[str, Any]) -> dict[str, set[str]]:
         increments["__".join(segments)].add(member)
 
     # Retention (build_retention_cohorts): every event counts toward "this
-    # identity was active on this UTC day", regardless of which event it is.
-    add_to_set("activeIdentity")
+    # identity was active on this UTC day", regardless of which event it is -
+    # except a push the server sent them, which is not them doing anything.
+    if not event["serverInitiated"]:
+        add_to_set("activeIdentity")
 
     # TASK-300.5/ADR-137: summary.uniqueSessions/daily.sessions need
     # distinct sessionId per day, a different dimension from identity -
@@ -4875,7 +5313,7 @@ def _set_aggregate_increments(event: dict[str, Any]) -> dict[str, set[str]]:
     # server-side, but normalize_analytics_event's own default for a raw
     # row missing the field entirely, so it is excluded the same way the
     # Scan-derived path already excludes it.
-    if event["sessionId"] != "unknown":
+    if event["sessionId"] != "unknown" and not event["serverInitiated"]:
         add_to_set("activeSession", member=event["sessionId"])
 
     for stage_key, event_names in GENERIC_FUNNEL_STAGES:
@@ -4905,6 +5343,13 @@ def _set_aggregate_increments(event: dict[str, Any]) -> dict[str, set[str]]:
     for action_key, mapped_event_name in PUSH_ACTION_EVENTS:
         if event_name == mapped_event_name:
             add_to_set("pushAction", action_key)
+
+    # TASK-375: delivered/opened per notification type, so the dashboard can
+    # say which kind of push works instead of one blended rate.
+    if event_name == "push_delivery_succeeded":
+        add_to_set("pushTrigger", properties.get("trigger") or "unknown", "delivered")
+    elif event_name == "push_notification_opened":
+        add_to_set("pushTrigger", properties.get("trigger") or "unknown", "opened")
 
     if event_name == "challenge_completed_client":
         # build_viral_coefficient / build_creative_variant_breakdown: the
@@ -5269,6 +5714,7 @@ def parse_set_aggregate_items(
     duel_stage_identities: dict[str, set[str]] = defaultdict(set)
     push_stage_identities: dict[str, set[str]] = defaultdict(set)
     push_action_identities: dict[str, set[str]] = defaultdict(set)
+    push_trigger_identities: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
     active_identities_by_day: dict[str, set[str]] = defaultdict(set)
     active_sessions_by_day: dict[str, set[str]] = defaultdict(set)
     viral_completions_by_channel: dict[str, set[str]] = defaultdict(set)
@@ -5310,6 +5756,8 @@ def parse_set_aggregate_items(
                 push_stage_identities[value_parts[0]] |= identities
             elif namespace == "pushAction" and len(value_parts) == 1:
                 push_action_identities[value_parts[0]] |= identities
+            elif namespace == "pushTrigger" and len(value_parts) == 2:
+                push_trigger_identities[value_parts[0]][value_parts[1]] |= identities
             elif namespace == "viralCompletion" and len(value_parts) == 1:
                 viral_completions_by_channel[value_parts[0]] |= identities
             elif namespace == "variantCompletion" and len(value_parts) == 1:
@@ -5327,6 +5775,9 @@ def parse_set_aggregate_items(
         "duelStageIdentities": dict(duel_stage_identities),
         "pushStageIdentities": dict(push_stage_identities),
         "pushActionIdentities": dict(push_action_identities),
+        "pushTriggerIdentities": {
+            trigger: dict(stages) for trigger, stages in push_trigger_identities.items()
+        },
         "activeIdentitiesByDay": dict(active_identities_by_day),
         "activeSessionsByDay": dict(active_sessions_by_day),
         "viralCompletionsByChannel": dict(viral_completions_by_channel),
@@ -5681,18 +6132,39 @@ def _push_action_counts_from_identities(
     return {key: len(action_identities.get(key, set())) for key, _ in PUSH_ACTION_EVENTS}
 
 
+def _push_trigger_rows(
+    trigger_identities: dict[str, dict[str, set[str]]],
+) -> list[dict[str, Any]]:
+    rows = []
+    for trigger in sorted(trigger_identities):
+        delivered = len(trigger_identities[trigger].get("delivered", set()))
+        opened = len(trigger_identities[trigger].get("opened", set()))
+        rows.append({
+            "trigger": trigger,
+            "delivered": delivered,
+            "opened": opened,
+            "openRatePct": round((opened / delivered) * 100, 1) if delivered else None,
+        })
+    return rows
+
+
 def build_push_analytics(events: list[dict[str, Any]]) -> dict[str, Any]:
     """Web Push dashboard panel (TASK-275): prompt shown -> subscribed ->
     delivered -> opened per identity, plus the opt-out/failure counts that
     would otherwise vanish into the flat eventCounts list."""
     action_identities: dict[str, set[str]] = {key: set() for key, _ in PUSH_ACTION_EVENTS}
+    trigger_identities: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
     for event in events:
         for key, event_name in PUSH_ACTION_EVENTS:
             if event["eventName"] == event_name:
                 action_identities[key].add(event["identity"])
+        stage = {"push_delivery_succeeded": "delivered", "push_notification_opened": "opened"}.get(event["eventName"])
+        if stage:
+            trigger_identities[event["properties"].get("trigger") or "unknown"][stage].add(event["identity"])
     return {
         "eventFunnel": _build_identity_funnel(events, PUSH_ANALYTICS_STAGES),
         "actions": _push_action_counts_from_identities(action_identities),
+        "byTrigger": _push_trigger_rows(trigger_identities),
     }
 
 
@@ -6102,9 +6574,12 @@ def build_analytics_overview(
     app_version_counts = Counter(event["appVersion"] for event in events)
     platform_counts = Counter(event["platform"] for event in events)
     platform_resolution_counts = Counter(event["platformResolution"] for event in events)
-    sessions = {event["sessionId"] for event in events if event["sessionId"] != "unknown"}
-    identities = {event["identity"] for event in events}
-    anonymous_users = {event["anonymousUserId"] for event in events if event["anonymousUserId"]}
+    # A push the server sent someone is not that person being active (see
+    # PUSH_SERVER_EVENTS), so it stays out of every "who was here" measure.
+    activity_events = [event for event in events if not event["serverInitiated"]]
+    sessions = {event["sessionId"] for event in activity_events if event["sessionId"] != "unknown"}
+    identities = {event["identity"] for event in activity_events}
+    anonymous_users = {event["anonymousUserId"] for event in activity_events if event["anonymousUserId"]}
 
     daily = {}
     for offset in range(days):
@@ -6132,9 +6607,10 @@ def build_analytics_overview(
             # below (excludes the "unknown" sessionId fallback) - previously
             # inconsistent, counting "unknown" as if it were one real shared
             # session per day.
-            if event["sessionId"] != "unknown":
+            if event["sessionId"] != "unknown" and not event["serverInitiated"]:
                 daily[day_key]["sessions"].add(event["sessionId"])
-            daily[day_key]["users"].add(event["identity"])
+            if not event["serverInitiated"]:
+                daily[day_key]["users"].add(event["identity"])
             daily[day_key][event["platform"]] += 1
 
         details = platform_details[event["platform"]]
@@ -6266,6 +6742,7 @@ def build_analytics_overview(
                 set_aggregates["pushStageIdentities"], PUSH_ANALYTICS_STAGES
             ),
             "actions": _push_action_counts_from_identities(set_aggregates["pushActionIdentities"]),
+            "byTrigger": _push_trigger_rows(set_aggregates["pushTriggerIdentities"]),
         }
         moral_duel = {
             "eventFunnel": _identity_funnel_from_stage_identities(
@@ -6308,7 +6785,7 @@ def build_analytics_overview(
         party_room = build_party_room_analytics(events)
         moral_duel = build_moral_duel_analytics(events)
         push_notifications = build_push_analytics(events)
-        retention_cohorts = build_retention_cohorts(events, now_ms)
+        retention_cohorts = build_retention_cohorts(activity_events, now_ms)
         viral_coefficient = build_viral_coefficient(events)
         creative_variants = build_creative_variant_breakdown(events)
         copy_experiments = {

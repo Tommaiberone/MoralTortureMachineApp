@@ -220,11 +220,20 @@
     "pushStage_subscribed": "Subscribed",
     "pushStage_delivered": "Notification delivered",
     "pushStage_opened": "Notification opened",
+    "pushByTriggerTitle": "By notification type",
+    "pushTriggerColumn": "Type",
+    "pushDeliveredColumn": "Delivered",
+    "pushOpenedColumn": "Opened",
+    "pushOpenRateColumn": "Open rate",
+    "pushTrigger_duel_completed": "Duel finished",
+    "pushTrigger_duel_rematch": "Rematch asked",
+    "pushTrigger_daily_digest": "Daily verdict and new case",
     "pushActionsTitle": "Opt-outs and failures",
     "pushAction_dismissed": "Dismissed the prompt",
     "pushAction_permissionDenied": "Blocked in the browser",
     "pushAction_unsubscribed": "Turned notifications off",
     "pushAction_deliveryFailed": "Delivery failed",
+    "pushAction_autoSilenced": "Switched off after 3 ignored",
     "interactionsTitle": "Key interactions",
     "interactionsDescription": "What people actually click, broken down by what matters - not just how many times an event fired.",
     "modeSelectedTitle": "Mode picked from the home screen",
@@ -387,17 +396,26 @@
     "rematch_login_required_button": "Sign in to continue"
   },
   "push": {
-    "prompt_text": "Want a heads-up the moment they finish? We'll send one notification when your friend completes this challenge.",
     "prompt_accept": "Notify me",
     "prompt_decline": "Not now",
-    "confirmed": "Done. We'll notify you when they finish.",
     "turn_on": "Turn on",
     "turn_off": "Turn off",
     "error": "Couldn't change notifications. Please try again.",
-    "setting_label": "Duel notifications",
-    "setting_on": "On for this browser",
     "setting_off": "Off",
-    "setting_blocked": "Blocked in your browser settings"
+    "setting_blocked": "Blocked in your browser settings",
+    "duel": {
+      "prompt_text": "Want a heads-up the moment they finish? We'll send one notification when your friend completes this challenge.",
+      "prompt_text_compare": "Want a heads-up if they ask for a rematch? One notification, only when it happens.",
+      "confirmed": "Done. We'll notify you when they finish or ask for a rematch.",
+      "setting_label": "Duel results and rematches",
+      "setting_on": "On for this browser"
+    },
+    "daily": {
+      "prompt_text": "Want the verdict and tomorrow's case in your pocket? At most one notification a day, only in daytime.",
+      "confirmed": "Done. At most one a day, only in daytime. Turn it off any time.",
+      "setting_label": "Daily Moral Crime",
+      "setting_on": "On for this browser"
+    }
   },
   "account": {
     "title": "Your account",

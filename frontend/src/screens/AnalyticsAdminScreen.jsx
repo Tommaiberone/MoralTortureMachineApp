@@ -176,6 +176,7 @@ const AnalyticsAdminScreen = () => {
   const pushFunnel = Array.isArray(pushNotifications.eventFunnel) ? pushNotifications.eventFunnel : [];
   const pushFunnelMaximum = Math.max(...pushFunnel.map((stage) => stage.identities), 1);
   const pushActions = Object.entries(pushNotifications.actions || {});
+  const pushByTrigger = Array.isArray(pushNotifications.byTrigger) ? pushNotifications.byTrigger : [];
 
   const moralDuel = data.moralDuel || {};
   const duelFunnel = Array.isArray(moralDuel.eventFunnel) ? moralDuel.eventFunnel : [];
@@ -805,6 +806,31 @@ const AnalyticsAdminScreen = () => {
           {pushFunnel.length
             ? renderIdentityFunnel(pushFunnel, pushFunnelMaximum, 'analyticsAdmin.pushStage_')
             : <p className="analytics-chart-empty">{t('analyticsAdmin.noData')}</p>}
+          <h3>{t('analyticsAdmin.pushByTriggerTitle')}</h3>
+          <div className="analytics-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>{t('analyticsAdmin.pushTriggerColumn')}</th>
+                  <th className="analytics-num">{t('analyticsAdmin.pushDeliveredColumn')}</th>
+                  <th className="analytics-num">{t('analyticsAdmin.pushOpenedColumn')}</th>
+                  <th className="analytics-num">{t('analyticsAdmin.pushOpenRateColumn')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pushByTrigger.length ? pushByTrigger.map((row) => (
+                  <tr key={row.trigger}>
+                    <td>{t(`analyticsAdmin.pushTrigger_${row.trigger}`, { defaultValue: row.trigger })}</td>
+                    <td className="analytics-num">{formatNumber(row.delivered)}</td>
+                    <td className="analytics-num">{formatNumber(row.opened)}</td>
+                    <td className="analytics-num">{row.openRatePct === null ? '-' : `${row.openRatePct}%`}</td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan={4}>{t('analyticsAdmin.noData')}</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
           <h3>{t('analyticsAdmin.pushActionsTitle')}</h3>
           <div className="analytics-ranked-list analytics-ranked-list--compact">
             {pushActions.map(([key, count]) => (

@@ -5,6 +5,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
 
 import SEO from '../components/SEO';
 import PushOptIn from '../components/PushOptIn';
+import usePushOpened from '../hooks/usePushOpened';
 import { getAnonymousUserId, getApiHeaders, getAuthenticatedApiHeaders } from '../utils/session';
 import { trackEvent } from '../utils/analytics';
 import { getShareCreativeVariant, withShareAttribution } from '../utils/attribution';
@@ -82,6 +83,8 @@ const ChallengeLandingScreen = () => {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const auth = useAuth();
+  // TASK-377: a rematch notification opens the new challenge right here.
+  usePushOpened();
   // TASK-219: same login-prompt copy experiment as ResultsScreen/
   // ChallengeCompareScreen, applied here to the challenge_join surface.
   const authPromptVariant = getExperimentVariant('auth_prompt_copy', AUTH_PROMPT_COPY_VARIANTS, getAnonymousUserId());
@@ -365,7 +368,7 @@ const ChallengeLandingScreen = () => {
                 {t('challenge.copy_link')}
               </button>
             </div>
-            <PushOptIn surface="challenge_created" />
+            <PushOptIn topic="duel" surface="challenge_created" />
           </div>
         ) : (
           <button type="button" className="btn-primary challenge-accept-button" onClick={handleAccept}>

@@ -834,6 +834,7 @@ class RematchChallengeTests(unittest.TestCase):
             patch.object(backend_module, "challenges_table", challenges_table),
             patch.object(backend_module, "challenge_participants_table", participants_table),
             patch.object(backend_module, "verify_cognito_id_token", return_value={"sub": "user-sub"}),
+            patch.object(backend_module, "_notify_duel_rematch"),
         ):
             result = asyncio.run(rematch_challenge("tok", request_with_headers({
                 "X-Anonymous-User-Id": "anon-1", "Authorization": "Bearer token",
@@ -844,6 +845,51 @@ class RematchChallengeTests(unittest.TestCase):
         self.assertEqual(new_challenge_item["rematchOfToken"], "tok")
         new_creator_item = participants_table.put_item.call_args.kwargs["Item"]
         self.assertEqual(new_creator_item["expirationTime"], new_challenge_item["expirationTime"])
+
+    def test_rematch_notifies_only_the_other_participant_with_a_link_to_the_new_challenge(self):
+        challenges_table = Mock()
+        challenges_table.get_item.return_value = {"Item": {
+            "challengeToken": "tok", "status": "completed", "dilemmaBaseIds": ["d1"], "language": "en",
+        }}
+        participants_table = Mock()
+        participants_table.get_item.side_effect = lambda Key: {"Item": {
+            "anonymousUserId": "anon-creator" if Key["role"] == "creator" else "anon-invitee",
+            "profilePublicId": "profile-1",
+        }}
+        with (
+            patch.object(backend_module, "challenges_table", challenges_table),
+            patch.object(backend_module, "challenge_participants_table", participants_table),
+            patch.object(backend_module, "verify_cognito_id_token", return_value={"sub": "user-sub"}),
+            patch.object(backend_module, "send_push_notification") as push,
+        ):
+            result = asyncio.run(rematch_challenge("tok", request_with_headers({
+                "X-Anonymous-User-Id": "anon-invitee", "Authorization": "Bearer token",
+            })))
+
+        push.assert_called_once()
+        self.assertEqual(push.call_args.args[1], "anon-creator")
+        self.assertIn(f"/challenge/{result['challengeToken']}?", push.call_args.args[4]["url"])
+        self.assertIn("utm_campaign=duel_rematch", push.call_args.args[4]["url"])
+        self.assertEqual(push.call_args.kwargs, {"trigger": "duel_rematch", "topic": "duel"})
+
+    def test_a_failing_rematch_push_never_fails_the_rematch(self):
+        challenges_table = Mock()
+        challenges_table.get_item.return_value = {"Item": {
+            "challengeToken": "tok", "status": "completed", "dilemmaBaseIds": ["d1"], "language": "en",
+        }}
+        participants_table = Mock()
+        participants_table.get_item.return_value = {"Item": {"anonymousUserId": "anon-1", "profilePublicId": "profile-1"}}
+        with (
+            patch.object(backend_module, "challenges_table", challenges_table),
+            patch.object(backend_module, "challenge_participants_table", participants_table),
+            patch.object(backend_module, "verify_cognito_id_token", return_value={"sub": "user-sub"}),
+            patch.object(backend_module, "send_push_notification", side_effect=RuntimeError("push down")),
+        ):
+            result = asyncio.run(rematch_challenge("tok", request_with_headers({
+                "X-Anonymous-User-Id": "anon-1", "Authorization": "Bearer token",
+            })))
+
+        self.assertEqual(result["status"], "open")
 
     def test_rematch_requires_login_even_for_a_valid_participant(self):
         """TASK-136: a rematch is always a repeat Duel interaction, so it

@@ -142,7 +142,8 @@ const AccountDeleteScreen = () => {
               {t('auth.login')}
             </button>
           </div>
-          <PushOptIn surface="account" variant="setting" />
+          <PushOptIn topic="duel" surface="account" variant="setting" />
+          <PushOptIn topic="daily" surface="account" variant="setting" />
           <PrivacyFooter />
           <p><a className="account-back-link" href="/">&larr; {t('common.backToHome')}</a></p>
         </div>
@@ -250,7 +251,8 @@ const AccountDeleteScreen = () => {
 
           {error && <p className="account-error" role="alert">{error}</p>}
 
-          <PushOptIn surface="account" variant="setting" />
+          <PushOptIn topic="duel" surface="account" variant="setting" />
+          <PushOptIn topic="daily" surface="account" variant="setting" />
 
           <div className="account-settings-links">
             {!confirming && (

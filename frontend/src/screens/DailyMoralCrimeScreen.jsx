@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 
 import SEO from '../components/SEO';
+import PushOptIn from '../components/PushOptIn';
+import usePushOpened from '../hooks/usePushOpened';
 import { API_BASE_URL } from '../config/api';
 import { getApiHeaders } from '../utils/session';
 import { trackEvent } from '../utils/analytics';
@@ -25,6 +27,8 @@ const nextRefreshLabel = (isoDate, locale) => {
 
 const DailyMoralCrimeScreen = () => {
   const { t, i18n } = useTranslation();
+  // TASK-376: the Daily push opens /daily tagged utm_source=push.
+  usePushOpened();
   const [daily, setDaily] = useState(null);
   const [loading, setLoading] = useState(true);
   const [voting, setVoting] = useState(false);
@@ -199,6 +203,7 @@ const DailyMoralCrimeScreen = () => {
               </button>
               <p className="daily-share-copy">{t('daily.ask_audience_hint')}</p>
               {shareStatus && <p className="daily-share-status" role="status">{shareStatus}</p>}
+              <PushOptIn topic="daily" surface="daily_revealed" />
             </div>
           )}
 

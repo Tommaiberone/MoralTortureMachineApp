@@ -1225,6 +1225,39 @@ class AnalyticsOverviewTests(unittest.TestCase):
             "createClicked": 1, "started": 1, "advanced": 1, "rematchCreated": 0,
         })
 
+    def test_a_push_the_server_sent_is_not_the_person_being_active(self):
+        """Delivery events carry the recipient's identity so the push funnel
+        can follow them, but must never make retention or activity look
+        better: otherwise sending a notification would raise D7 by itself."""
+        now_ms = 1785369600000
+        day = 24 * 60 * 60 * 1000
+        rows = [
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "returning", "occurredAt": now_ms - 10 * day,
+             "actionType": "test_started", "platform": "web", "properties": "{}"},
+            # Day 8: only a push the server sent them - they did nothing.
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "returning", "occurredAt": now_ms - 2 * day,
+             "actionType": "push_delivery_succeeded", "platform": "web", "properties": '{"trigger": "daily_digest"}'},
+            {"eventId": str(uuid.uuid4()), "anonymousUserId": "only-pushed", "occurredAt": now_ms - 2 * day,
+             "actionType": "push_delivery_succeeded", "platform": "web", "properties": '{"trigger": "daily_digest"}'},
+        ]
+
+        scan = build_analytics_overview(legacy_rows=[], product_rows=rows, days=14, now_ms=now_ms, platform="all")
+
+        self.assertEqual(scan["summary"]["activeIdentities"], 1)
+        self.assertEqual(scan["retentionCohorts"]["d7"]["retainedCount"], 0)
+        self.assertEqual(sum(day_row["users"] for day_row in scan["daily"]), 1)
+        # ...while the push funnel still sees both recipients.
+        self.assertEqual(
+            scan["pushNotifications"]["byTrigger"],
+            [{"trigger": "daily_digest", "delivered": 2, "opened": 0, "openRatePct": 0.0}],
+        )
+
+        increments = _set_aggregate_increments(normalize_analytics_event(rows[1], "product"))
+        self.assertFalse(any(name.startswith(("activeIdentity", "activeSession")) for name in increments))
+        self.assertTrue(any(
+            name.startswith("pushTrigger__web__") and name.endswith("__delivered") for name in increments
+        ))
+
     def test_push_panel_follows_one_identity_from_prompt_to_open(self):
         now_ms = 1785369600000
         rows = [
@@ -1249,7 +1282,7 @@ class AnalyticsOverviewTests(unittest.TestCase):
             {"stage": "opened", "identities": 1, "fromPreviousPct": 100.0},
         ])
         self.assertEqual(push["actions"], {
-            "dismissed": 1, "permissionDenied": 1, "unsubscribed": 1, "deliveryFailed": 1,
+            "dismissed": 1, "permissionDenied": 1, "unsubscribed": 1, "deliveryFailed": 1, "autoSilenced": 0,
         })
 
     def test_moral_duel_panel_counts_distinct_identities_across_both_sides(self):

@@ -1603,6 +1603,182 @@ resource "aws_lambda_permission" "retention_sweep" {
   source_arn    = aws_cloudwatch_event_rule.retention_sweep.arn
 }
 
+# TASK-376: hourly Daily Moral Crime push. Its own function and role so a
+# timer-triggered job can only touch what sending a push needs: the
+# subscription table (read, mark the window as sent, prune dead devices), the
+# Daily votes (read yesterday's vote), the two analytics tables event tracking
+# writes to, and the VAPID key. Free Tier verified 2026-10-25 against the
+# official pricing pages: EventBridge Scheduler includes 14,000,000
+# invocations per month at no charge (this uses about 720), and Lambda
+# includes 1,000,000 requests and 400,000 GB-seconds per month.
+resource "aws_iam_role" "push_digest_role" {
+  name = "${var.stack_name}-push-digest-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+
+  tags = {
+    Name        = "Moral Torture Machine Push Digest Role"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
+
+resource "aws_cloudwatch_log_group" "push_digest_logs" {
+  name              = "/aws/lambda/${var.stack_name}-push-digest"
+  retention_in_days = var.log_retention_days
+
+  tags = {
+    Name        = "Moral Torture Machine Push Digest Logs"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
+
+resource "aws_iam_role_policy" "push_digest_permissions" {
+  name = "push-digest-send"
+  role = aws_iam_role.push_digest_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:Scan",
+          "dynamodb:Query",
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem"
+        ]
+        Resource = [aws_dynamodb_table.push_subscriptions.arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem"]
+        Resource = [aws_dynamodb_table.daily_moral_crime_votes.arn]
+      },
+      {
+        # Delivery events (push_delivery_succeeded/failed) are tracked like
+        # any other server-side event: a raw row plus its daily aggregate.
+        Effect   = "Allow"
+        Action   = ["dynamodb:PutItem"]
+        Resource = [aws_dynamodb_table.user_analytics.arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:UpdateItem"]
+        Resource = [aws_dynamodb_table.analytics_daily_aggregates.arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameter"]
+        Resource = [aws_ssm_parameter.vapid_private_key.arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = ["${aws_cloudwatch_log_group.push_digest_logs.arn}:*"]
+      }
+    ]
+  })
+}
+
+resource "aws_lambda_function" "push_digest" {
+  function_name    = "${var.stack_name}-push-digest"
+  filename         = "${path.module}/../lambda_function.zip"
+  source_code_hash = filebase64sha256("${path.module}/../lambda_function.zip")
+  handler          = "backend_fastapi.push_digest_handler"
+  runtime          = "python3.11"
+  role             = aws_iam_role.push_digest_role.arn
+  timeout          = 120
+  memory_size      = 256
+
+  environment {
+    variables = {
+      ANALYTICS_TABLE                  = aws_dynamodb_table.user_analytics.name
+      ANALYTICS_DAILY_AGGREGATES_TABLE = aws_dynamodb_table.analytics_daily_aggregates.name
+      DAILY_MORAL_CRIME_VOTES_TABLE    = aws_dynamodb_table.daily_moral_crime_votes.name
+      PUSH_SUBSCRIPTIONS_TABLE         = aws_dynamodb_table.push_subscriptions.name
+      VAPID_PRIVATE_KEY_SSM_NAME       = aws_ssm_parameter.vapid_private_key.name
+      VAPID_SUBJECT                    = "mailto:tommasobersani@gmail.com"
+      FCM_SERVICE_ACCOUNT_SSM_NAME     = ""
+    }
+  }
+
+  depends_on = [
+    aws_iam_role_policy.push_digest_permissions,
+    aws_cloudwatch_log_group.push_digest_logs,
+  ]
+
+  tags = {
+    Name        = "Moral Torture Machine Push Digest"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
+
+resource "aws_iam_role" "push_digest_scheduler_role" {
+  name = "${var.stack_name}-push-digest-scheduler-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "scheduler.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+
+  tags = {
+    Name        = "Moral Torture Machine Push Digest Scheduler Role"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
+
+resource "aws_iam_role_policy" "push_digest_scheduler_permissions" {
+  name = "invoke-push-digest"
+  role = aws_iam_role.push_digest_scheduler_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["lambda:InvokeFunction"]
+      Resource = [aws_lambda_function.push_digest.arn]
+    }]
+  })
+}
+
+# Hourly, not daily: each device is notified at the first run after the Daily
+# window opens (09:00 UTC) in which it is daytime locally. The handler marks
+# the window as sent before sending, so an overlapping or repeated run cannot
+# notify anyone twice.
+resource "aws_scheduler_schedule" "push_digest" {
+  name        = "${var.stack_name}-push-digest"
+  description = "Hourly Daily Moral Crime push: yesterday's verdict and today's case"
+
+  schedule_expression = "rate(1 hour)"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.push_digest.arn
+    role_arn = aws_iam_role.push_digest_scheduler_role.arn
+  }
+
+  depends_on = [aws_iam_role_policy.push_digest_scheduler_permissions]
+}
+
 # API Gateway HTTP API
 resource "aws_apigatewayv2_api" "api" {
   name          = "${var.stack_name}-api"

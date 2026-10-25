@@ -483,6 +483,31 @@ dev table, or `/dev` SSM hierarchy.
   to the same write-time aggregates as Party/Duel (`pushStage`/`pushAction`
   Sets) and shown as the "Duel notifications" card on the Moral Duel tab of
   `/admin/analytics`.
+- **Notification topics and the Daily push** (`TASK-375`/`376`/`377`). A
+  registration now carries a string set `topics` (`duel`, `daily`); a row
+  without one is a pre-topics row and means `{duel}`. Subscribing adds a topic
+  (`ADD`, never a replace) and unsubscribing with a topic removes only it,
+  deleting the row when the last goes; `POST /push/status` reports a browser's
+  topics (and refreshes its `utcOffsetMinutes`), `POST /push/opened` resets the
+  ignored counter. `send_push_notification(..., topic=)` delivers through
+  `_deliver_push_to_subscription`, which skips devices not following the topic
+  and switches a topic off after `PUSH_AUTO_SILENCE_AFTER` (3) unopened sends in
+  a row (`unopened_<topic>` counter on the row, reset by an open or, for the
+  Daily, a vote). Three notification kinds exist: `duel_completed` and
+  `duel_rematch` (event-driven, topic `duel`; the rematch goes to the *other*
+  participant) and `daily_digest` (topic `daily`). The digest is a separate
+  Lambda (`push-digest`, own least-privilege role) invoked hourly by an
+  EventBridge Scheduler schedule: a device is notified once per Daily window, at
+  the first run after the 09:00 UTC release in which its local hour is 9-21
+  (from the UTC offset it reported), the window's day key (`lastDailyDayKey`)
+  being claimed on the row *before* sending so a repeated run cannot double-send.
+  The text is the real verdict ("You sided with the 62%") only when the person
+  voted in the previous window and at least 5 people did; otherwise it only says
+  the case is up; someone who already voted today is skipped. Delivery events
+  (`PUSH_SERVER_EVENTS`) carry the recipient's identity for the funnel but are
+  excluded from every activity measure (`serverInitiated` flag, both the Scan
+  and write-time paths), otherwise a push would raise D1/D7 by itself.
+  `pushNotifications.byTrigger` splits delivered/opened per kind.
 - **Gamebook waitlist** (`TASK-281`) is a physical-gamebook demand-validation
   smoke test: a "Classified Dossier: The Gamebook" box on `ResultsScreen`,
   rendered under the archetype section once `archetype` is set, with an email

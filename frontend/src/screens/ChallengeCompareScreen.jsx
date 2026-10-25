@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import SEO from '../components/SEO';
+import PushOptIn from '../components/PushOptIn';
+import usePushOpened from '../hooks/usePushOpened';
 import { getAnonymousUserId, getApiHeaders, getAuthenticatedApiHeaders } from '../utils/session';
 import { trackEvent } from '../utils/analytics';
 import { shareDuelCard } from '../utils/shareCard';
@@ -16,6 +18,7 @@ const ChallengeCompareScreen = () => {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const auth = useAuth();
+  usePushOpened();
   // TASK-219: same login-prompt copy experiment as ResultsScreen/
   // ChallengeLandingScreen, applied here to the challenge_rematch surface
   // (challenge_compare's optional pair-insight unlock prompt is a different,
@@ -28,7 +31,6 @@ const ChallengeCompareScreen = () => {
   const [creatingRematch, setCreatingRematch] = useState(false);
   const [rematchLoginRequired, setRematchLoginRequired] = useState(false);
   const viewTracked = useRef(false);
-  const pushOpenTracked = useRef(false);
   const loginPromptTracked = useRef(false);
 
   const API_URL = import.meta.env.VITE_API_URL;
@@ -56,13 +58,6 @@ const ChallengeCompareScreen = () => {
         if (!viewTracked.current) {
           viewTracked.current = true;
           trackEvent('challenge_compare_viewed', { overall_agreement_pct: data.compatibility.overallAgreementPct, challenge_token: token });
-        }
-        // TASK-275: a Duel-completed push opens this page tagged utm_source=push
-        // (set by the backend when it sends), the only click signal a service
-        // worker can hand to the page. Counted once per mount, whatever re-fetches.
-        if (!pushOpenTracked.current && new URLSearchParams(window.location.search).get('utm_source') === 'push') {
-          pushOpenTracked.current = true;
-          trackEvent('push_notification_opened', { trigger: 'duel_completed' });
         }
         // TASK-14: the login prompt only fires once we know the pair insight
         // is actually still locked, not on every mount/re-fetch.
@@ -233,6 +228,7 @@ const ChallengeCompareScreen = () => {
             </button>
           </div>
         )}
+        <PushOptIn topic="duel" surface="challenge_compare" context="compare" />
       </div>
       )}
 

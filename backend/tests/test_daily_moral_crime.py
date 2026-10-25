@@ -113,6 +113,9 @@ class DailyMoralCrimeTests(unittest.TestCase):
                 "dynamodb_client",
                 SimpleNamespace(transact_write_items=self.daily_votes.transact_write_items),
             ),
+            # TASK-375: a vote also resets the Daily push "ignored" counter,
+            # which would otherwise query the real push table.
+            patch.object(backend_module, "_reset_push_unopened"),
         ]
         for current_patch in self.patches:
             current_patch.start()
@@ -163,6 +166,15 @@ class DailyMoralCrimeTests(unittest.TestCase):
             "firstPct": 100,
             "secondPct": 0,
         })
+
+    def test_a_vote_clears_the_ignored_daily_notifications(self):
+        day_key = _daily_moral_crime_window()["dayKey"]
+        asyncio.run(vote_daily_moral_crime(
+            DailyMoralCrimeVoteRequest(dayKey=day_key, choice="first"),
+            request_with_headers({"X-Anonymous-User-Id": "anon-1"}, "/daily-moral-crime/vote"),
+        ))
+
+        backend_module._reset_push_unopened.assert_called_once_with("anon-1", "daily")
 
     def test_retry_returns_the_original_vote_without_double_counting(self):
         day_key = _daily_moral_crime_window()["dayKey"]
