@@ -411,7 +411,9 @@
       "setting_on": "On for this browser"
     },
     "daily": {
-      "prompt_text": "Want the verdict and tomorrow's case in your pocket? At most one notification a day, only in daytime.",
+      "prompt_text_utility": "Want the verdict and tomorrow's case in your pocket? At most one notification a day, only in daytime.",
+      "prompt_text_curiosity": "Did you side with the majority? We'll tell you tomorrow, along with the new case. At most one notification a day.",
+      "prompt_text_brief": "Get tomorrow's verdict? One notification a day, at most.",
       "confirmed": "Done. At most one a day, only in daytime. Turn it off any time.",
       "setting_label": "Daily Moral Crime",
       "setting_on": "On for this browser"

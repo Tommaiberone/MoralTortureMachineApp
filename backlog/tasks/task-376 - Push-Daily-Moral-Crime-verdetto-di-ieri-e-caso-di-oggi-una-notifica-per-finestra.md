@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-10-25 14:44'
-updated_date: '2026-10-25 15:00'
+updated_date: '2026-10-25 15:10'
 labels:
   - growth
   - retention
@@ -38,4 +38,6 @@ Una sola notifica per persona per finestra Daily (rilascio 09:00 UTC), mandata a
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-10-25: implementato (ADR-162). Lambda push-digest con ruolo dedicato + aws_scheduler_schedule rate(1 hour); terraform validate/fmt puliti in copia isolata (nessun apply locale). Free Tier verificato sulle pagine ufficiali (Scheduler 14M invocazioni/mese, Lambda 1M richieste e 400k GB-s). Aggiunto: chi ha gia' votato oggi viene saltato. L'AC finale resta aperta fino alla prima esecuzione reale.
+
+2026-10-25 15:04 UTC: prima esecuzione reale del job in produzione (log letti con il workflow Tail Backend Logs): schedule orario attivo, Lambda parte senza errori (148 ms), nessun iscritto Daily ancora ('finished: {}'). L'AC finale resta aperta fino alla prima consegna e apertura reali.
 <!-- SECTION:NOTES:END -->

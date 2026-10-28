@@ -6523,6 +6523,11 @@ COPY_EXPERIMENTS = {
     "homeModeCopy": ("landing_viewed", "mode_selected"),
     "challengeButtonCopy": ("result_viewed", "challenge_share_ready"),
     "partyCreateCopy": ("party_home_viewed", "party_room_create_clicked"),
+    # TASK-378: the Daily notification prompt. Only that prompt sends a
+    # `variant`, so a Duel prompt view lands in the "unknown" row; a Daily
+    # viewer who later turns on Duel notifications would count as converted
+    # too, which is accepted until the Duel prompt has any traffic.
+    "pushDailyPromptCopy": ("push_prompt_shown", "push_subscribed"),
 }
 
 

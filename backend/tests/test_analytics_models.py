@@ -1435,9 +1435,43 @@ class AnalyticsOverviewTests(unittest.TestCase):
         # Every registered experiment must be present even with zero data,
         # never silently missing from the response.
         self.assertEqual(set(overview["copyExperiments"].keys()), {
-            "authPromptCopy", "homeModeCopy", "challengeButtonCopy", "partyCreateCopy",
+            "authPromptCopy", "homeModeCopy", "challengeButtonCopy", "partyCreateCopy", "pushDailyPromptCopy",
         })
         self.assertEqual(overview["copyExperiments"]["homeModeCopy"], [])
+
+    def test_push_daily_prompt_copy_joins_each_variant_to_who_subscribed(self):
+        now_ms = 1785369600000
+        rows = []
+        for index in range(32):
+            # 32 people saw the "utility" prompt, 8 of them subscribed.
+            rows.append({"eventId": str(uuid.uuid4()), "anonymousUserId": f"utility-{index}",
+                         "occurredAt": now_ms - 5000, "actionType": "push_prompt_shown",
+                         "platform": "web", "properties": '{"surface": "daily_revealed", "topic": "daily", "variant": "utility"}'})
+            if index < 8:
+                rows.append({"eventId": str(uuid.uuid4()), "anonymousUserId": f"utility-{index}",
+                             "occurredAt": now_ms - 4000, "actionType": "push_subscribed",
+                             "platform": "web", "properties": "{}"})
+        # Two "brief" viewers (too few to rank), one subscribed.
+        for index in range(2):
+            rows.append({"eventId": str(uuid.uuid4()), "anonymousUserId": f"brief-{index}",
+                         "occurredAt": now_ms - 5000, "actionType": "push_prompt_shown",
+                         "platform": "web", "properties": '{"surface": "daily_revealed", "topic": "daily", "variant": "brief"}'})
+        rows.append({"eventId": str(uuid.uuid4()), "anonymousUserId": "brief-0",
+                     "occurredAt": now_ms - 4000, "actionType": "push_subscribed",
+                     "platform": "web", "properties": "{}"})
+        # Subscribing without ever seeing the prompt (account page) is not a conversion of it.
+        rows.append({"eventId": str(uuid.uuid4()), "anonymousUserId": "account-only",
+                     "occurredAt": now_ms - 4000, "actionType": "push_subscribed",
+                     "platform": "web", "properties": "{}"})
+
+        overview = build_analytics_overview(
+            legacy_rows=[], product_rows=rows, days=7, now_ms=now_ms, platform="web",
+        )
+
+        self.assertEqual(overview["copyExperiments"]["pushDailyPromptCopy"], [
+            {"variant": "brief", "exposed": 2, "converted": 1, "conversionRatePct": None, "insufficientSample": True},
+            {"variant": "utility", "exposed": 32, "converted": 8, "conversionRatePct": 25.0, "insufficientSample": False},
+        ])
 
     def test_creative_variant_breakdown_joins_completions_via_utm_content(self):
         now_ms = 1785369600000

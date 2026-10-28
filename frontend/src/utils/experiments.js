@@ -28,3 +28,10 @@ export const getExperimentVariant = (experimentName, variants, anonymousUserId) 
 // ChallengeCompareScreen) - one shared list so the three screens can't drift
 // out of sync with each other.
 export const AUTH_PROMPT_COPY_VARIANTS = ['value', 'urgency', 'curiosity'];
+
+// TASK-378: three approaches to the Daily notification prompt - 'utility'
+// (what you get and the limits, the original wording), 'curiosity' (an open
+// loop about your own vote) and 'brief' (one short line). They differ in more
+// than one way on purpose: with so few views a clean one-lever test could not
+// conclude either, so this asks which approach to keep, not why it works.
+export const PUSH_DAILY_PROMPT_COPY_VARIANTS = ['utility', 'curiosity', 'brief'];

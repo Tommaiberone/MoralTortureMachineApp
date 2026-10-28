@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { trackEvent } from '../utils/analytics';
+import { PUSH_DAILY_PROMPT_COPY_VARIANTS, getExperimentVariant } from '../utils/experiments';
+import { getAnonymousUserId } from '../utils/session';
 import {
   disableWebPush,
   enableWebPush,
@@ -46,6 +48,14 @@ const rememberDismissal = (topic) => {
  */
 const PushOptIn = ({ topic, surface, variant = 'prompt', context = '' }) => {
   const { t } = useTranslation();
+  // TASK-378: only the Daily prompt is under test; every other prompt has one
+  // fixed wording and sends no variant.
+  const [copyVariant] = useState(() => (
+    topic === 'daily' && variant === 'prompt'
+      ? getExperimentVariant('push_daily_prompt_copy', PUSH_DAILY_PROMPT_COPY_VARIANTS, getAnonymousUserId())
+      : ''
+  ));
+  const variantProperties = copyVariant ? { variant: copyVariant } : {};
   const [supported] = useState(isWebPushSupported);
   const [topics, setTopics] = useState(null);
   const [permission, setPermission] = useState(getPushPermission);
@@ -71,8 +81,8 @@ const PushOptIn = ({ topic, surface, variant = 'prompt', context = '' }) => {
   useEffect(() => {
     if (!promptVisible || shownTracked.current) return;
     shownTracked.current = true;
-    trackEvent('push_prompt_shown', { surface, topic });
-  }, [promptVisible, surface, topic]);
+    trackEvent('push_prompt_shown', { surface, topic, ...(copyVariant ? { variant: copyVariant } : {}) });
+  }, [promptVisible, surface, topic, copyVariant]);
 
   if (!supported || topics === null) return null;
 
@@ -86,7 +96,7 @@ const PushOptIn = ({ topic, surface, variant = 'prompt', context = '' }) => {
     } else if (result === 'denied') {
       trackEvent('push_permission_denied', { surface, topic });
     } else if (result === 'dismissed') {
-      trackEvent('push_prompt_dismissed', { surface, topic, method: 'browser_dialog' });
+      trackEvent('push_prompt_dismissed', { surface, topic, method: 'browser_dialog', ...variantProperties });
       if (isPrompt) {
         rememberDismissal(topic);
         setDismissed(true);
@@ -109,7 +119,7 @@ const PushOptIn = ({ topic, surface, variant = 'prompt', context = '' }) => {
   };
 
   const handleNotNow = () => {
-    trackEvent('push_prompt_dismissed', { surface, topic, method: 'not_now' });
+    trackEvent('push_prompt_dismissed', { surface, topic, method: 'not_now', ...variantProperties });
     rememberDismissal(topic);
     setDismissed(true);
   };
@@ -156,7 +166,9 @@ const PushOptIn = ({ topic, surface, variant = 'prompt', context = '' }) => {
 
   return (
     <div className="push-optin">
-      <p className="push-optin-text">{t(`push.${topic}.prompt_text${context ? `_${context}` : ''}`)}</p>
+      <p className="push-optin-text">
+        {t(`push.${topic}.prompt_text${copyVariant ? `_${copyVariant}` : ''}${context ? `_${context}` : ''}`)}
+      </p>
       <div className="push-optin-actions">
         <button type="button" className="btn-primary" onClick={handleEnable} disabled={busy}>
           {t('push.prompt_accept')}

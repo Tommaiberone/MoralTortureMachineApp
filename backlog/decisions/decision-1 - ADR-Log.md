@@ -6573,6 +6573,32 @@ cannot subscribe; the funnel's prompt/subscribed stages blend both topics (only 
 the new Lambda has no CloudWatch alarm yet, same gap as `TASK-252` for `retention-sweep`; a person with two devices
 gets one push per device.
 
+### ADR-163 — A/B/C test on the Daily notification prompt, and what the first subscriber's toggling does and does not tell us (`TASK-378`, user request 2026-10-28)
+
+Context: four days after `ADR-162` the push funnel had 7 people shown the Daily prompt (39% of the 18 web voters since it
+went live; an earlier reading of 17% wrongly divided by a window in which the prompt did not yet exist), 3 explicit "Not
+now", 1 subscription and no opens. The user asked what the prompt says and for an A/B/C test of its wording.
+
+Decision: three variants, bucketed deterministically per anonymous id and measured with the existing copy-experiment
+registry (`pushDailyPromptCopy`: `push_prompt_shown` carrying `variant` -> `push_subscribed`, same identity). `utility` is the
+original wording, `curiosity` is an open loop about the person's own vote ("Did you side with the majority? We'll tell you
+tomorrow"), `brief` is one short line. They differ in more than one way on purpose, so the result can only say which
+approach to keep, not why.
+
+Why this will take a long time: about 15 prompt views a week. Detecting 14% -> 30% subscription with 95% confidence needs
+roughly 100 people per variant, around 20 weeks; a smaller lift needs far longer. The rule from `TASK-223` stands: nothing is
+concluded before |z| >= 1.96 with enough people per variant. The test costs almost nothing to leave running, but the lever
+that can move the funnel sooner is reach (who sees the prompt, and where), not wording.
+
+The first subscriber subscribed, unsubscribed 7.8 s later and subscribed again 9.3 s after that, on desktop Chrome on Windows,
+during a session in which they also joined the gamebook waitlist, voted, took the test and created a challenge. That reads as
+someone trying the controls out (the confirmation sits right above a "Turn off" link), not as a mis-tap, which a desktop
+cursor makes unlikely; it is one person, so it is a hypothesis and not a finding.
+
+Consequences: no Android rebuild or version change (the prompt does not render in the app). The variant is sent only by the
+Daily prompt, so a Duel prompt view falls in the "unknown" row and a Daily viewer who later subscribes to Duel
+notifications would count as converted too; acceptable while the Duel prompt has no traffic.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,

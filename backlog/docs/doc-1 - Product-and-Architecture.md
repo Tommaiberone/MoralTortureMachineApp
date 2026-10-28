@@ -507,7 +507,10 @@ dev table, or `/dev` SSM hierarchy.
   (`PUSH_SERVER_EVENTS`) carry the recipient's identity for the funnel but are
   excluded from every activity measure (`serverInitiated` flag, both the Scan
   and write-time paths), otherwise a push would raise D1/D7 by itself.
-  `pushNotifications.byTrigger` splits delivered/opened per kind.
+  `pushNotifications.byTrigger` splits delivered/opened per kind. The Daily
+  prompt's wording is an A/B/C test (`TASK-378`, `pushDailyPromptCopy` in
+  `COPY_EXPERIMENTS`: `push_prompt_shown` with a `variant` -> `push_subscribed`);
+  no other prompt sends a variant.
 - **Gamebook waitlist** (`TASK-281`) is a physical-gamebook demand-validation
   smoke test: a "Classified Dossier: The Gamebook" box on `ResultsScreen`,
   rendered under the archetype section once `archetype` is set, with an email
