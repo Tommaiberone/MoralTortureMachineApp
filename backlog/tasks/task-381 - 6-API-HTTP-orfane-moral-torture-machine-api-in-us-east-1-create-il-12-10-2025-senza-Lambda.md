@@ -3,9 +3,10 @@ id: TASK-381
 title: >-
   6 API HTTP orfane 'moral-torture-machine-api' in us-east-1 (create il
   12/10/2025, senza Lambda)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-15 13:15'
+updated_date: '2026-11-15 13:48'
 labels:
   - infra
   - cost
@@ -23,6 +24,12 @@ Trovate il 15/11/2026 durante l'analisi dei costi (TASK-379/380): 7v3hxnovfb, 8h
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Verificato che nessun client o stato Terraform le usi
-- [ ] #2 Cancellate con conferma dell'utente
+- [x] #1 Verificato che nessun client o stato Terraform le usi
+- [x] #2 Cancellate con conferma dell'utente
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+15/11/2026, con l'autorizzazione dell'utente: nessun riferimento nel repo né negli stati Terraform del bucket moral-torture-machine-terraform-state, zero richieste dal 15/09, nessuna rotta né integrazione. Cancellate tutte e 6; in us-east-1 non resta nessuna API.
+<!-- SECTION:FINAL_SUMMARY:END -->
