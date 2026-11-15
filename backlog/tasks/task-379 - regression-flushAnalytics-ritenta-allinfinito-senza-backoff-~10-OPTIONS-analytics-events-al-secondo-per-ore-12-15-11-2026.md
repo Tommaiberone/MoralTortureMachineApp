@@ -6,7 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-11-15 12:57'
-updated_date: '2026-11-15 13:06'
+updated_date: '2026-11-15 13:45'
 labels:
   - bug
   - analytics
@@ -34,4 +34,6 @@ Dal 12 al 15/11/2026 l'API ha ricevuto 230-245 mila richieste al giorno invece d
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
 Backoff esponenziale 5 s-5 min dopo un invio fallito, richiamo immediato solo dopo un successo, keepalive solo su pagehide/hidden (ADR-165). Versione 1.13.1 per il web; versionCode 32 invariato: l'APK resta col vecchio loop finché l'utente non conferma un rilascio Android. Lint e build:prod passano; verifica nel browser non fatta (regola del repo).
+
+Release Android autorizzata dall'utente il 15/11/2026: 1.13.0 (versionCode 32) -> 1.13.1 (versionCode 33), pubblicazione automatica su Google Play production dalla CI.
 <!-- SECTION:FINAL_SUMMARY:END -->
