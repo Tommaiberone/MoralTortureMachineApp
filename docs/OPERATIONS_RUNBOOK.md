@@ -2,23 +2,38 @@
 
 Recipient for every notification below: `tommasobersani@gmail.com` (the
 `alert_email` Terraform variable in `backend/terraform/variables.tf`), the
-sole owner/operator of this project. All alarms and budget notifications
-share one SNS topic, `aws_sns_topic.ops_alerts` (`backend/terraform/observability.tf`).
+sole owner/operator of this project. This stack's alarms share one SNS topic,
+`aws_sns_topic.ops_alerts` (`backend/terraform/observability.tf`).
 
 After `terraform apply`, the email subscription is created in
 `PendingConfirmation` state — AWS sends a confirmation link that must be
 clicked once before notifications are actually delivered.
 
-## Budget notifications (TASK-8)
+## Account cost cap and kill switch (TASK-380, replaces TASK-8)
 
-One monthly AWS Cost Budget (`monthly_cost`), limit $200/month, with three
-progressive notifications at actual spend:
+The user's rule (2026-11-15): never spend more than 2 EUR a month on this AWS
+account, and know before it happens. The account also hosts job-radar,
+smartchess, ai-autofiller and wa-summarizer, so the guardrail is account-wide
+and lives in the job-radar repo (`infra/guardrail.tf`), not here. The 12-month
+Free Tier expired at the end of October 2026: the account's normal spend is
+now about 0.30 USD a month, almost all of it this project.
 
-| Threshold | Meaning |
-|---|---|
-| $10 | Early signal. Check the Cost Explorer breakdown by service; confirm nothing unexpected started billing (e.g. a Free Tier boundary was crossed). No action usually required beyond noting it. |
-| $50 | Investigate. Identify the specific service/resource driving spend. Compare against the AWS Free Tier audit snapshot in `backlog/docs/doc-1`; if a genuinely new variable-cost service is involved, it should already have an approved exception recorded in the ADR log. |
-| $200 (100% of budget) | Stop and decide. Do not let spend continue unchecked past this point — identify the driver and either turn it off, reduce it, or explicitly approve continuing per the CLAUDE.md cost-exception process (cost, alternative, owner, kill switch, ADR entry). |
+| Signal | When | What happens |
+|---|---|---|
+| Budget `account-monthly` (2 USD; Budgets only works in USD, and 2 USD stays under 2 EUR) | actual > 0.50 USD, > 1.00 USD; forecast > 2 USD | Email. Check Cost Explorer by service and usage type. |
+| Alarm `account-lambda-traffic-warning` | > 2,000 Lambda invocations per 15 minutes for an hour (normal peak ~3,300 in one 15-minute slot, ~6,000 in an hour) | Email via the `account-guardrail-alerts` topic. Look at `AWS/ApiGateway` `Count` per `ApiId`, then the Lambda logs. |
+| Alarm `account-lambda-traffic-kill` | > 5,000 per 15 minutes for two hours | **Kill switch**, plus an email |
+| Budget, actual > 1.50 USD or > 2 USD | (billing data lags by hours) | **Kill switch**, plus an email |
+
+The kill switch (`account-kill-switch` Lambda) sets every Lambda in eu-west-1
+and us-east-1 to reserved concurrency 0, disables every API Gateway API's
+`execute-api` endpoint (404) and throttles every stage to 0 (429). It first
+saves the previous settings to the job-radar state bucket
+(`guardrail/kill-switch.json`). To bring everything back, from the job-radar
+repo: `bash scripts/kill-switch.sh restore` (`status` shows what is stopped).
+A deploy of this stack also undoes it for this stack, because Terraform puts
+the Lambda's concurrency and the API's endpoint back to their configured
+values.
 
 ## Error and latency alarms (TASK-9)
 

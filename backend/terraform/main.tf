@@ -268,8 +268,8 @@ resource "aws_dynamodb_table" "analytics_daily_aggregates" {
 # (ADR-153). On-demand has no Free Tier offset; at September 2026 volume
 # these seven tables consumed ~54k read and ~6k write units, about USD 0.01
 # per month at this account's billed eu-west-1 rates (0.1415 per million
-# read units, 0.705 per million write units). Guardrails: the monthly AWS
-# budget alerts at USD 10/50/200 (observability.tf), and the per-table
+# read units, 0.705 per million write units). Guardrails: the account-wide
+# 2 USD budget and kill switch (job-radar infra/guardrail.tf), and the per-table
 # on_demand_throughput caps below, sized ~4-5x above an optimistic launch
 # peak (~800 concurrent Party Room players) so they never throttle real
 # traffic but bound what abuse can cost per hour. Kill switch: set

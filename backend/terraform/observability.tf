@@ -1,4 +1,4 @@
-# TASK-8 / TASK-9: cost guardrails and operational alarms.
+# TASK-9: operational alarms (the cost guardrail is account-wide, see below).
 # Recipient and response steps for every notification below are documented in
 # docs/OPERATIONS_RUNBOOK.md, per the Mandatory AWS Free Tier / cost rules in
 # CLAUDE.md ("every new variable-cost service needs an owner, budget alarm,
@@ -20,40 +20,13 @@ resource "aws_sns_topic_subscription" "ops_alerts_email" {
   endpoint  = var.alert_email
 }
 
-# TASK-8: one monthly cost budget with three progressive absolute-dollar
-# notifications (10, 50, 200 USD) rather than three separate budgets, since
-# they represent escalating checkpoints on the same monthly spend.
-resource "aws_budgets_budget" "monthly_cost" {
-  name         = "${var.environment}-${var.stack_name}-monthly-cost"
-  budget_type  = "COST"
-  limit_amount = "200"
-  limit_unit   = "USD"
-  time_unit    = "MONTHLY"
-
-  notification {
-    comparison_operator        = "GREATER_THAN"
-    threshold                  = 10
-    threshold_type             = "ABSOLUTE_VALUE"
-    notification_type          = "ACTUAL"
-    subscriber_email_addresses = [var.alert_email]
-  }
-
-  notification {
-    comparison_operator        = "GREATER_THAN"
-    threshold                  = 50
-    threshold_type             = "ABSOLUTE_VALUE"
-    notification_type          = "ACTUAL"
-    subscriber_email_addresses = [var.alert_email]
-  }
-
-  notification {
-    comparison_operator        = "GREATER_THAN"
-    threshold                  = 100
-    threshold_type             = "PERCENTAGE"
-    notification_type          = "ACTUAL"
-    subscriber_email_addresses = [var.alert_email]
-  }
-}
+# TASK-380 (replaces TASK-8's $200 budget): the monthly cost budget is now
+# account-wide and lives in the job-radar repo (infra/guardrail.tf), because
+# this AWS account also hosts job-radar, smartchess, ai-autofiller and
+# wa-summarizer. Limit 2 USD (the user's hard cap of 2 EUR), warnings at
+# 25/50% and on forecast, and an automatic kill switch at 75%/100% that sets
+# every Lambda to reserved concurrency 0 and blocks every API Gateway API.
+# See docs/OPERATIONS_RUNBOOK.md.
 
 # TASK-9: error and latency alarms sized for current low-volume traffic
 # (doc-1 baseline: ~25k monthly Lambda invocations, ~50 ms average duration).

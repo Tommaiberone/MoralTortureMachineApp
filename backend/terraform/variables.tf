@@ -22,7 +22,7 @@ variable "environment" {
 }
 
 variable "alert_email" {
-  description = "Recipient for AWS Budget notifications and CloudWatch alarms (see docs/OPERATIONS_RUNBOOK.md)"
+  description = "Recipient for this stack's CloudWatch alarms (see docs/OPERATIONS_RUNBOOK.md); the cost budget is account-wide, in job-radar"
   type        = string
   default     = "tommasobersani@gmail.com"
 }

@@ -11,6 +11,12 @@ const SCHEMA_VERSION = 1;
 const MAX_QUEUE_SIZE = 100;
 const BATCH_SIZE = 25;
 const FLUSH_INTERVAL_MS = 5000;
+// After a failed send, wait before the next attempt, doubling up to the cap.
+// Without this a failing batch was retried immediately and forever: on
+// 2026-11-12/15 one client sent ~10 `OPTIONS /analytics/events` per second
+// for hours (~500k requests, the account's whole monthly budget).
+const RETRY_BASE_MS = 5000;
+const RETRY_MAX_MS = 5 * 60 * 1000;
 // TASK-200: the `token` match here also (deliberately) catches
 // challenge_token, not just auth/access/jwt tokens - a Duel invite token is
 // a shareable-but-non-enumerable identifier, same privacy class as
@@ -33,6 +39,8 @@ let queue = [];
 let flushTimer;
 let flushInProgress = false;
 let initialized = false;
+let retryDelayMs = 0;
+let nextAttemptAt = 0;
 
 const loadQueue = () => {
   try {
@@ -90,19 +98,24 @@ const getAttribution = () => {
   };
 };
 
-export const flushAnalytics = async () => {
+// `keepalive` only when the page is going away: it is what lets that last
+// request outlive the page, and everywhere else it only adds the browser's
+// 64 KB in-flight body limit as one more way for a send to fail.
+export const flushAnalytics = async ({ keepalive = false } = {}) => {
   if (flushInProgress || queue.length === 0) return;
+  if (Date.now() < nextAttemptAt) return;
 
   flushInProgress = true;
   const events = queue.splice(0, BATCH_SIZE);
   persistQueue();
+  let sent = false;
 
   try {
     const response = await fetch(API_ENDPOINTS.analyticsEvents, {
       method: 'POST',
       headers: getApiHeaders(),
       body: JSON.stringify({ events }),
-      keepalive: true,
+      keepalive,
     });
 
     // A 4xx other than 429 is a rejection (e.g. schema validation) that will
@@ -113,15 +126,24 @@ export const flushAnalytics = async () => {
     if (!response.ok && (response.status === 429 || response.status >= 500)) {
       throw new Error(`Analytics request failed: ${response.status}`);
     }
+    sent = true;
+    retryDelayMs = 0;
+    nextAttemptAt = 0;
   } catch {
     queue = [...events, ...queue].slice(0, MAX_QUEUE_SIZE);
     persistQueue();
+    retryDelayMs = retryDelayMs ? Math.min(retryDelayMs * 2, RETRY_MAX_MS) : RETRY_BASE_MS;
+    nextAttemptAt = Date.now() + retryDelayMs;
   } finally {
     flushInProgress = false;
   }
 
-  if (queue.length >= BATCH_SIZE) void flushAnalytics();
+  // Drain a backlog right away only while sends succeed; after a failure the
+  // next attempt waits for the backoff window above.
+  if (sent && queue.length >= BATCH_SIZE) void flushAnalytics({ keepalive });
 };
+
+const flushOnLeave = () => void flushAnalytics({ keepalive: true });
 
 export const trackEvent = (eventName, properties = {}) => {
   try {
@@ -160,9 +182,9 @@ export const initializeAnalytics = () => {
   loadQueue();
 
   flushTimer = window.setInterval(() => void flushAnalytics(), FLUSH_INTERVAL_MS);
-  window.addEventListener('pagehide', flushAnalytics);
+  window.addEventListener('pagehide', flushOnLeave);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') void flushAnalytics();
+    if (document.visibilityState === 'hidden') flushOnLeave();
   });
 
   if (queue.length > 0) void flushAnalytics();

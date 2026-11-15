@@ -322,8 +322,8 @@ dev table, or `/dev` SSM hierarchy.
   2026 volume the seven formerly provisioned tables cost about USD 0.01 per
   month. The seven carry an `on_demand_throughput` cap (1000 read / 200
   write request units per second, `local.on_demand_max_*` in `main.tf`) as a
-  per-hour cost bound, with the monthly budget alerts (USD 10/50/200) as the
-  second guardrail. Kill switch: switch a table back to `PROVISIONED` with
+  per-hour cost bound, with the account-wide 2 USD budget and kill switch
+  (`TASK-380`, job-radar `infra/guardrail.tf`) as the second guardrail. Kill switch: switch a table back to `PROVISIONED` with
   explicit capacities. A new table should default to on-demand with the same
   cap unless measured traffic justifies something else.
 - **Daily Moral Crime** (`TASK-42`/`43`/`44`, ADR-085) is one existing,
@@ -1294,13 +1294,19 @@ dev table, or `/dev` SSM hierarchy.
   route template or an explicit rule signature, never an unmatched literal
   path. Stronger distributed enforcement or AWS WAF requires a new cost/Free
   Tier review and explicit approval.
-- One monthly AWS Cost Budget (`backend/terraform/observability.tf`, $200
-  limit) sends progressive notifications at $10/$50/$200 actual spend, and
+- Cost cap (`TASK-380`, 2026-11-15, replaces `TASK-8`'s $200 budget): the user
+  allows at most 2 EUR a month for the whole AWS account, which this project
+  shares with job-radar, smartchess, ai-autofiller and wa-summarizer. The
+  account-wide budget (2 USD), two Lambda-traffic alarms and an automatic kill
+  switch (every Lambda to reserved concurrency 0, every API Gateway API's
+  endpoint disabled and stages throttled to 0) live in the job-radar repo,
+  `infra/guardrail.tf`; this repo no longer defines a budget. A deploy of this
+  stack resets the kill switch for this stack's Lambda and API. The 12-month
+  Free Tier expired at the end of October 2026, so ~0.30 USD/month is now the
+  normal spend; any launch traffic beyond that will trip the cap. Separately,
   four CloudWatch alarms (Lambda errors/duration, API Gateway 5xx/latency)
-  post to the same SNS topic. Recipient and first-response steps for every
-  notification are in `docs/OPERATIONS_RUNBOOK.md`. Both require
-  `terraform apply` to take effect; they validate but were not applied in the
-  session that added them.
+  post to this stack's `ops_alerts` SNS topic. Recipient and first-response
+  steps for every notification are in `docs/OPERATIONS_RUNBOOK.md`.
 - The Lambda IAM policy must grant `dynamodb:BatchWriteItem` (used by
   `product_events_table.batch_writer`) and `dynamodb:DeleteItem` explicitly —
   neither is implied by `PutItem`. A missing `BatchWriteItem` grant silently

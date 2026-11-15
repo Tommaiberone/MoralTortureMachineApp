@@ -6599,6 +6599,50 @@ Consequences: no Android rebuild or version change (the prompt does not render i
 Daily prompt, so a Duel prompt view falls in the "unknown" row and a Daily viewer who later subscribes to Duel
 notifications would count as converted too; acceptable while the Duel prompt has no traffic.
 
+### ADR-165 — Analytics flush backs off after a failure instead of retrying at once (`TASK-379`, 2026-11-15)
+
+Context: from 2026-11-12 to 11-15 the API received 230-245k requests a day instead of 1-6k, almost all `OPTIONS /analytics/events`
+at ~10 per second in blocks of hours (229,070 OPTIONS against 539 POSTs on 11-12), consistent with one client whose POST never
+reached the server. `flushAnalytics` requeued a failed batch and, with at least 25 events queued, called itself again at once, so a
+send that keeps failing became a loop at network round-trip speed; the queue lives in `sessionStorage`, so a reload did not end it.
+Cost ~0.60 USD in four days, which tripped the account budget alarm (the 12-month Free Tier expired at the end of October). The
+server could not have stopped it: the client retries 429 at the same speed, and API Gateway bills the request either way.
+
+Options: server-side throttling (still billed, and retried at once); dropping the batch on failure (loses events on every network
+blip); client backoff.
+
+Decision: after a failed send (network error, 429, 5xx) the next attempt waits 5 s, doubling up to 5 minutes, reset by the first
+success; the immediate drain call runs only after a success. `keepalive` is used only for the `pagehide`/hidden flush, where it is
+what lets the request outlive the page, so it no longer adds its 64 KB in-flight body limit as a failure mode to every send. Version
+1.13.0 -> 1.13.1 (package.json and versionName); versionCode stays 32 until the user confirms an Android release, so the installed
+APKs keep the old loop until then.
+
+Consequences: a client whose sends keep failing now makes at most ~12 attempts an hour instead of ~36,000. Events stay queued (at
+most 100) during the backoff and are lost if the tab closes, as before. Why the POST failed for that client (an ad or tracker
+blocker, a filtering proxy) stays unknown: the access logs deliberately store no IP, path or user agent (doc-1), and this change
+keeps it that way.
+
+### ADR-166 — The cost budget becomes account-wide, 2 USD, with an automatic kill switch defined in job-radar (`TASK-380`, user request 2026-11-15)
+
+Context: the user's rule is never to spend more than 2 EUR a month on this AWS account, and to know before it happens. The account
+hosts this project plus job-radar, smartchess, ai-autofiller and wa-summarizer, and both existing budgets (`TASK-8`'s 200 USD here,
+job-radar's 1 USD) had no filter, so they already measured the whole account. AWS Budgets only works in USD; 2 USD stays under
+2 EUR.
+
+Decision: remove `aws_budgets_budget.monthly_cost` from this repo. One account budget of 2 USD lives in the job-radar repo
+(`infra/guardrail.tf`): email at 25% and 50% of actual spend and at 100% of forecast. An alarm on the account's Lambda invocations
+emails after an hour above ~8k an hour (normal peak ~6k). A kill switch Lambda fires at 75% and 100% of actual spend and after two
+hours above ~20k invocations an hour. It saves the current settings to S3, then sets every Lambda in eu-west-1 and us-east-1 to
+reserved concurrency 0, disables every API Gateway API's `execute-api` endpoint and throttles its stages to 0; `bash
+scripts/kill-switch.sh restore` in job-radar undoes it. Both blocking mechanisms were tested on a throwaway API first (throttling
+to 0 answers 429 at once; the disabled endpoint answers 404 within 20 s, no redeploy needed).
+
+Consequences: a normal month is now ~0.30 USD, so the margin is small, and launch-scale traffic (gamebook, `ADR-153`) will stop
+the whole app: that is the user's explicit choice. Billing data lags by hours, so the budget is the backstop and the traffic alarm
+the fast path. A deploy of this stack undoes the kill switch for its own Lambda and API, because Terraform puts back their
+configured concurrency and endpoint. AWS does not document whether requests rejected by throttling or by a disabled endpoint are
+billed.
+
 ## Consequences
 
 - Growth is evaluated through attributable challenge completion and retention,
